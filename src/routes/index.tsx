@@ -271,7 +271,7 @@ function Landing() {
         <div className="relative overflow-hidden border-y border-border/40 bg-card/40 py-6 backdrop-blur">
           <div className="flex animate-marquee gap-16 whitespace-nowrap text-sm font-medium text-muted-foreground will-change-transform">
             {[...Array(2)].flatMap((_, k) =>
-              ["AI Trip Commander", "Decision Engine", "Trip Health Score", "What-If Simulator", "AI Risk Radar", "Memory Timeline", "Smart Packing", "Trip Twin"].map((n) => (
+              ["AI Trip Commander", "Decision Engine", "What-If Simulator", "AI Risk Radar", "Memory Timeline", "Smart Packing", "Trip Twin"].map((n) => (
                 <span key={`${k}-${n}`} className="tracking-widest uppercase opacity-70 hover:opacity-100">{n}</span>
               )),
             )}

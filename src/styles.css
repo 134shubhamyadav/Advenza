@@ -220,14 +220,14 @@
 }
 
 @keyframes marquee {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(-50%, 0, 0); }
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
 }
 
 @keyframes blob {
-  0%, 100% { transform: translate(0,0) scale(1); }
-  33% { transform: translate(30px,-20px) scale(1.08); }
-  66% { transform: translate(-20px,20px) scale(0.95); }
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(30px, -20px, 0) scale(1.08); }
+  66% { transform: translate3d(-20px, 20px, 0) scale(0.95); }
 }
 
 @keyframes shimmer {
@@ -246,9 +246,15 @@
 }
 @utility animate-marquee {
   animation: marquee 40s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 @utility animate-blob {
   animation: blob 14s ease-in-out infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 @utility animate-shimmer {
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
