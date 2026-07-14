@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+// import { doc, getDoc } from "firebase/firestore";
+// import { db } from "../lib/firebase";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -21,9 +21,13 @@ function TripDetails() {
   useEffect(() => {
     async function fetchTrip() {
       try {
-        const docSnap = await getDoc(doc(db, "trips", tripId));
-        if (docSnap.exists()) {
-          setTrip(docSnap.data());
+        // Try to fetch from backend first, fallback or handle appropriately
+        const res = await fetch(`http://localhost:5000/api/trips/${tripId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTrip(data);
+        } else {
+          console.error("Trip not found on backend.");
         }
       } catch (err) {
         console.error(err);

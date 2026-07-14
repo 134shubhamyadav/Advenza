@@ -1,8 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { db } from "../lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Check, ArrowRight, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 export const Route = createFileRoute("/trips/new")({ component: NewTrip });
 
@@ -42,59 +41,28 @@ function NewTrip() {
       setLoading(true);
       setError("");
 
-      // Generate a highly realistic mock trip since AI is disabled
-      const mockTrip = {
-        title: `The Ultimate ${destination} Experience`,
-        summary: `A carefully curated ${style.toLowerCase()} journey focusing on ${interests.join(" and ")}.`,
-        budgetEstimate: `₹${Math.round(budget[0] * 0.4).toLocaleString("en-IN")} for stays, ₹${Math.round(budget[0] * 0.3).toLocaleString("en-IN")} for food and transport.`,
-        days: [
-          {
-            dayNumber: 1,
-            date: startDate,
-            title: "Arrival and Orientation",
-            activities: [
-              { time: "Morning", description: "Arrive at destination, check into accommodation." },
-              { time: "Afternoon", description: "Light neighborhood exploration and local lunch." },
-              { time: "Evening", description: "Welcome dinner at a highly rated local restaurant." }
-            ]
-          },
-          {
-            dayNumber: 2,
-            date: "Day 2",
-            title: "Culture and Highlights",
-            activities: [
-              { time: "Morning", description: "Visit the main historical or cultural landmarks." },
-              { time: "Afternoon", description: "Guided tour or museum visit based on interests." },
-              { time: "Evening", description: "Sunset views and relaxed evening walk." }
-            ]
-          },
-          {
-            dayNumber: 3,
-            date: endDate,
-            title: "Farewell",
-            activities: [
-              { time: "Morning", description: "Last minute souvenir shopping and breakfast." },
-              { time: "Afternoon", description: "Departure." }
-            ]
-          }
-        ]
-      };
+      const BACKEND = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
-      let parsedTrip = mockTrip;
+      // Call OpenAI-powered backend endpoint (authenticated)
+      const tripData = await apiFetch('/api/ai/generate', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destination,
+          startDate,
+          endDate,
+          budget: budget[0],
+          style,
+          interests,
+          accommodation,
+          transport,
+          special,
+          createdBy: user?.uid || "guest",
+        }),
+      });
 
-      // Simulate a small network delay for realism
-      await new Promise(res => setTimeout(res, 1500));
-
-      // Add user metadata
-      parsedTrip.userId = user?.uid || "guest";
-      parsedTrip.createdAt = new Date().toISOString();
-      parsedTrip.destination = destination;
-
-      // Save to Firestore
-      const tripRef = await addDoc(collection(db, "trips"), parsedTrip);
-      
-      // Navigate to the dynamic trip page
-      nav({ to: `/trips/${tripRef.id}` });
+      // Navigate to the real trip page with the MongoDB _id
+      nav({ to: `/trips/${tripData._id}` });
     } catch (err: any) {
       console.error(err);
       setError(`Failed to generate trip: ${err.message || err.toString()}`);
@@ -155,10 +123,23 @@ function NewTrip() {
                   </div>
                 </div>
                 <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                  {["Economy", "Comfort", "Luxury"].map((t) => (
-                    <button key={t} className="rounded-xl border border-border bg-background p-4 text-left hover:border-primary/40">
-                      <p className="font-semibold">{t}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Hostels & street food • Boutique stays • 5-star & private</p>
+                  {[
+                    { id: "Economy", desc: "Hostels & street food" },
+                    { id: "Comfort", desc: "Boutique stays & casual dining" },
+                    { id: "Luxury", desc: "5-star & private villas" },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setAccommodation(t.id)}
+                      className={cn(
+                        "rounded-xl border p-4 text-left transition",
+                        accommodation === t.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-background hover:border-primary/40"
+                      )}
+                    >
+                      <p className="font-semibold">{t.id}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{t.desc}</p>
                     </button>
                   ))}
                 </div>
@@ -252,7 +233,7 @@ function NewTrip() {
               <Button onClick={() => setStep((s) => s + 1)}>Continue<ArrowRight className="ml-1 h-4 w-4" /></Button>
             ) : (
               <Button onClick={handleDraftTrip} disabled={loading}>
-                {loading ? "Drafting trip..." : "Draft my trip"}<ArrowRight className="ml-1 h-4 w-4" />
+                {loading ? "✨ AI is drafting your trip..." : "Generate with AI"}<ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             )}
           </div>

@@ -1,21 +1,54 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Plus, Sparkles, MessageCircle, Wallet, Map, Plane, TrendingUp, Radar, ShieldAlert } from "lucide-react";
-import { destinations, upcomingTrips } from "@/lib/mock-data";
 import { inr } from "@/lib/utils";
 import { AiBadge } from "@/components/ai/ai-badge";
-import { tripEvents } from "@/lib/ai-engine";
+import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 export const Route = createFileRoute("/dashboard")({ component: Dashboard });
 
+const DESTINATION_IMAGES: Record<string, string> = {
+  default: "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=600&q=75&auto=format&fit=crop",
+  udaipur: "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=600&q=75&auto=format&fit=crop",
+  goa: "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=600&q=75&auto=format&fit=crop",
+  manali: "https://images.unsplash.com/photo-1486911278844-a81c5267e227?w=600&q=75&auto=format&fit=crop",
+  jaipur: "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=600&q=75&auto=format&fit=crop",
+};
+
+const getImage = (dest: string) => {
+  if (!dest) return DESTINATION_IMAGES.default;
+  const key = dest.toLowerCase().split(",")[0].trim();
+  return DESTINATION_IMAGES[key] || DESTINATION_IMAGES.default;
+};
+
 function Dashboard() {
+  const { user } = useAuth();
+  const [trips, setTrips] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    apiFetch('/api/trips')
+      .then(data => setTrips(Array.isArray(data) ? data : []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  const displayName = user?.displayName?.split(" ")[0] || user?.email?.split("@")[0] || "Traveler";
+  const upcomingTrips = trips.slice(0, 3);
+
   return (
     <AppShell
-      title="Welcome back, Aditi."
-      subtitle="Two trips in motion. A quiet week to shape them."
-
+      title={`Welcome back, ${displayName}.`}
+      subtitle={
+        loading ? "Loading your trips…" :
+        trips.length > 0 ? `${trips.length} trip${trips.length > 1 ? "s" : ""} in your collection. Keep exploring.` :
+        "Start your journey — create your first trip."
+      }
       actions={<>
         <Button variant="outline" asChild><Link to="/chat"><Sparkles className="mr-1.5 h-4 w-4" />Ask Aventra</Link></Button>
         <Button asChild><Link to="/trips/new"><Plus className="mr-1.5 h-4 w-4" />New trip</Link></Button>
@@ -25,10 +58,10 @@ function Dashboard() {
         {/* Stats */}
         <div className="lg:col-span-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: "Countries visited", value: "14", icon: Map, delta: "+2 this year" },
-            { label: "Trips planned", value: "23", icon: Plane, delta: "3 upcoming" },
-            { label: "Saved this year", value: "₹2,84,000", icon: Wallet, delta: "vs. average" },
-            { label: "Miles flown", value: "48,210", icon: TrendingUp, delta: "Gold status" },
+            { label: "Trips planned", value: trips.length.toString(), icon: Plane, delta: `${upcomingTrips.length} upcoming` },
+            { label: "Destinations", value: new Set(trips.map(t => t.destination?.split(",")[0]).filter(Boolean)).size.toString(), icon: Map, delta: "Unique places" },
+            { label: "AI chats", value: "∞", icon: Sparkles, delta: "Always available" },
+            { label: "Saved via AI", value: "₹—", icon: Wallet, delta: "Track in Budget" },
           ].map((s) => (
             <div key={s.label} className="rounded-2xl glass-panel p-5">
               <div className="flex items-center justify-between">
@@ -44,31 +77,44 @@ function Dashboard() {
         {/* Upcoming trips */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Upcoming trips</h2>
-            <Link to="/trips/santorini" className="text-sm text-primary hover:underline">View all</Link>
+            <h2 className="text-lg font-semibold">Your trips</h2>
           </div>
-          {upcomingTrips.map((t) => (
-            <Link key={t.id} to="/trips/santorini" className="hover-lift block overflow-hidden rounded-2xl glass-panel">
-              <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
-                <div className="relative h-40 sm:h-full">
-                  <img src={t.image} alt={t.destination} className="h-full w-full object-cover" />
-                  <span className="absolute left-3 top-3 rounded-full bg-background/90 px-2.5 py-1 text-[11px] font-medium">{t.daysLeft} days away</span>
-                </div>
-                <div className="p-5">
-                  <p className="text-xs text-muted-foreground">{t.destination}</p>
-                  <p className="mt-1 text-xl font-semibold">{t.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{t.dates} · {t.travelers} travelers</p>
-                  <div className="mt-4">
-                    <div className="mb-1.5 flex justify-between text-xs">
-                      <span className="text-muted-foreground">Planning progress</span>
-                      <span className="font-medium">{t.progress}%</span>
+          {loading ? (
+            Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="animate-pulse h-40 rounded-2xl glass-panel" />
+            ))
+          ) : trips.length === 0 ? (
+            <div className="rounded-2xl glass-panel p-12 text-center">
+              <Plane className="mx-auto h-10 w-10 text-muted-foreground/40" />
+              <p className="mt-4 text-lg font-semibold">No trips yet</p>
+              <p className="mt-1 text-sm text-muted-foreground">Let AI plan your first adventure</p>
+              <Button className="mt-4" asChild><Link to="/trips/new"><Plus className="mr-1.5 h-4 w-4" />Create my first trip</Link></Button>
+            </div>
+          ) : (
+            upcomingTrips.map((t) => (
+              <Link key={t._id} to={`/trips/${t._id}`} className="hover-lift block overflow-hidden rounded-2xl glass-panel">
+                <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
+                  <div className="relative h-40 sm:h-full">
+                    <img src={getImage(t.destination)} alt={t.destination} className="h-full w-full object-cover" loading="lazy" />
+                  </div>
+                  <div className="p-5">
+                    <p className="text-xs text-muted-foreground">{t.destination || "Destination"}</p>
+                    <p className="mt-1 text-xl font-semibold">{t.title}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {t.days?.length ? `${t.days.length} days` : "—"} · {t.members?.length || 1} traveler{(t.members?.length || 1) > 1 ? "s" : ""}
+                    </p>
+                    <div className="mt-4">
+                      <div className="mb-1.5 flex justify-between text-xs">
+                        <span className="text-muted-foreground">Planning progress</span>
+                        <span className="font-medium">{t.expenses?.length > 0 ? "80%" : "40%"}</span>
+                      </div>
+                      <Progress value={t.expenses?.length > 0 ? 80 : 40} className="h-1.5" />
                     </div>
-                    <Progress value={t.progress} className="h-1.5" />
                   </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            ))
+          )}
         </div>
 
         {/* Quick actions + activity */}
@@ -96,12 +142,17 @@ function Dashboard() {
               <AiBadge>AI</AiBadge>
             </div>
             <ul className="mt-4 space-y-3">
-              {tripEvents.slice(0, 4).map((e) => (
-                <li key={e.id} className="flex items-start gap-3 text-sm">
+              {[
+                { title: "Real-time search enabled", when: "Live" },
+                { title: "Groq → OpenRouter fallback ready", when: "Standby" },
+                { title: "Risk Radar active", when: "Monitoring" },
+                { title: "AI Packing lists available", when: "Ready" },
+              ].map((e, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
                   <div className="min-w-0 flex-1">
                     <p className="text-foreground">{e.title}</p>
-                    <p className="text-xs text-muted-foreground">{e.when} · {e.action ?? e.reason}</p>
+                    <p className="text-xs text-muted-foreground">{e.when}</p>
                   </div>
                 </li>
               ))}
@@ -114,17 +165,17 @@ function Dashboard() {
 
         {/* Insights row */}
         <div className="lg:col-span-3 grid gap-4 md:grid-cols-[1fr_1fr_1fr]">
-          <div className="rounded-2xl glass-panel p-6 hover-lift">
+          <Link to="/commander" className="rounded-2xl glass-panel p-6 hover-lift">
             <div className="flex items-center gap-2">
               <Radar className="h-4 w-4 text-primary" />
               <p className="text-sm font-semibold">Trip Commander</p>
               <AiBadge className="ml-auto">Live</AiBadge>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              4 events tracked today. Flight buffer preserved, Ambrai dinner rescheduled.
+              AI watching your plan in real-time. Accept or dismiss suggestions.
             </p>
             <p className="mt-3 text-xs text-primary">Open commander →</p>
-          </div>
+          </Link>
           <Link to="/risk" className="rounded-2xl glass-panel p-6 hover-lift">
             <div className="flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-primary" />
@@ -132,41 +183,21 @@ function Dashboard() {
               <AiBadge className="ml-auto">Live</AiBadge>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              2 medium signals watched, flight delay probability and monsoon rain window on Day 4.
+              AI-powered risk analysis including weather, safety, and crowd signals.
             </p>
             <p className="mt-3 text-xs text-primary">Open radar →</p>
           </Link>
-          <Link to="/simulator" className="rounded-2xl glass-panel p-6 hover-lift">
+          <Link to="/chat" className="rounded-2xl glass-panel p-6 hover-lift">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">What-If Simulator</p>
+              <p className="text-sm font-semibold">Ask Aventra AI</p>
+              <AiBadge className="ml-auto">RAG</AiBadge>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              Try dropping to Comfort tier or adding one traveler, see the full trip reshape in a second.
+              Search-powered travel assistant. Knows live news, trains, and current events.
             </p>
-            <p className="mt-3 text-xs text-primary">Simulate →</p>
+            <p className="mt-3 text-xs text-primary">Chat now →</p>
           </Link>
-        </div>
-
-        {/* Recommendations */}
-        <div className="lg:col-span-3">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Recommended for you</h2>
-            <span className="text-xs text-muted-foreground">Based on your taste</span>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {destinations.map((d) => (
-              <Link key={d.id} to="/trips/santorini" className="hover-lift block overflow-hidden rounded-2xl glass-panel">
-                <div className="aspect-[4/3] overflow-hidden">
-                  <img loading="lazy" src={d.image} alt={d.name} className="h-full w-full object-cover" />
-                </div>
-                <div className="p-4">
-                  <p className="font-semibold">{d.name}</p>
-                  <p className="text-xs text-muted-foreground">{d.country} · from {inr(d.price)}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
         </div>
       </div>
     </AppShell>

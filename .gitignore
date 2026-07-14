@@ -30,3 +30,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Explicit ignores for this commit
+.env
+backend/.env
+*.md
+aventra-2fd33-firebase-adminsdk-fbsvc-*.json
