@@ -24,8 +24,8 @@ import { Route as CommanderRouteImport } from './routes/commander'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as BudgetRouteImport } from './routes/budget'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as TripsSantoriniRouteImport } from './routes/trips.santorini'
 import { Route as TripsNewRouteImport } from './routes/trips.new'
+import { Route as TripsTripIdRouteImport } from './routes/trips.$tripId'
 
 const SimulatorRoute = SimulatorRouteImport.update({
   id: '/simulator',
@@ -102,14 +102,14 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TripsSantoriniRoute = TripsSantoriniRouteImport.update({
-  id: '/trips/santorini',
-  path: '/trips/santorini',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const TripsNewRoute = TripsNewRouteImport.update({
   id: '/trips/new',
   path: '/trips/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TripsTripIdRoute = TripsTripIdRouteImport.update({
+  id: '/trips/$tripId',
+  path: '/trips/$tripId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -129,8 +129,8 @@ export interface FileRoutesByFullPath {
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
   '/simulator': typeof SimulatorRoute
+  '/trips/$tripId': typeof TripsTripIdRoute
   '/trips/new': typeof TripsNewRoute
-  '/trips/santorini': typeof TripsSantoriniRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -148,8 +148,8 @@ export interface FileRoutesByTo {
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
   '/simulator': typeof SimulatorRoute
+  '/trips/$tripId': typeof TripsTripIdRoute
   '/trips/new': typeof TripsNewRoute
-  '/trips/santorini': typeof TripsSantoriniRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -168,8 +168,8 @@ export interface FileRoutesById {
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
   '/simulator': typeof SimulatorRoute
+  '/trips/$tripId': typeof TripsTripIdRoute
   '/trips/new': typeof TripsNewRoute
-  '/trips/santorini': typeof TripsSantoriniRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -189,8 +189,8 @@ export interface FileRouteTypes {
     | '/risk'
     | '/signup'
     | '/simulator'
+    | '/trips/$tripId'
     | '/trips/new'
-    | '/trips/santorini'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -208,8 +208,8 @@ export interface FileRouteTypes {
     | '/risk'
     | '/signup'
     | '/simulator'
+    | '/trips/$tripId'
     | '/trips/new'
-    | '/trips/santorini'
   id:
     | '__root__'
     | '/'
@@ -227,8 +227,8 @@ export interface FileRouteTypes {
     | '/risk'
     | '/signup'
     | '/simulator'
+    | '/trips/$tripId'
     | '/trips/new'
-    | '/trips/santorini'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -247,8 +247,8 @@ export interface RootRouteChildren {
   RiskRoute: typeof RiskRoute
   SignupRoute: typeof SignupRoute
   SimulatorRoute: typeof SimulatorRoute
+  TripsTripIdRoute: typeof TripsTripIdRoute
   TripsNewRoute: typeof TripsNewRoute
-  TripsSantoriniRoute: typeof TripsSantoriniRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -358,18 +358,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/trips/santorini': {
-      id: '/trips/santorini'
-      path: '/trips/santorini'
-      fullPath: '/trips/santorini'
-      preLoaderRoute: typeof TripsSantoriniRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/trips/new': {
       id: '/trips/new'
       path: '/trips/new'
       fullPath: '/trips/new'
       preLoaderRoute: typeof TripsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/trips/$tripId': {
+      id: '/trips/$tripId'
+      path: '/trips/$tripId'
+      fullPath: '/trips/$tripId'
+      preLoaderRoute: typeof TripsTripIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -391,8 +391,8 @@ const rootRouteChildren: RootRouteChildren = {
   RiskRoute: RiskRoute,
   SignupRoute: SignupRoute,
   SimulatorRoute: SimulatorRoute,
+  TripsTripIdRoute: TripsTripIdRoute,
   TripsNewRoute: TripsNewRoute,
-  TripsSantoriniRoute: TripsSantoriniRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

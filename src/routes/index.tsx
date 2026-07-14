@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import {
   Sparkles,
   Compass,
@@ -40,6 +41,7 @@ function Landing() {
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
   const heroY = useTransform(scrollYProgress, [0, 1], [0, 120]);
   const heroOpacity = useTransform(scrollYProgress, [0, 1], [1, 0.4]);
+  const { user } = useAuth();
 
   const switchTo = (i: number) => {
     if (i === active || transitioning) return;
@@ -98,12 +100,21 @@ function Landing() {
                   {l}
                 </a>
               ))}
-              <Link
-                to="/signup"
-                className="ml-1 rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition hover:bg-white/90"
-              >
-                Get Started
-              </Link>
+              {user ? (
+                <Link
+                  to="/dashboard"
+                  className="ml-1 rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition hover:bg-white/90"
+                >
+                  Dashboard
+                </Link>
+              ) : (
+                <Link
+                  to="/signup"
+                  className="ml-1 rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition hover:bg-white/90"
+                >
+                  Get Started
+                </Link>
+              )}
             </div>
             <button
               onClick={() => setMenuOpen((o) => !o)}

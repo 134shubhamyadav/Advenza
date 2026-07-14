@@ -1,5 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
+import { useAuth } from "../context/AuthContext";
+import { signOut } from "firebase/auth";
+import { auth } from "../lib/firebase";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,20 +16,40 @@ import { Award, Globe, Plane, Camera, Moon } from "lucide-react";
 export const Route = createFileRoute("/profile")({ component: Profile });
 
 function Profile() {
+  const { user } = useAuth();
+  const nav = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      nav({ to: "/" });
+    } catch (err) {
+      console.error("Failed to log out", err);
+    }
+  };
+
   return (
     <AppShell>
       <div className="rounded-3xl glass-panel p-8">
         <div className="flex flex-col items-start gap-6 md:flex-row md:items-center">
           <Avatar className="h-24 w-24 shadow-soft">
-            <AvatarFallback className="bg-primary text-2xl text-primary-foreground">AK</AvatarFallback>
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt={user.displayName || "User"} className="h-full w-full rounded-full object-cover" />
+            ) : (
+              <AvatarFallback className="bg-primary text-2xl text-primary-foreground">
+                {user?.displayName ? user.displayName.substring(0, 2).toUpperCase() : "ME"}
+              </AvatarFallback>
+            )}
           </Avatar>
           <div className="min-w-0 flex-1">
             <p className="text-sm text-muted-foreground">Traveler since 2022 · Gold status</p>
-            <h1 className="mt-1 font-display text-4xl">Aditi Kapoor</h1>
+            <h1 className="mt-1 font-display text-4xl">{user?.displayName || "Adventurer"}</h1>
             <p className="mt-2 text-sm text-muted-foreground">Bengaluru, India · Slow traveler, food-first, always chasing the monsoon.</p>
-
           </div>
-          <Button variant="outline">Edit profile</Button>
+          <div className="flex gap-2 mt-4 md:mt-0">
+            <Button variant="outline">Edit profile</Button>
+            <Button variant="destructive" onClick={handleLogout}>Log out</Button>
+          </div>
         </div>
         <div className="mt-8 grid gap-4 sm:grid-cols-4">
           {[
@@ -57,9 +80,9 @@ function Profile() {
             <div className="rounded-2xl glass-panel p-6">
               <h3 className="font-semibold">Personal information</h3>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div><Label className="text-xs">First name</Label><Input className="mt-1.5" defaultValue="Aditi" /></div>
-                <div><Label className="text-xs">Last name</Label><Input className="mt-1.5" defaultValue="Kapoor" /></div>
-                <div className="sm:col-span-2"><Label className="text-xs">Email</Label><Input className="mt-1.5" defaultValue="aditi@aventra.travel" /></div>
+                <div><Label className="text-xs">First name</Label><Input className="mt-1.5" defaultValue={user?.displayName?.split(" ")[0] || ""} /></div>
+                <div><Label className="text-xs">Last name</Label><Input className="mt-1.5" defaultValue={user?.displayName?.split(" ").slice(1).join(" ") || ""} /></div>
+                <div className="sm:col-span-2"><Label className="text-xs">Email</Label><Input className="mt-1.5" defaultValue={user?.email || ""} readOnly /></div>
                 <div><Label className="text-xs">Home city</Label><Input className="mt-1.5" defaultValue="Bengaluru" /></div>
                 <div><Label className="text-xs">Currency</Label><Input className="mt-1.5" defaultValue="INR" /></div>
 

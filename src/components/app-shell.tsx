@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { useAuth } from "../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -54,6 +55,7 @@ export function AppShell({ children, title, subtitle, actions }: {
   actions?: ReactNode;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { user } = useAuth();
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
       {/* ============ Cinematic backdrop ============ */}
@@ -142,9 +144,15 @@ export function AppShell({ children, title, subtitle, actions }: {
                 </Button>
                 <Link to="/profile" className="glass-tile flex items-center gap-2 rounded-full pl-1 pr-3 py-1">
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-primary-foreground text-xs">AK</AvatarFallback>
+                    {user?.photoURL ? (
+                      <img src={user.photoURL} alt={user.displayName || "User"} className="h-full w-full rounded-full object-cover" />
+                    ) : (
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-primary-foreground text-xs">
+                        {user?.displayName ? user.displayName.substring(0, 2).toUpperCase() : "ME"}
+                      </AvatarFallback>
+                    )}
                   </Avatar>
-                  <span className="hidden text-sm font-medium sm:inline">Aditi</span>
+                  <span className="hidden text-sm font-medium sm:inline">{user?.displayName?.split(" ")[0] || "Profile"}</span>
                 </Link>
               </div>
             </div>

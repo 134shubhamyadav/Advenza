@@ -1,31 +1,63 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../lib/firebase";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { MapPin, Calendar, Users, Sun, Plane, Hotel, Utensils, Share2 } from "lucide-react";
-import { timeline, budgetCategories, destinations } from "@/lib/mock-data";
+import { budgetCategories } from "@/lib/mock-data";
 import { inr } from "@/lib/utils";
 
-export const Route = createFileRoute("/trips/santorini")({ component: TripDetails });
+export const Route = createFileRoute("/trips/$tripId")({ component: TripDetails });
 
 function TripDetails() {
-  const udaipur = destinations.find((d) => d.id === "udaipur")!;
+  const { tripId } = Route.useParams();
+  const [trip, setTrip] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchTrip() {
+      try {
+        const docSnap = await getDoc(doc(db, "trips", tripId));
+        if (docSnap.exists()) {
+          setTrip(docSnap.data());
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchTrip();
+  }, [tripId]);
+
+  if (loading) return (
+    <AppShell>
+      <div className="flex h-[60vh] flex-col items-center justify-center gap-4 text-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <p className="font-display text-2xl text-muted-foreground animate-pulse">Loading your custom itinerary...</p>
+      </div>
+    </AppShell>
+  );
+
+  if (!trip) return <AppShell><div className="p-20 text-center">Trip not found.</div></AppShell>;
+
   return (
     <AppShell>
       <div className="relative h-72 overflow-hidden rounded-3xl">
-        <img src={udaipur.image} alt="Udaipur" className="h-full w-full object-cover" />
+        <img src="https://images.unsplash.com/photo-1772165075119-a427cb258651?fm=jpg&q=75&w=1400&auto=format&fit=crop" alt="Destination" className="h-full w-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
         <div className="absolute bottom-6 left-6 right-6 text-white">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <Badge className="bg-white/20 text-white hover:bg-white/25">Confirmed</Badge>
-              <h1 className="mt-3 font-display text-4xl md:text-5xl">Rajasthan Royal Loop</h1>
+              <Badge className="bg-white/20 text-white hover:bg-white/25">AI Generated</Badge>
+              <h1 className="mt-3 font-display text-4xl md:text-5xl">{trip.title}</h1>
               <p className="mt-2 flex flex-wrap items-center gap-4 text-sm opacity-90">
-                <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" />Udaipur, India</span>
-                <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" />Jun 12 – 18, 2026</span>
-                <span className="flex items-center gap-1.5"><Users className="h-4 w-4" />2 travelers</span>
+                <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" />{trip.destination || "Destination"}</span>
+                <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" />Custom Trip</span>
               </p>
             </div>
             <div className="flex gap-2">
@@ -51,22 +83,14 @@ function TripDetails() {
               <div className="rounded-2xl glass-panel p-6">
                 <h3 className="font-semibold">Trip summary</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Six days through Rajasthan's romance. Slow mornings on Lake Pichola, palace-hopping around
-                  Udaipur's old town, a cooking class in Hanuman Ghat, and a sunrise boat to Jag Mandir.
-                  Ends with a short flight to Jaipur for the Pink City finale.
+                  {trip.summary}
                 </p>
                 <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                  {[
-                    { icon: Plane, label: "Flights", value: "₹28,000" },
-                    { icon: Hotel, label: "Stays", value: "₹52,000" },
-                    { icon: Utensils, label: "Food & activities", value: "₹26,000" },
-                  ].map((s) => (
-                    <div key={s.label} className="rounded-xl glass-tile p-4">
-                      <s.icon className="h-4 w-4 text-muted-foreground" />
-                      <p className="mt-2 text-xs text-muted-foreground">{s.label}</p>
-                      <p className="text-lg font-semibold">{s.value}</p>
-                    </div>
-                  ))}
+                  <div className="rounded-xl glass-tile p-4">
+                    <Hotel className="h-4 w-4 text-muted-foreground" />
+                    <p className="mt-2 text-xs text-muted-foreground">Budget Estimate</p>
+                    <p className="text-sm font-semibold mt-1">{trip.budgetEstimate || "Varies based on live rates"}</p>
+                  </div>
                 </div>
               </div>
 
@@ -123,21 +147,19 @@ function TripDetails() {
 
         <TabsContent value="timeline" className="mt-6">
           <div className="rounded-2xl glass-panel p-6">
-            {timeline.map((d) => (
-              <div key={d.day} className="border-b border-border/60 py-6 first:pt-0 last:border-0 last:pb-0">
+            {trip.days?.map((d: any) => (
+              <div key={d.dayNumber} className="border-b border-border/60 py-6 first:pt-0 last:border-0 last:pb-0">
                 <div className="flex items-baseline gap-3">
-                  <span className="font-display text-3xl text-primary">Day {d.day}</span>
-                  <span className="text-sm text-muted-foreground">{d.date} · {d.title}</span>
+                  <span className="font-display text-3xl text-primary">Day {d.dayNumber}</span>
+                  <span className="text-sm text-muted-foreground">{d.date || ""} · {d.title}</span>
                 </div>
                 <ul className="mt-4 space-y-3">
-                  {d.items.map((i, idx) => (
+                  {d.activities?.map((i: any, idx: number) => (
                     <li key={idx} className="flex gap-4 rounded-xl glass-tile p-4">
                       <span className="w-14 shrink-0 text-sm font-semibold text-primary">{i.time}</span>
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">{i.title}</p>
-                        <p className="text-xs text-muted-foreground">{i.meta}</p>
+                        <p className="font-medium">{i.description}</p>
                       </div>
-                      <Badge variant="secondary" className="capitalize">{i.type}</Badge>
                     </li>
                   ))}
                 </ul>
