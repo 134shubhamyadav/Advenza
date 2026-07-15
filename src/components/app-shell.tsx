@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/commander", label: "Trip Commander", icon: Radar },
-  { to: "/simulator", label: "What-If", icon: SlidersHorizontal },
+  { to: "/simulator", label: "Plan B", icon: SlidersHorizontal },
   { to: "/consensus", label: "Consensus", icon: Users2 },
   { to: "/risk", label: "Risk Radar", icon: ShieldAlert },
   { to: "/memory", label: "Memories", icon: Album },

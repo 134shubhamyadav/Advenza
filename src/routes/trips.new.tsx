@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Slider } from "@/components/ui/slider";
 import { Check, ArrowRight, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
@@ -22,36 +21,48 @@ function NewTrip() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [destination, setDestination] = useState("Udaipur, India");
-  const [startDate, setStartDate] = useState("2026-06-12");
-  const [endDate, setEndDate] = useState("2026-06-19");
-  const [travelers, setTravelers] = useState(2);
-  const [budget, setBudget] = useState([180000]);
-  const [style, setStyle] = useState("Balanced");
-  const [interests, setInterests] = useState<string[]>(["Food", "Nature"]);
-  const [transport, setTransport] = useState<string[]>(["Flights"]);
-  const [accommodation, setAccommodation] = useState("Boutique");
+  // ── All fields start empty / unset ─────────────────────────────────────────
+  const [destination, setDestination] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [travelers, setTravelers] = useState<string>("1");
+  const [budget, setBudget] = useState<string>("");
+  const [style, setStyle] = useState("");
+  const [interests, setInterests] = useState<string[]>([]);
+  const [transport, setTransport] = useState<string[]>([]);
+  const [accommodation, setAccommodation] = useState("");
   const [special, setSpecial] = useState("");
 
   const toggle = (s: string, list: string[], set: (v: string[]) => void) =>
     set(list.includes(s) ? list.filter((x) => x !== s) : [...list, s]);
+
+  // ── Per-step validation ────────────────────────────────────────────────────
+  const canProceed = () => {
+    if (step === 0) return destination.trim().length > 0;
+    if (step === 1) return startDate && endDate && endDate >= startDate && parseInt(travelers) >= 1;
+    if (step === 2) return budget !== "" && parseInt(budget) >= 0;
+    if (step === 3) return style !== "" && transport.length > 0;
+    return true;
+  };
+
+  const handleNext = () => {
+    if (!canProceed()) return;
+    setStep((s) => s + 1);
+  };
 
   const handleDraftTrip = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const BACKEND = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
-
-      // Call OpenAI-powered backend endpoint (authenticated)
+      // apiFetch uses Vite's proxy to reach the backend — no CORS, no hardcoded URLs.
       const tripData = await apiFetch("/api/ai/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destination,
           startDate,
           endDate,
-          budget: budget[0],
+          budget: parseInt(budget) || 0,
           style,
           interests,
           accommodation,
@@ -64,12 +75,22 @@ function NewTrip() {
       // Navigate to the real trip page with the MongoDB _id
       nav({ to: `/trips/${tripData._id}` });
     } catch (err: any) {
-      console.error(err);
-      setError(`Failed to generate trip: ${err.message || err.toString()}`);
+      console.error("Trip generation error:", err);
+      setError(err.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const budgetNum = parseInt(budget) || 0;
+  const tripDays = (() => {
+    if (!startDate || !endDate) return 1;
+    const diff = Math.ceil(
+      (new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000,
+    );
+    return Math.max(diff, 1);
+  })();
 
   return (
     <AppShell title="Plan a new trip" subtitle="A few quick answers and Aventra drafts the rest.">
@@ -106,6 +127,8 @@ function NewTrip() {
           <h2 className="font-display text-3xl md:text-4xl">{steps[step]}</h2>
 
           <div className="mt-8 min-h-[280px]">
+
+            {/* ── Step 0: Destination ── */}
             {step === 0 && (
               <div className="space-y-5">
                 <div>
@@ -114,38 +137,47 @@ function NewTrip() {
                     value={destination}
                     onChange={(e) => setDestination(e.target.value)}
                     className="mt-1.5 h-12 rounded-xl text-base"
-                    placeholder="Udaipur, India"
+                    placeholder="e.g. Varanasi, India"
+                    autoFocus
                   />
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    "Ladakh",
-                    "Varanasi",
-                    "Jaipur",
-                    "Kerala",
-                    "Goa",
-                    "Meghalaya",
-                    "Rishikesh",
-                    "Andaman",
-                  ].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setDestination(c)}
-                      className={cn(
-                        "rounded-full border px-3 py-1.5 text-sm transition",
-                        destination === c
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-background hover:border-primary/40",
-                      )}
-                    >
-                      {c}
-                    </button>
-                  ))}
+                {/* Quick-pick chips — clicking sets the field but doesn't pre-fill */}
+                <div>
+                  <p className="mb-2 text-xs text-muted-foreground">Popular picks</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      "Ladakh",
+                      "Varanasi",
+                      "Jaipur",
+                      "Kerala",
+                      "Goa",
+                      "Meghalaya",
+                      "Rishikesh",
+                      "Andaman",
+                    ].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setDestination(c)}
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 text-sm transition",
+                          destination === c
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background hover:border-primary/40",
+                        )}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                {!destination.trim() && (
+                  <p className="text-xs text-destructive">Please enter a destination to continue.</p>
+                )}
               </div>
             )}
 
+            {/* ── Step 1: Dates & Travelers ── */}
             {step === 1 && (
               <div className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -163,116 +195,165 @@ function NewTrip() {
                     <Input
                       type="date"
                       value={endDate}
+                      min={startDate}
                       onChange={(e) => setEndDate(e.target.value)}
                       className="mt-1.5 h-12 rounded-xl"
                     />
                   </div>
                 </div>
                 <div>
-                  <Label className="text-xs">Travelers</Label>
+                  <Label className="text-xs">Number of travelers</Label>
                   <Input
+                    id="travelers-input"
                     type="number"
+                    inputMode="numeric"
                     value={travelers}
-                    onChange={(e) => setTravelers(parseInt(e.target.value) || 1)}
-                    className="mt-1.5 h-12 rounded-xl"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTravelers(v);
+                    }}
+                    onBlur={() => {
+                      const n = parseInt(travelers);
+                      setTravelers(isNaN(n) || n < 1 ? "1" : String(n));
+                    }}
+                    className="mt-1.5 h-12 w-32 rounded-xl"
                     min={1}
+                    max={99}
+                    placeholder="1"
                   />
                 </div>
+                {endDate && startDate && endDate < startDate && (
+                  <p className="text-xs text-destructive">End date must be after start date.</p>
+                )}
               </div>
             )}
+
+            {/* ── Step 2: Budget & Accommodation ── */}
             {step === 2 && (
-              <div>
-                <Label className="text-xs">Total budget</Label>
-                <div className="mt-6">
-                  <Slider
-                    value={budget}
-                    onValueChange={setBudget}
-                    min={40000}
-                    max={800000}
-                    step={5000}
-                  />
-                  <div className="mt-4 flex items-baseline justify-between">
-                    <p className="font-display text-4xl">₹{budget[0].toLocaleString("en-IN")}</p>
-                    <p className="text-sm text-muted-foreground">
-                      ~₹{Math.round(budget[0] / 7).toLocaleString("en-IN")}/day
-                    </p>
+              <div className="space-y-6">
+                <div>
+                  <Label className="text-xs">Total budget (₹ INR)</Label>
+                  <div className="mt-1.5 flex items-center gap-3">
+                    <span className="text-xl font-semibold text-muted-foreground">₹</span>
+                    <Input
+                      id="budget-input"
+                      type="number"
+                      inputMode="numeric"
+                      value={budget}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "" || parseInt(v) >= 0) setBudget(v);
+                      }}
+                      onBlur={() => {
+                        if (budget === "" || parseInt(budget) < 0) setBudget("0");
+                      }}
+                      className="h-12 rounded-xl text-base"
+                      min={0}
+                      placeholder="e.g. 50000"
+                    />
                   </div>
+                  {budget !== "" && budgetNum >= 0 && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      ~₹{Math.round(budgetNum / tripDays).toLocaleString("en-IN")} per day
+                      over {tripDays} day{tripDays !== 1 ? "s" : ""}
+                    </p>
+                  )}
                 </div>
-                <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                  {[
-                    { id: "Economy", desc: "Hostels & street food" },
-                    { id: "Comfort", desc: "Boutique stays & casual dining" },
-                    { id: "Luxury", desc: "5-star & private villas" },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setAccommodation(t.id)}
-                      className={cn(
-                        "rounded-xl border p-4 text-left transition",
-                        accommodation === t.id
-                          ? "border-primary bg-primary/5"
-                          : "border-border bg-background hover:border-primary/40",
-                      )}
-                    >
-                      <p className="font-semibold">{t.id}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{t.desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {step === 3 && (
-              <div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {["Slow", "Balanced", "Packed"].map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setStyle(t)}
-                      className={cn(
-                        "rounded-xl border p-5 text-left transition",
-                        style === t
-                          ? "border-primary bg-primary/5"
-                          : "border-border bg-background hover:border-primary/40",
-                      )}
-                    >
-                      <p className="font-semibold">{t}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {t === "Slow"
-                          ? "One thing a day, lots of wandering."
-                          : t === "Balanced"
-                            ? "2–3 anchor activities, room to explore."
-                            : "Every hour planned, maximum coverage."}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-8 text-xs text-muted-foreground">Transportation</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {["Flights", "Train", "Rental car", "Ferry", "Walking"].map((c) => {
-                    const on = transport.includes(c);
-                    return (
+
+                <div>
+                  <Label className="text-xs">Accommodation preference</Label>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    {[
+                      { id: "Economy", desc: "Hostels & street food" },
+                      { id: "Comfort", desc: "Boutique stays & casual dining" },
+                      { id: "Luxury", desc: "5-star & private villas" },
+                    ].map((t) => (
                       <button
-                        key={c}
-                        type="button"
-                        onClick={() => toggle(c, transport, setTransport)}
+                        key={t.id}
+                        onClick={() => setAccommodation(t.id)}
                         className={cn(
-                          "rounded-full border px-3 py-1.5 text-sm transition",
-                          on
-                            ? "border-primary bg-primary text-primary-foreground"
+                          "rounded-xl border p-4 text-left transition",
+                          accommodation === t.id
+                            ? "border-primary bg-primary/5"
                             : "border-border bg-background hover:border-primary/40",
                         )}
                       >
-                        {c}
+                        <p className="font-semibold">{t.id}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{t.desc}</p>
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* ── Step 3: Style & Transport ── */}
+            {step === 3 && (
+              <div className="space-y-6">
+                <div>
+                  <Label className="text-xs">Trip pace</Label>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    {["Slow", "Balanced", "Packed"].map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setStyle(t)}
+                        className={cn(
+                          "rounded-xl border p-5 text-left transition",
+                          style === t
+                            ? "border-primary bg-primary/5"
+                            : "border-border bg-background hover:border-primary/40",
+                        )}
+                      >
+                        <p className="font-semibold">{t}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {t === "Slow"
+                            ? "One thing a day, lots of wandering."
+                            : t === "Balanced"
+                              ? "2–3 anchor activities, room to explore."
+                              : "Every hour planned, maximum coverage."}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">
+                    Transportation <span className="text-muted-foreground">(select all that apply)</span>
+                  </Label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {["Flights", "Train", "Rental car", "Ferry", "Walking", "Bus"].map((c) => {
+                      const on = transport.includes(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => toggle(c, transport, setTransport)}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 text-sm transition",
+                            on
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background hover:border-primary/40",
+                          )}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {transport.length === 0 && (
+                    <p className="mt-2 text-xs text-destructive">Select at least one transport mode.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Step 4: Interests & Special Requests ── */}
             {step === 4 && (
               <div className="space-y-5">
                 <div>
-                  <Label className="text-xs">Interests</Label>
+                  <Label className="text-xs">
+                    Interests <span className="text-muted-foreground">(select any that apply)</span>
+                  </Label>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {[
                       "Food",
@@ -284,6 +365,9 @@ function NewTrip() {
                       "Hiking",
                       "Photography",
                       "Wellness",
+                      "Adventure",
+                      "Shopping",
+                      "Architecture",
                     ].map((c) => {
                       const on = interests.includes(c);
                       return (
@@ -305,7 +389,9 @@ function NewTrip() {
                   </div>
                 </div>
                 <div>
-                  <Label className="text-xs">Accommodation</Label>
+                  <Label className="text-xs">
+                    Accommodation <span className="text-muted-foreground">(override if needed)</span>
+                  </Label>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {["Hotel", "Boutique", "Villa", "Airbnb", "Hostel"].map((c) => (
                       <button
@@ -335,6 +421,8 @@ function NewTrip() {
                 </div>
               </div>
             )}
+
+            {/* ── Step 5: Review ── */}
             {step === 5 && (
               <div className="space-y-4">
                 <div className="rounded-2xl glass-tile p-5">
@@ -342,14 +430,15 @@ function NewTrip() {
                   <p className="text-lg font-semibold">{destination}</p>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {[
-                    ["Dates", `${startDate} to ${endDate}`],
-                    ["Travelers", travelers],
-                    ["Budget", `₹${budget[0].toLocaleString("en-IN")}`],
-                    ["Style", style],
-                    ["Interests", interests.join(", ")],
-                    ["Stays", accommodation],
+                    ["Dates", `${startDate} → ${endDate}`],
+                    ["Travelers", `${travelers} ${parseInt(travelers) === 1 ? "person" : "people"}`],
+                    ["Budget", budget ? `₹${parseInt(budget).toLocaleString("en-IN")}` : "Not set"],
+                    ["Pace", style || "Not set"],
+                    ["Transport", transport.length ? transport.join(", ") : "Not set"],
+                    ["Accommodation", accommodation || "Not set"],
+                    ["Interests", interests.length ? interests.join(", ") : "None selected"],
                   ].map(([k, v]) => (
                     <div key={k} className="rounded-xl glass-tile p-4">
                       <p className="text-xs text-muted-foreground">{k}</p>
@@ -357,10 +446,13 @@ function NewTrip() {
                     </div>
                   ))}
                 </div>
-                <div className="rounded-2xl glass-tile p-5">
-                  <p className="text-xs text-muted-foreground">Destination</p>
-                  <p className="text-lg font-semibold">{destination}</p>
-                </div>
+
+                {special && (
+                  <div className="rounded-xl glass-tile p-4">
+                    <p className="text-xs text-muted-foreground">Special requests</p>
+                    <p className="mt-1 text-sm">{special}</p>
+                  </div>
+                )}
 
                 {error && (
                   <div className="mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -369,7 +461,7 @@ function NewTrip() {
                 )}
 
                 <p className="text-sm text-muted-foreground">
-                  Aventra will draft a sample itinerary based on your destination.
+                  The AI will strictly follow your selections above to generate your itinerary.
                 </p>
               </div>
             )}
@@ -385,7 +477,7 @@ function NewTrip() {
               Back
             </Button>
             {step < steps.length - 1 ? (
-              <Button onClick={() => setStep((s) => s + 1)}>
+              <Button onClick={handleNext} disabled={!canProceed()}>
                 Continue
                 <ArrowRight className="ml-1 h-4 w-4" />
               </Button>

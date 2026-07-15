@@ -49,7 +49,7 @@ const callAI = async (options) => {
   }
 };
 
-// POST /api/ai/generate — Generate a trip itinerary using OpenAI
+// POST /api/ai/generate — Generate a trip itinerary using AI
 router.post("/generate", async (req, res) => {
   try {
     const {
@@ -61,56 +61,87 @@ router.post("/generate", async (req, res) => {
       interests,
       accommodation,
       transport,
+      travelers,
       special,
-      createdBy,
     } = req.body;
 
-    const prompt = `You are Aventra, an expert Indian travel planner AI.
+    // Validate required fields
+    if (!destination || !startDate || !endDate) {
+      return res.status(400).json({ error: "destination, startDate, and endDate are required" });
+    }
 
-Generate a detailed, day-by-day trip itinerary in valid JSON format for:
+    const numDays = Math.max(
+      1,
+      Math.ceil((new Date(endDate) - new Date(startDate)) / 86400000),
+    );
+    const budgetNum = Number(budget) || 0;
+    const perDayBudget = budgetNum > 0 ? Math.round(budgetNum / numDays) : null;
+    const transportList =
+      Array.isArray(transport) && transport.length > 0 ? transport.join(", ") : "any available";
+    const travelersNum = Number(travelers) || 1;
+    const perPersonBudget =
+      budgetNum > 0 ? Math.round(budgetNum / travelersNum) : null;
+
+    const prompt = `You are Aventra, a strict Indian travel planner AI. You MUST follow the user's preferences exactly.
+
+USER'S TRIP DETAILS:
 - Destination: ${destination}
-- Dates: ${startDate} to ${endDate}
-- Total Budget: ₹${budget} INR
-- Travel Style: ${style}
+- Dates: ${startDate} to ${endDate} (${numDays} day${numDays !== 1 ? "s" : ""})
+- Number of travelers: ${travelersNum}
+- Total Budget: ₹${budgetNum} INR${perDayBudget ? ` (≈₹${perDayBudget}/day, ≈₹${perPersonBudget}/person)` : " (no budget limit specified)"}
+- Travel Pace: ${style || "Balanced"}
 - Interests: ${interests?.join(", ") || "General sightseeing"}
-- Accommodation: ${accommodation || "Comfort hotel"}
-- Transport: ${transport?.join(", ") || "Mixed"}
+- Accommodation: ${accommodation || "Standard hotel"}
+- Transport modes selected: ${transportList}
 - Special requests: ${special || "None"}
 
-Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
+STRICT RULES — NEVER VIOLATE THESE:
+1. TRANSPORT: Only use the transport modes the user selected (${transportList}). If the user did NOT select Flights, do NOT mention airports, flights, or air travel anywhere. If the user selected Train, use train stations and rail routes exclusively for intercity travel.
+2. BUDGET: The TOTAL budget is ₹${budgetNum}. Every activity, hotel, meal, and transport mentioned must have a realistic cost in ₹. The SUM of all estimated costs across the entire trip MUST NOT exceed ₹${budgetNum}. If budget is tight, suggest budget-friendly options explicitly.
+3. ACCOMMODATION: Recommend only ${accommodation || "standard"} type accommodation. Do not contradict this choice.
+4. PACE: Match "${style || "Balanced"}" pace — ${style === "Slow" ? "max 1-2 activities per day, long meals, relaxed mornings" : style === "Packed" ? "fill every slot, maximize sightseeing" : "2-3 anchor activities per day with free exploration time"}.
+5. INTERESTS: Focus on: ${interests?.join(", ") || "general sightseeing"}. Do not pad with irrelevant activities.
+6. Generate exactly ${numDays} days.
+
+Return ONLY a valid JSON object (no markdown, no extra text):
 {
-  "title": "Creative trip title",
+  "title": "Creative trip title for ${destination}",
   "destination": "${destination}",
-  "summary": "2-3 sentence trip summary",
-  "budgetEstimate": "Budget breakdown string",
+  "summary": "2-3 sentence trip summary mentioning transport mode, pace, and budget tier",
+  "budgetEstimate": "Total: ₹${budgetNum} — Accommodation: ₹X (${numDays} nights), Food: ₹X, Transport: ₹X, Activities: ₹X, Misc: ₹X",
   "days": [
     {
       "dayNumber": 1,
-      "date": "YYYY-MM-DD",
-      "title": "Day theme title",
+      "date": "${startDate}",
+      "title": "Day theme",
       "activities": [
-        {
-          "time": "Morning",
-          "description": "Activity description with specific place names, estimated cost, and tips"
-        }
+        { "time": "Morning", "description": "Specific activity at real place, estimated cost ₹X, practical tip" },
+        { "time": "Afternoon", "description": "Specific activity at real place, estimated cost ₹X, practical tip" },
+        { "time": "Evening", "description": "Specific activity at real place, estimated cost ₹X, practical tip" }
       ]
     }
   ]
-}
-
-Make it authentic, specific to ${destination} with real landmarks, restaurants, and cultural tips. Include 3 activities per day (Morning, Afternoon, Evening). Cover all days from ${startDate} to ${endDate}.`;
+}`;
 
     const completion = await callAI({
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.8,
+      temperature: 0.7,
       response_format: { type: "json_object" },
     });
 
     const tripData = JSON.parse(completion.choices[0].message.content);
 
-    // Add metadata — use the authenticated UID from the token
+    // Persist ALL user inputs so they can be reused (Plan B, budget display, etc.)
     tripData.createdBy = req.uid || "guest";
     tripData.createdAt = new Date().toISOString();
+    tripData.budgetTotal = budgetNum;      // user's original budget
+    tripData.transport = transport || [];  // user's chosen transport modes
+    tripData.accommodation = accommodation || "";
+    tripData.travelers = travelersNum;
+    tripData.style = style || "Balanced";
+    tripData.startDate = startDate;
+    tripData.endDate = endDate;
+    tripData.interests = interests || [];
 
     // Save to MongoDB
     const newTrip = new Trip(tripData);
@@ -119,6 +150,73 @@ Make it authentic, specific to ${destination} with real landmarks, restaurants, 
     res.status(201).json(savedTrip);
   } catch (err) {
     console.error("AI generate error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ai/planb — Generate dynamic Plan B backup scenarios for a saved trip
+router.post("/planb", async (req, res) => {
+  try {
+    const { tripId, question } = req.body;
+    if (!tripId) return res.status(400).json({ error: "tripId is required" });
+    if (!question) return res.status(400).json({ error: "question is required" });
+
+    // Load the actual saved trip from MongoDB
+    const trip = await Trip.findById(tripId);
+    if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+    // Build a compact itinerary summary for the AI context
+    const daySummaries = (trip.days || []).map((d) => {
+      const acts = (d.activities || []).map((a) => `${a.time}: ${a.description}`).join(" | ");
+      return `Day ${d.dayNumber} (${d.date || ""}) — ${d.title}: ${acts}`;
+    }).join("\n");
+
+    const prompt = `You are Aventra, an expert travel contingency planner and AI assistant for Indian trips.
+
+TRIP CONTEXT:
+- Destination: ${trip.destination}
+- Dates: ${trip.startDate} to ${trip.endDate}
+- Total Budget: ₹${trip.budgetTotal > 0 ? trip.budgetTotal : "unspecified"}
+- Transport: ${(trip.transport || []).join(", ") || "unspecified"}
+- Accommodation: ${trip.accommodation || "unspecified"}
+- Pace: ${trip.style || "Balanced"}
+- Interests: ${(trip.interests || []).join(", ") || "general sightseeing"}
+
+PLANNED ITINERARY:
+${daySummaries || "No specific days planned"}
+
+CONTINGENCY SCENARIO / USER QUESTION:
+"${question}"
+
+Your task: Provide a practical, highly customized, intelligent backup plan specifically answering this contingency for this trip. Do not use hardcoded or generic answers. Recommend actual places/alternatives in ${trip.destination} and account for their travel mode: ${(trip.transport || []).join(", ") || "available transit"}.
+
+Return ONLY a valid JSON object (no markdown, no extra text):
+{
+  "scenario": "A concise summary of the disruption/contingency",
+  "backupPlan": "A clear, immediate recommendation of what the user should do next.",
+  "alternatives": [
+    {
+      "name": "Name of a specific substitute location or activity in/near ${trip.destination}",
+      "why": "Why this is an excellent substitute for what was missed/disrupted",
+      "cost": "Estimated cost in ₹",
+      "how": "How to get there or proceed using ${(trip.transport || ["local transport"]).join("/")}"
+    }
+  ],
+  "rearrangement": "Detailed step-by-step guidance on how to rearrange the remaining itinerary, timings, or schedule to accommodate this change.",
+  "practicalTip": "A useful, practical local tip or safety tip relevant to this situation in ${trip.destination}."
+}`;
+
+    const completion = await callAI({
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+    });
+
+    const planBData = JSON.parse(completion.choices[0].message.content);
+
+    res.json(planBData);
+  } catch (err) {
+    console.error("Plan B generation error:", err);
     res.status(500).json({ error: err.message });
   }
 });

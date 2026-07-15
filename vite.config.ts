@@ -16,5 +16,14 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    proxy: {
+      // Proxy all /api/* requests to the Express backend.
+      // This avoids CORS entirely — the browser only ever talks to :3000.
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 });

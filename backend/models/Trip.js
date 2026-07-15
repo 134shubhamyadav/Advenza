@@ -46,11 +46,17 @@ const TripSchema = new mongoose.Schema({
   endDate: String,
   style: String,
   interests: [String],
+  transport: [String],          // user-selected transport modes
+  accommodation: String,        // user-selected accommodation type
+  travelers: { type: Number, default: 1 },
   days: [DayPlanSchema],
 
   // Budget tracking embedded in trip
-  budgetTotal: { type: Number, default: 0 },
+  budgetTotal: { type: Number, default: 0 }, // user's original budget input
   expenses: [ExpenseSchema],
+
+  // Plan B suggestions (AI-generated backup scenarios)
+  planB: { type: mongoose.Schema.Types.Mixed, default: null },
 
   // Group planning embedded in trip
   members: [MemberSchema],
