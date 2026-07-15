@@ -25,7 +25,10 @@ export function TradeoffMatrix({ title, options }: { title: string; options: Tra
       </div>
       <div className="grid gap-3 md:grid-cols-3">
         {options.map((o) => (
-          <div key={o.id} className="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/60 p-4">
+          <div
+            key={o.id}
+            className="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/60 p-4"
+          >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="font-semibold leading-tight">{o.label}</p>
@@ -43,19 +46,32 @@ export function TradeoffMatrix({ title, options }: { title: string; options: Tra
               </span>
             </div>
             <div className="space-y-2 text-[11px]">
-              <div className="flex justify-between text-muted-foreground"><span>Comfort</span><span>{o.comfort}</span></div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Comfort</span>
+                <span>{o.comfort}</span>
+              </div>
               <Bar value={o.comfort} tone="bg-accent" />
-              <div className="flex justify-between text-muted-foreground"><span>Crowd</span><span>{o.crowd}</span></div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Crowd</span>
+                <span>{o.crowd}</span>
+              </div>
               <Bar value={o.crowd} tone="bg-[oklch(0.78_0.16_75)]" />
-              <div className="flex justify-between text-muted-foreground"><span>Transit</span><span>{o.timeMin} min</span></div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Transit</span>
+                <span>{o.timeMin} min</span>
+              </div>
               <Bar value={Math.max(0, 100 - o.timeMin * 3)} tone="bg-primary" />
             </div>
             <div className="grid gap-1 border-t border-border/60 pt-3 text-[11px]">
               {o.pros.slice(0, 2).map((p) => (
-                <p key={p} className="text-foreground">+ {p}</p>
+                <p key={p} className="text-foreground">
+                  + {p}
+                </p>
               ))}
               {o.cons.slice(0, 1).map((c) => (
-                <p key={c} className="text-muted-foreground">− {c}</p>
+                <p key={c} className="text-muted-foreground">
+                  − {c}
+                </p>
               ))}
             </div>
           </div>

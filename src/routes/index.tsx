@@ -26,12 +26,23 @@ export const Route = createFileRoute("/")({
 });
 
 const heroVideos = [
-  { label: "Golden Hour", src: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081127_0992a171-d3c6-4978-8213-0ec5df8b6d63.mp4" },
-  { label: "Still Water", src: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_092026_dd05b805-ea0f-40b2-8c52-332b88502592.mp4" },
-  { label: "Deep Woods", src: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081042_df7202bf-bd80-4b2b-bbc6-1f09ba2870e9.mp4" },
-  { label: "Quiet Dawn", src: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_080959_4cac5234-3573-464e-a5b7-76b94b8a7d61.mp4" },
+  {
+    label: "Golden Hour",
+    src: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081127_0992a171-d3c6-4978-8213-0ec5df8b6d63.mp4",
+  },
+  {
+    label: "Still Water",
+    src: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_092026_dd05b805-ea0f-40b2-8c52-332b88502592.mp4",
+  },
+  {
+    label: "Deep Woods",
+    src: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081042_df7202bf-bd80-4b2b-bbc6-1f09ba2870e9.mp4",
+  },
+  {
+    label: "Quiet Dawn",
+    src: "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_080959_4cac5234-3573-464e-a5b7-76b94b8a7d61.mp4",
+  },
 ];
-
 
 function Landing() {
   const [active, setActive] = useState(0);
@@ -87,7 +98,10 @@ function Landing() {
         <div className="relative z-10 flex h-full flex-col px-5 py-5 md:px-10 md:py-7">
           {/* Nav */}
           <nav className="flex items-center justify-between">
-            <Link to="/" className="font-display italic text-2xl text-white text-shadow-hero md:text-3xl">
+            <Link
+              to="/"
+              className="font-display italic text-2xl text-white text-shadow-hero md:text-3xl"
+            >
               Aventra
             </Link>
             <div className="liquid-glass hidden items-center gap-1 rounded-full px-2 py-2 md:flex">
@@ -157,7 +171,8 @@ function Landing() {
               transition={{ duration: 1, delay: 0.1, ease: [0.2, 0.8, 0.2, 1] }}
               className={`font-display mt-6 max-w-5xl text-5xl leading-[1.02] tracking-tight text-shadow-hero transition-colors duration-700 sm:text-6xl md:text-7xl lg:text-[6rem] ${heroText}`}
             >
-              Plan beyond<br />
+              Plan beyond
+              <br />
               <span className="italic">the map.</span>
             </motion.h1>
 
@@ -170,7 +185,8 @@ function Landing() {
               }`}
               style={{ fontFamily: "system-ui, sans-serif" }}
             >
-              An AI travel companion that designs trips as thoughtfully as you would, real budgets, gentle pacing, the quiet corners guidebooks miss.
+              An AI travel companion that designs trips as thoughtfully as you would, real budgets,
+              gentle pacing, the quiet corners guidebooks miss.
             </motion.p>
 
             {/* Email pill */}
@@ -221,12 +237,14 @@ function Landing() {
             className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pb-2 text-center text-xs text-white/70 sm:text-sm"
             style={{ fontFamily: "system-ui, sans-serif" }}
           >
-            {["120+ Destinations", "12,400+ Travelers", "4.9 Rating", "Human‑crafted AI"].map((s, i) => (
-              <span key={s} className="flex items-center gap-4">
-                {s}
-                {i < 3 && <span className="hidden text-white/30 sm:inline">|</span>}
-              </span>
-            ))}
+            {["120+ Destinations", "12,400+ Travelers", "4.9 Rating", "Human‑crafted AI"].map(
+              (s, i) => (
+                <span key={s} className="flex items-center gap-4">
+                  {s}
+                  {i < 3 && <span className="hidden text-white/30 sm:inline">|</span>}
+                </span>
+              ),
+            )}
           </div>
         </div>
 
@@ -275,15 +293,31 @@ function Landing() {
         {/* Aurora blobs */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-[900px] overflow-hidden">
           <div className="absolute -left-40 top-40 h-96 w-96 rounded-full bg-primary/20 blur-3xl animate-blob" />
-          <div className="absolute right-0 top-96 h-[28rem] w-[28rem] rounded-full bg-accent/20 blur-3xl animate-blob" style={{ animationDelay: "-6s" }} />
+          <div
+            className="absolute right-0 top-96 h-[28rem] w-[28rem] rounded-full bg-accent/20 blur-3xl animate-blob"
+            style={{ animationDelay: "-6s" }}
+          />
         </div>
 
         {/* Features marquee */}
         <div className="relative overflow-hidden border-y border-border/40 bg-card/40 py-6 backdrop-blur">
           <div className="flex animate-marquee gap-16 whitespace-nowrap text-sm font-medium text-muted-foreground will-change-transform">
             {[...Array(2)].flatMap((_, k) =>
-              ["AI Trip Commander", "Decision Engine", "What-If Simulator", "AI Risk Radar", "Memory Timeline", "Smart Packing", "Trip Twin"].map((n) => (
-                <span key={`${k}-${n}`} className="tracking-widest uppercase opacity-70 hover:opacity-100">{n}</span>
+              [
+                "AI Trip Commander",
+                "Decision Engine",
+                "What-If Simulator",
+                "AI Risk Radar",
+                "Memory Timeline",
+                "Smart Packing",
+                "Trip Twin",
+              ].map((n) => (
+                <span
+                  key={`${k}-${n}`}
+                  className="tracking-widest uppercase opacity-70 hover:opacity-100"
+                >
+                  {n}
+                </span>
               )),
             )}
           </div>
@@ -299,16 +333,44 @@ function Landing() {
             className="max-w-2xl"
           >
             <p className="text-sm font-medium text-accent">Why Aventra</p>
-            <h2 className="mt-2 font-display text-5xl md:text-6xl">Every detail,<br /><span className="italic text-primary">quietly considered.</span></h2>
+            <h2 className="mt-2 font-display text-5xl md:text-6xl">
+              Every detail,
+              <br />
+              <span className="italic text-primary">quietly considered.</span>
+            </h2>
           </motion.div>
           <div className="mt-16 grid gap-5 md:grid-cols-3">
             {[
-              { icon: Sparkles, title: "AI itineraries", body: "Multi-day plans that pace your energy, not just fill your calendar." },
-              { icon: Wallet, title: "Real budgets", body: "Live cost tracking with alerts before you overspend, not after." },
-              { icon: Users, title: "Group planning", body: "Vote on stops, split expenses, keep everyone in the loop." },
-              { icon: MapIcon, title: "AI Risk Radar", body: "Real-time safety signals — weather, crowds, transport delays — monitored 24/7." },
-              { icon: Plane, title: "Price watch", body: "We track flights and stays and ping you the moment they drop." },
-              { icon: Compass, title: "Local intel", body: "The quiet café, the shortcut, the sunset spot, curated, not crowded." },
+              {
+                icon: Sparkles,
+                title: "AI itineraries",
+                body: "Multi-day plans that pace your energy, not just fill your calendar.",
+              },
+              {
+                icon: Wallet,
+                title: "Real budgets",
+                body: "Live cost tracking with alerts before you overspend, not after.",
+              },
+              {
+                icon: Users,
+                title: "Group planning",
+                body: "Vote on stops, split expenses, keep everyone in the loop.",
+              },
+              {
+                icon: MapIcon,
+                title: "AI Risk Radar",
+                body: "Real-time safety signals — weather, crowds, transport delays — monitored 24/7.",
+              },
+              {
+                icon: Plane,
+                title: "Price watch",
+                body: "We track flights and stays and ping you the moment they drop.",
+              },
+              {
+                icon: Compass,
+                title: "Local intel",
+                body: "The quiet café, the shortcut, the sunset spot, curated, not crowded.",
+              },
             ].map((f, i) => (
               <motion.div
                 key={f.title}
@@ -336,17 +398,35 @@ function Landing() {
             <div className="grid gap-16 md:grid-cols-[1fr_1.4fr]">
               <div>
                 <p className="text-sm font-medium text-accent">How it works</p>
-                <h2 className="mt-2 font-display text-5xl md:text-6xl">Three steps from spark to boarding pass.</h2>
-                <p className="mt-4 max-w-md text-muted-foreground">Tell Aventra what you love. Refine what it drafts. Travel with confidence.</p>
+                <h2 className="mt-2 font-display text-5xl md:text-6xl">
+                  Three steps from spark to boarding pass.
+                </h2>
+                <p className="mt-4 max-w-md text-muted-foreground">
+                  Tell Aventra what you love. Refine what it drafts. Travel with confidence.
+                </p>
                 <Button asChild size="lg" className="mt-8 rounded-xl">
-                  <Link to="/trips/new"><Play className="mr-2 h-4 w-4" /> Try it in 30s</Link>
+                  <Link to="/trips/new">
+                    <Play className="mr-2 h-4 w-4" /> Try it in 30s
+                  </Link>
                 </Button>
               </div>
               <ol className="space-y-5">
                 {[
-                  { n: "01", t: "Describe the trip", d: "Destination, days, vibe. Or say 'surprise me', we've got taste." },
-                  { n: "02", t: "Refine with AI", d: "Swap a museum for a hike. Move a night. The plan re-optimizes instantly." },
-                  { n: "03", t: "Book and go", d: "One-tap checkout for flights, stays, and reservations that hold." },
+                  {
+                    n: "01",
+                    t: "Describe the trip",
+                    d: "Destination, days, vibe. Or say 'surprise me', we've got taste.",
+                  },
+                  {
+                    n: "02",
+                    t: "Refine with AI",
+                    d: "Swap a museum for a hike. Move a night. The plan re-optimizes instantly.",
+                  },
+                  {
+                    n: "03",
+                    t: "Book and go",
+                    d: "One-tap checkout for flights, stays, and reservations that hold.",
+                  },
                 ].map((s, i) => (
                   <motion.li
                     key={s.n}
@@ -356,7 +436,9 @@ function Landing() {
                     transition={{ duration: 0.6, delay: i * 0.1 }}
                     className="hover-lift group relative flex gap-6 rounded-3xl border border-white/40 bg-white/60 p-7 backdrop-blur-xl"
                   >
-                    <span className="font-display bg-gradient-to-br from-primary to-accent bg-clip-text text-5xl text-transparent">{s.n}</span>
+                    <span className="font-display bg-gradient-to-br from-primary to-accent bg-clip-text text-5xl text-transparent">
+                      {s.n}
+                    </span>
                     <div>
                       <h3 className="text-xl font-semibold">{s.t}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{s.d}</p>
@@ -373,9 +455,17 @@ function Landing() {
           <div className="flex items-end justify-between">
             <div>
               <p className="text-sm font-medium text-accent">Popular right now</p>
-              <h2 className="mt-2 font-display text-5xl md:text-6xl">Places worth<br /><span className="italic">the flight.</span></h2>
+              <h2 className="mt-2 font-display text-5xl md:text-6xl">
+                Places worth
+                <br />
+                <span className="italic">the flight.</span>
+              </h2>
             </div>
-            <Button asChild variant="ghost" className="hidden md:inline-flex"><Link to="/dashboard">Browse all <ArrowRight className="ml-1 h-4 w-4" /></Link></Button>
+            <Button asChild variant="ghost" className="hidden md:inline-flex">
+              <Link to="/dashboard">
+                Browse all <ArrowRight className="ml-1 h-4 w-4" />
+              </Link>
+            </Button>
           </div>
           <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {destinations.map((d, i) => (
@@ -386,16 +476,30 @@ function Landing() {
                 viewport={{ once: true, margin: "-50px" }}
                 transition={{ duration: 0.6, delay: i * 0.08 }}
               >
-                <Link to="/trips/santorini" className="group hover-lift block overflow-hidden rounded-3xl border border-border/60 bg-card">
+                <Link
+                  to="/trips/new"
+                  className="group hover-lift block overflow-hidden rounded-3xl border border-border/60 bg-card"
+                >
                   <div className="relative aspect-[4/5] overflow-hidden">
-                    <img loading="lazy" src={d.image} alt={d.name} className="h-full w-full object-cover transition-transform duration-[1200ms] group-hover:scale-110" />
+                    <img
+                      loading="lazy"
+                      src={d.image}
+                      alt={d.name}
+                      className="h-full w-full object-cover transition-transform duration-[1200ms] group-hover:scale-110"
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                    <span className="absolute left-3 top-3 rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-md">{d.tag}</span>
+                    <span className="absolute left-3 top-3 rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-md">
+                      {d.tag}
+                    </span>
                     <div className="absolute bottom-0 left-0 right-0 p-5 text-white">
                       <p className="font-display text-2xl">{d.name}</p>
-                      <p className="text-xs opacity-85">{d.country} · {d.days} days</p>
+                      <p className="text-xs opacity-85">
+                        {d.country} · {d.days} days
+                      </p>
                       <div className="mt-3 flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-1"><Star className="h-3.5 w-3.5 fill-warning text-warning" /> {d.rating}</span>
+                        <span className="flex items-center gap-1">
+                          <Star className="h-3.5 w-3.5 fill-warning text-warning" /> {d.rating}
+                        </span>
                         <span className="font-semibold">₹{d.price.toLocaleString("en-IN")}</span>
                       </div>
                     </div>
@@ -407,16 +511,37 @@ function Landing() {
         </section>
 
         {/* Testimonials */}
-        <section id="reviews" className="relative overflow-hidden bg-gradient-to-b from-muted/30 to-background">
+        <section
+          id="reviews"
+          className="relative overflow-hidden bg-gradient-to-b from-muted/30 to-background"
+        >
           <div className="mx-auto max-w-7xl px-6 py-28">
             <p className="text-sm font-medium text-accent">Traveler stories</p>
-            <h2 className="mt-2 max-w-3xl font-display text-5xl md:text-6xl">The trip planned itself.<br /><span className="italic text-primary">All I did was pack.</span></h2>
+            <h2 className="mt-2 max-w-3xl font-display text-5xl md:text-6xl">
+              The trip planned itself.
+              <br />
+              <span className="italic text-primary">All I did was pack.</span>
+            </h2>
             <div className="mt-14 grid gap-5 md:grid-cols-3">
               {[
-                { q: "Aventra saved me a weekend of spreadsheets. The Ladakh plan was better than what my agency in Delhi quoted me for.", n: "Aditi K.", r: "Solo, 10 days · Ladakh", a: "AK" },
-                { q: "It nailed the pacing, one big thing per day, room to wander. That's exactly how I travel through Kerala.", n: "Rohan M.", r: "Couple, 7 days · Kerala", a: "RM" },
-                { q: "The group voting solved every argument before it started. We all wanted to go back to the same havelis.", n: "Meera P.", r: "Friends, 5 days · Rajasthan", a: "MP" },
-
+                {
+                  q: "Aventra saved me a weekend of spreadsheets. The Ladakh plan was better than what my agency in Delhi quoted me for.",
+                  n: "Aditi K.",
+                  r: "Solo, 10 days · Ladakh",
+                  a: "AK",
+                },
+                {
+                  q: "It nailed the pacing, one big thing per day, room to wander. That's exactly how I travel through Kerala.",
+                  n: "Rohan M.",
+                  r: "Couple, 7 days · Kerala",
+                  a: "RM",
+                },
+                {
+                  q: "The group voting solved every argument before it started. We all wanted to go back to the same havelis.",
+                  n: "Meera P.",
+                  r: "Friends, 5 days · Rajasthan",
+                  a: "MP",
+                },
               ].map((t, i) => (
                 <motion.figure
                   key={t.n}
@@ -426,10 +551,16 @@ function Landing() {
                   transition={{ duration: 0.6, delay: i * 0.1 }}
                   className="hover-lift rounded-3xl border border-border/50 bg-card/70 p-7 backdrop-blur-xl"
                 >
-                  <div className="flex gap-0.5 text-warning">{Array.from({ length: 5 }).map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}</div>
+                  <div className="flex gap-0.5 text-warning">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star key={i} className="h-3.5 w-3.5 fill-current" />
+                    ))}
+                  </div>
                   <blockquote className="mt-5 text-[15px] leading-relaxed">"{t.q}"</blockquote>
                   <figcaption className="mt-6 flex items-center gap-3 text-sm">
-                    <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-primary to-accent text-xs font-semibold text-primary-foreground">{t.a}</span>
+                    <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-primary to-accent text-xs font-semibold text-primary-foreground">
+                      {t.a}
+                    </span>
                     <span>
                       <span className="block font-semibold">{t.n}</span>
                       <span className="text-xs text-muted-foreground">{t.r}</span>
@@ -445,13 +576,54 @@ function Landing() {
         <section id="pricing" className="mx-auto max-w-7xl px-6 py-28">
           <div className="text-center">
             <p className="text-sm font-medium text-accent">Pricing</p>
-            <h2 className="mt-2 font-display text-5xl md:text-6xl">Free to start. <span className="italic">Fair to scale.</span></h2>
+            <h2 className="mt-2 font-display text-5xl md:text-6xl">
+              Free to start. <span className="italic">Fair to scale.</span>
+            </h2>
           </div>
           <div className="mt-14 grid gap-5 md:grid-cols-3">
             {[
-              { name: "Explorer", price: "₹0", tag: "Forever free", features: ["3 AI trips / month", "Basic itineraries", "Group invite (up to 3)", "Price drop alerts"], cta: "Start free", variant: "outline" as const },
-              { name: "Voyager", price: "₹499", tag: "Most loved", features: ["Unlimited AI trips", "Real-time price watch", "Group planning + voting", "AI Risk Radar · 24/7", "Priority support"], cta: "Go Voyager", variant: "default" as const, featured: true },
-              { name: "Concierge", price: "₹1,999", tag: "For teams & businesses", features: ["Everything in Voyager", "Human travel expert on call", "Corporate billing & GST invoice", "SSO + team admin dashboard", "Dedicated account manager"], cta: "Contact sales", variant: "outline" as const },
+              {
+                name: "Explorer",
+                price: "₹0",
+                tag: "Forever free",
+                features: [
+                  "3 AI trips / month",
+                  "Basic itineraries",
+                  "Group invite (up to 3)",
+                  "Price drop alerts",
+                ],
+                cta: "Start free",
+                variant: "outline" as const,
+              },
+              {
+                name: "Voyager",
+                price: "₹499",
+                tag: "Most loved",
+                features: [
+                  "Unlimited AI trips",
+                  "Real-time price watch",
+                  "Group planning + voting",
+                  "AI Risk Radar · 24/7",
+                  "Priority support",
+                ],
+                cta: "Go Voyager",
+                variant: "default" as const,
+                featured: true,
+              },
+              {
+                name: "Concierge",
+                price: "₹1,999",
+                tag: "For teams & businesses",
+                features: [
+                  "Everything in Voyager",
+                  "Human travel expert on call",
+                  "Corporate billing & GST invoice",
+                  "SSO + team admin dashboard",
+                  "Dedicated account manager",
+                ],
+                cta: "Contact sales",
+                variant: "outline" as const,
+              },
             ].map((p) => (
               <motion.div
                 key={p.name}
@@ -466,17 +638,29 @@ function Landing() {
                 }`}
               >
                 {p.featured && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground">Most popular</span>
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground">
+                    Most popular
+                  </span>
                 )}
                 <p className="text-sm text-muted-foreground">{p.tag}</p>
                 <p className="mt-1 text-xl font-semibold">{p.name}</p>
-                <p className="mt-4 font-display text-5xl">{p.price}<span className="text-lg text-muted-foreground">/mo</span></p>
+                <p className="mt-4 font-display text-5xl">
+                  {p.price}
+                  <span className="text-lg text-muted-foreground">/mo</span>
+                </p>
                 <ul className="mt-6 space-y-2 text-sm">
                   {p.features.map((f) => (
-                    <li key={f} className="flex items-center gap-2"><span className="grid h-4 w-4 place-items-center rounded-full bg-accent/20 text-accent">✓</span>{f}</li>
+                    <li key={f} className="flex items-center gap-2">
+                      <span className="grid h-4 w-4 place-items-center rounded-full bg-accent/20 text-accent">
+                        ✓
+                      </span>
+                      {f}
+                    </li>
                   ))}
                 </ul>
-                <Button asChild variant={p.variant} className="mt-8 w-full rounded-xl"><Link to="/signup">{p.cta}</Link></Button>
+                <Button asChild variant={p.variant} className="mt-8 w-full rounded-xl">
+                  <Link to="/signup">{p.cta}</Link>
+                </Button>
               </motion.div>
             ))}
           </div>
@@ -493,14 +677,35 @@ function Landing() {
           >
             <div className="absolute inset-0 opacity-40 gradient-aurora" />
             <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl animate-blob" />
-            <div className="pointer-events-none absolute -bottom-20 -right-20 h-96 w-96 rounded-full bg-accent/30 blur-3xl animate-blob" style={{ animationDelay: "-8s" }} />
+            <div
+              className="pointer-events-none absolute -bottom-20 -right-20 h-96 w-96 rounded-full bg-accent/30 blur-3xl animate-blob"
+              style={{ animationDelay: "-8s" }}
+            />
             <div className="relative">
               <Globe className="mx-auto h-10 w-10 opacity-80" />
-              <h2 className="mt-6 font-display text-5xl md:text-7xl">Your next trip,<br /><span className="italic">ready by morning.</span></h2>
-              <p className="mx-auto mt-4 max-w-xl text-primary-foreground/85">Start a free plan. Cancel with a swipe. Travel with intention.</p>
+              <h2 className="mt-6 font-display text-5xl md:text-7xl">
+                Your next trip,
+                <br />
+                <span className="italic">ready by morning.</span>
+              </h2>
+              <p className="mx-auto mt-4 max-w-xl text-primary-foreground/85">
+                Start a free plan. Cancel with a swipe. Travel with intention.
+              </p>
               <div className="mt-10 flex flex-wrap justify-center gap-3">
-                <Button asChild size="lg" variant="secondary" className="rounded-xl"><Link to="/signup">Start planning free</Link></Button>
-                <Button asChild size="lg" variant="ghost" className="rounded-xl text-primary-foreground hover:bg-white/10"><Link to="/chat"><MessageCircle className="mr-2 h-4 w-4" />Chat with Aventra</Link></Button>
+                <Button asChild size="lg" variant="secondary" className="rounded-xl">
+                  <Link to="/signup">Start planning free</Link>
+                </Button>
+                <Button
+                  asChild
+                  size="lg"
+                  variant="ghost"
+                  className="rounded-xl text-primary-foreground hover:bg-white/10"
+                >
+                  <Link to="/chat">
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    Chat with Aventra
+                  </Link>
+                </Button>
               </div>
             </div>
           </motion.div>
@@ -511,7 +716,10 @@ function Landing() {
           <div className="mx-auto grid max-w-7xl gap-8 px-6 py-16 md:grid-cols-4">
             <div>
               <BrandLogo />
-              <p className="mt-4 max-w-xs text-sm text-muted-foreground">Plan beyond the map. Aventra is an AI travel companion for people who care about the details.</p>
+              <p className="mt-4 max-w-xs text-sm text-muted-foreground">
+                Plan beyond the map. Aventra is an AI travel companion for people who care about the
+                details.
+              </p>
             </div>
             {[
               { h: "Product", l: ["Features", "Pricing", "Mobile app", "Changelog"] },
@@ -521,7 +729,13 @@ function Landing() {
               <div key={c.h}>
                 <p className="text-sm font-semibold">{c.h}</p>
                 <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                  {c.l.map((i) => <li key={i}><a href="#" className="hover:text-foreground">{i}</a></li>)}
+                  {c.l.map((i) => (
+                    <li key={i}>
+                      <a href="#" className="hover:text-foreground">
+                        {i}
+                      </a>
+                    </li>
+                  ))}
                 </ul>
               </div>
             ))}

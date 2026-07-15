@@ -41,7 +41,7 @@ export async function saveUserProfile(user: {
         // Potentially update other fields if they changed, e.g., photoURL
         photoURL: user.photoURL || userSnap.data().photoURL,
       },
-      { merge: true }
+      { merge: true },
     );
   }
 }

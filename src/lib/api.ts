@@ -1,14 +1,14 @@
-import { auth } from './firebase';
+import { auth } from "./firebase";
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+const BACKEND = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
 /**
  * Authenticated fetch — automatically attaches Firebase ID token
  * Falls back to unauthenticated if no user is logged in.
  */
 export const apiFetch = async (path: string, options: RequestInit = {}) => {
-  let headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
     ...((options.headers as Record<string, string>) || {}),
   };
 
@@ -16,7 +16,7 @@ export const apiFetch = async (path: string, options: RequestInit = {}) => {
   if (user) {
     try {
       const token = await user.getIdToken();
-      headers['Authorization'] = `Bearer ${token}`;
+      headers["Authorization"] = `Bearer ${token}`;
     } catch {
       // Token refresh failed, continue without auth
     }

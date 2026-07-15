@@ -10,7 +10,7 @@ const firebaseConfig = {
   storageBucket: "aventra-2fd33.firebasestorage.app",
   messagingSenderId: "797689646264",
   appId: "1:797689646264:web:962ccc63e728e63646b84d",
-  measurementId: "G-DMJ88QN305"
+  measurementId: "G-DMJ88QN305",
 };
 
 // Initialize Firebase only once

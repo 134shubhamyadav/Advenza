@@ -1,19 +1,19 @@
-import express from 'express';
-import mongoose from 'mongoose';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import rateLimit from 'express-rate-limit';
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import dotenv from "dotenv";
+import rateLimit from "express-rate-limit";
 
-import dns from 'dns';
+import dns from "dns";
 dotenv.config();
-dns.setServers(['8.8.8.8']); // Fix for local network/sandbox SRV lookup failures
+dns.setServers(["8.8.8.8"]); // Fix for local network/sandbox SRV lookup failures
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
-app.use(cors({ origin: '*' }));
-app.use(express.json({ limit: '10kb' })); // Prevent large payload attacks
+app.use(cors({ origin: "*" }));
+app.use(express.json({ limit: "10kb" })); // Prevent large payload attacks
 
 // ─── Rate Limiting ─────────────────────────────────────────────────────────────
 const globalLimiter = rateLimit({
@@ -21,44 +21,47 @@ const globalLimiter = rateLimit({
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please try again later.' }
+  message: { error: "Too many requests. Please try again later." },
 });
 
 const aiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 20, // Max 20 AI requests per minute
-  message: { error: 'AI rate limit reached. Please wait a moment.' }
+  message: { error: "AI rate limit reached. Please wait a moment." },
 });
 
 app.use(globalLimiter);
-app.use('/api/ai', aiLimiter);
+app.use("/api/ai", aiLimiter);
 
 // ─── MongoDB ───────────────────────────────────────────────────────────────────
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aventra';
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/aventra";
 
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB Atlas'))
-  .catch((err) => console.error('❌ MongoDB error:', err.message));
+mongoose
+  .connect(MONGODB_URI)
+  .then(() => console.log("✅ Connected to MongoDB Atlas"))
+  .catch((err) => console.error("❌ MongoDB error:", err.message));
 
 // ─── Health check ──────────────────────────────────────────────────────────────
-app.get('/', (req, res) => res.json({ 
-  status: 'ok', 
-  service: 'Aventra API', 
-  version: '1.0.0',
-  db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
-}));
+app.get("/", (req, res) =>
+  res.json({
+    status: "ok",
+    service: "Aventra API",
+    version: "1.0.0",
+    db: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+  }),
+);
 
 // ─── Routes ────────────────────────────────────────────────────────────────────
-import tripRoutes from './routes/trips.js';
-import aiRoutes from './routes/ai.js';
+import tripRoutes from "./routes/trips.js";
+import aiRoutes from "./routes/ai.js";
 
-app.use('/api/trips', tripRoutes);
-app.use('/api/ai', aiRoutes);
+app.use("/api/trips", tripRoutes);
+app.use("/api/ai", aiRoutes);
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: "Internal server error" });
 });
 
 app.listen(PORT, () => {

@@ -1,30 +1,32 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const UserSchema = new mongoose.Schema({
   firebaseUid: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
   },
   email: {
     type: String,
-    required: true
+    required: true,
   },
   displayName: {
-    type: String
+    type: String,
   },
   preferences: {
     type: [String],
-    default: []
+    default: [],
   },
-  savedTrips: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Trip'
-  }],
+  savedTrips: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Trip",
+    },
+  ],
   createdAt: {
     type: Date,
-    default: Date.now
-  }
+    default: Date.now,
+  },
 });
 
-export default mongoose.model('User', UserSchema);
+export default mongoose.model("User", UserSchema);

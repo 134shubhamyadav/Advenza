@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "../context/AuthContext";
+import { RequireAuth } from "@/components/require-auth";
 import {
   Outlet,
   Link,
@@ -75,14 +76,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Aventra — Plan Beyond the Map" },
-      { name: "description", content: "AI-powered travel planning that designs trips as thoughtfully as you do." },
+      {
+        name: "description",
+        content: "AI-powered travel planning that designs trips as thoughtfully as you do.",
+      },
       { name: "author", content: "Aventra" },
       { property: "og:title", content: "Aventra — Plan Beyond the Map" },
-      { property: "og:description", content: "AI-powered travel planning that designs trips as thoughtfully as you do." },
+      {
+        property: "og:description",
+        content: "AI-powered travel planning that designs trips as thoughtfully as you do.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Aventra — Plan Beyond the Map" },
-      { name: "twitter:description", content: "AI-powered travel planning that designs trips as thoughtfully as you do." },
+      {
+        name: "twitter:description",
+        content: "AI-powered travel planning that designs trips as thoughtfully as you do.",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -122,8 +132,15 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
+        {/*
+          RequireAuth gates every route render against Firebase auth state.
+          - Unauthenticated users visiting protected pages → redirect to /login
+          - Authenticated users visiting /login or /signup → redirect to /dashboard
+          - Auth still loading → full-screen spinner (no flash of protected content)
+        */}
+        <RequireAuth>
+          <Outlet />
+        </RequireAuth>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -1,104 +1,170 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
-import { Plane, Hotel, Utensils, MapPin, Camera } from "lucide-react";
-import { timeline } from "@/lib/mock-data";
+import { Button } from "@/components/ui/button";
+import { Plane, Hotel, Utensils, MapPin, Camera, Plus } from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 export const Route = createFileRoute("/itinerary")({ component: Itinerary });
 
 const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-const icons: Record<string, typeof Plane> = { transport: Plane, stay: Hotel, food: Utensils, activity: Camera };
+const icons: Record<string, typeof Plane> = {
+  transport: Plane,
+  stay: Hotel,
+  food: Utensils,
+  activity: Camera,
+};
 
-// Static map centered on Udaipur
-const UDAIPUR_MAP_URL = GMAPS_KEY
-  ? `https://maps.googleapis.com/maps/api/staticmap?center=Udaipur,Rajasthan&zoom=14&size=640x320&scale=2&maptype=roadmap&markers=color:blue%7CCity+Palace,Udaipur&markers=color:red%7CJag+Mandir,Udaipur&markers=color:green%7CSajjangarh,Udaipur&style=element:geometry%7Ccolor:0x242f3e&style=element:labels.text.fill%7Ccolor:0x746855&style=element:labels.text.stroke%7Ccolor:0x242f3e&key=${GMAPS_KEY}`
-  : null;
+type Activity = { time: string; description: string; type?: string; meta?: string };
+type Day = { dayNumber: number; date?: string; title: string; activities: Activity[] };
+type Trip = { _id: string; title: string; destination?: string; days?: Day[] };
 
 function Itinerary() {
+  const { user } = useAuth();
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    apiFetch("/api/trips")
+      .then((data: Trip[]) => {
+        const trips = Array.isArray(data) ? data : [];
+        // Use the most recently created trip that has days
+        const withDays = trips.find((t) => t.days && t.days.length > 0) ?? trips[0] ?? null;
+        setTrip(withDays);
+      })
+      .catch(() => setTrip(null))
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  const days = trip?.days ?? [];
+  const totalActivities = days.reduce((a, d) => a + (d.activities?.length ?? 0), 0);
+
+  const mapUrl =
+    GMAPS_KEY && trip?.destination
+      ? `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(trip.destination)}&zoom=13&size=640x320&scale=2&maptype=roadmap&style=element:geometry%7Ccolor:0x242f3e&style=element:labels.text.fill%7Ccolor:0x746855&style=element:labels.text.stroke%7Ccolor:0x242f3e&key=${GMAPS_KEY}`
+      : null;
+
   return (
-    <AppShell title="Itinerary" subtitle={`Udaipur · ${timeline.length} days · ${timeline.reduce((a, d) => a + d.items.length, 0)} activities`}>
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+    <AppShell
+      title="Itinerary"
+      subtitle={
+        loading
+          ? "Loading your itinerary…"
+          : trip
+            ? `${trip.destination ?? trip.title} · ${days.length} day${days.length !== 1 ? "s" : ""} · ${totalActivities} activities`
+            : "No itinerary yet"
+      }
+    >
+      {loading ? (
         <div className="space-y-6">
-          {timeline.map((d) => (
-            <div key={d.day} className="rounded-2xl glass-panel p-6">
-              <div className="flex items-baseline justify-between">
-                <div>
-                  <span className="font-display text-3xl text-primary">Day {d.day}</span>
-                  <span className="ml-3 text-sm text-muted-foreground">{d.date} · {d.title}</span>
-                </div>
-                <Badge variant="secondary">{d.items.length} activities</Badge>
-              </div>
-              <div className="mt-6 space-y-1">
-                {d.items.map((i, idx) => {
-                  const Icon = icons[i.type] ?? MapPin;
-                  return (
-                    <div key={idx} className="flex gap-4 rounded-xl px-3 py-3 hover:bg-muted/50">
-                      <div className="w-14 shrink-0 text-sm font-semibold text-primary">{i.time}</div>
-                      <div className="relative shrink-0">
-                        <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/8 text-primary">
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        {idx < d.items.length - 1 && (
-                          <span className="absolute left-1/2 top-9 h-full w-px -translate-x-1/2 bg-border" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 pb-2">
-                        <p className="font-medium">{i.title}</p>
-                        <p className="text-xs text-muted-foreground">{i.meta}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="animate-pulse rounded-2xl glass-panel p-6 h-48" />
           ))}
         </div>
-
-        <div className="space-y-6">
-          {/* Google Maps Static Map */}
-          <div className="overflow-hidden rounded-2xl glass-panel">
-            {UDAIPUR_MAP_URL ? (
-              <img
-                src={UDAIPUR_MAP_URL}
-                alt="Trip route map"
-                className="h-56 w-full object-cover"
-                onError={(e) => {
-                  // Fallback to decorative if API fails
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="relative h-56 bg-gradient-to-br from-sky/40 via-primary/10 to-accent/20 flex items-center justify-center">
-                <p className="text-xs text-muted-foreground">Add VITE_GOOGLE_MAPS_API_KEY to enable map</p>
+      ) : !trip || days.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl glass-panel p-16 text-center">
+          <MapPin className="h-12 w-12 text-muted-foreground/30" />
+          <p className="mt-4 text-lg font-semibold">No itinerary available yet</p>
+          <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+            Create a trip and let Aventra AI build your day-by-day itinerary automatically.
+          </p>
+          <Button className="mt-6" asChild>
+            <Link to="/trips/new">
+              <Plus className="mr-1.5 h-4 w-4" />
+              Plan a trip
+            </Link>
+          </Button>
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="space-y-6">
+            {days.map((d) => (
+              <div key={d.dayNumber} className="rounded-2xl glass-panel p-6">
+                <div className="flex items-baseline justify-between">
+                  <div>
+                    <span className="font-display text-3xl text-primary">Day {d.dayNumber}</span>
+                    <span className="ml-3 text-sm text-muted-foreground">
+                      {d.date ? `${d.date} · ` : ""}
+                      {d.title}
+                    </span>
+                  </div>
+                  <Badge variant="secondary">{d.activities?.length ?? 0} activities</Badge>
+                </div>
+                <div className="mt-6 space-y-1">
+                  {(d.activities ?? []).map((item, idx) => {
+                    const Icon = item.type && icons[item.type] ? icons[item.type] : MapPin;
+                    return (
+                      <div key={idx} className="flex gap-4 rounded-xl px-3 py-3 hover:bg-muted/50">
+                        <div className="w-14 shrink-0 text-sm font-semibold text-primary">
+                          {item.time}
+                        </div>
+                        <div className="relative shrink-0">
+                          <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/8 text-primary">
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          {idx < (d.activities?.length ?? 0) - 1 && (
+                            <span className="absolute left-1/2 top-9 h-full w-px -translate-x-1/2 bg-border" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1 pb-2">
+                          <p className="font-medium">{item.description}</p>
+                          {item.meta && (
+                            <p className="text-xs text-muted-foreground">{item.meta}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            )}
-            <div className="p-4">
-              <p className="text-sm font-medium">City Palace → Jag Mandir → Sajjangarh</p>
-              <p className="mt-1 text-xs text-muted-foreground">11.4 km · 3 stops today</p>
+            ))}
+          </div>
+
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-2xl glass-panel">
+              {mapUrl ? (
+                <img
+                  src={mapUrl}
+                  alt={`Map of ${trip.destination}`}
+                  className="h-56 w-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              ) : (
+                <div className="relative h-56 bg-gradient-to-br from-sky-500/20 via-primary/10 to-accent/20 flex items-center justify-center">
+                  <p className="text-xs text-muted-foreground">
+                    Add VITE_GOOGLE_MAPS_API_KEY to enable map
+                  </p>
+                </div>
+              )}
+              {trip.destination && (
+                <div className="p-4">
+                  <p className="text-sm font-medium">{trip.destination}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{days.length} days planned</p>
+                </div>
+              )}
             </div>
-          </div>
 
-          <div className="rounded-2xl glass-panel p-6">
-            <h3 className="font-semibold">Hotel</h3>
-            <p className="mt-2 text-sm">Taj Lake Palace, Udaipur</p>
-            <p className="text-xs text-muted-foreground">Lake-view suite · Check-in Jun 12, 15:00</p>
-          </div>
-
-          <div className="rounded-2xl glass-panel p-6">
-            <h3 className="font-semibold">Transport today</h3>
-            <div className="mt-3 space-y-3 text-sm">
-              <div className="flex justify-between"><span>Auto-rickshaw to City Palace</span><span className="text-muted-foreground">09:15</span></div>
-              <div className="flex justify-between"><span>Boat to Jag Mandir</span><span className="text-muted-foreground">19:40</span></div>
+            <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-primary/5 to-accent/5 p-6">
+              <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                AI-generated
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This itinerary was crafted by Aventra AI based on your trip preferences and
+                destination.
+              </p>
             </div>
-          </div>
-
-          <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-primary/5 to-accent/5 p-6">
-            <h3 className="font-semibold">Notes</h3>
-            <p className="mt-2 text-sm text-muted-foreground">Sunset at Ambrai Ghat fills fast — arrive by 18:30 to claim a riverside table.</p>
           </div>
         </div>
-      </div>
+      )}
     </AppShell>
   );
 }

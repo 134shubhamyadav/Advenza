@@ -16,9 +16,9 @@ const prompts = [
 ];
 
 function Chat() {
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<{ role: "assistant" | "user"; text: string }[]>([
     {
-      role: "assistant" as const,
+      role: "assistant",
       text: "Namaste! I'm Aventra, your AI travel companion. I can search live news, train schedules, and travel alerts. Tell me where in India you'd like to go!",
     },
   ]);
@@ -38,7 +38,7 @@ function Chat() {
     setTyping(true);
 
     try {
-      const data = await apiFetch('/api/ai/chat', {
+      const data = await apiFetch("/api/ai/chat", {
         method: "POST",
         body: JSON.stringify({
           messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.text })),
@@ -67,7 +67,9 @@ function Chat() {
           </span>
           <div>
             <p className="font-semibold">Aventra AI</p>
-            <p className="text-xs text-muted-foreground">Powered by Groq Llama 3 · Live web search enabled</p>
+            <p className="text-xs text-muted-foreground">
+              Powered by Groq Llama 3 · Live web search enabled
+            </p>
           </div>
           <span className="ml-auto flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
@@ -86,7 +88,7 @@ function Chat() {
               <div
                 className={cn(
                   "max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
-                  m.role === "user" ? "bg-primary text-primary-foreground" : "glass-panel"
+                  m.role === "user" ? "bg-primary text-primary-foreground" : "glass-panel",
                 )}
               >
                 {m.text}
@@ -141,7 +143,12 @@ function Chat() {
             disabled={typing}
             className="flex-1 bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
           />
-          <Button type="submit" size="icon" className="rounded-xl" disabled={typing || !input.trim()}>
+          <Button
+            type="submit"
+            size="icon"
+            className="rounded-xl"
+            disabled={typing || !input.trim()}
+          >
             <Send className="h-4 w-4" />
           </Button>
         </form>

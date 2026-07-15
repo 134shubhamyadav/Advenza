@@ -16,14 +16,15 @@ function Simulator() {
   const base = useMemo(() => simulate(baseSim), []);
   const proj = useMemo(() => simulate(input), [input]);
 
-  const set = <K extends keyof SimInput>(k: K, v: SimInput[K]) => setInput((p) => ({ ...p, [k]: v }));
+  const set = <K extends keyof SimInput>(k: K, v: SimInput[K]) =>
+    setInput((p) => ({ ...p, [k]: v }));
 
   const rows: Array<[string, string, string]> = [
     ["Projected spend", inr(base.projected), inr(proj.projected)],
-    ["Per-day cost",    inr(base.perDay),    inr(proj.perDay)],
-    ["Activities",      String(base.activities), String(proj.activities)],
-    ["Travel time",     base.travelTime,     proj.travelTime],
-    ["Health score",    `${base.health}`,    `${proj.health}`],
+    ["Per-day cost", inr(base.perDay), inr(proj.perDay)],
+    ["Activities", String(base.activities), String(proj.activities)],
+    ["Travel time", base.travelTime, proj.travelTime],
+    ["Health score", `${base.health}`, `${proj.health}`],
     ["Savings vs. budget", inr(base.savings), inr(proj.savings)],
   ];
 
@@ -42,8 +43,14 @@ function Simulator() {
               <span className="font-display text-3xl">{inr(input.budget)}</span>
               <span className="text-xs text-muted-foreground">₹40k – ₹8L</span>
             </div>
-            <Slider className="mt-3" value={[input.budget]} min={40000} max={800000} step={5000}
-              onValueChange={([v]) => set("budget", v)} />
+            <Slider
+              className="mt-3"
+              value={[input.budget]}
+              min={40000}
+              max={800000}
+              step={5000}
+              onValueChange={([v]) => set("budget", v)}
+            />
           </div>
 
           <div>
@@ -52,8 +59,14 @@ function Simulator() {
               <span className="font-display text-3xl">{input.days}</span>
               <span className="text-xs text-muted-foreground">2 – 21</span>
             </div>
-            <Slider className="mt-3" value={[input.days]} min={2} max={21} step={1}
-              onValueChange={([v]) => set("days", v)} />
+            <Slider
+              className="mt-3"
+              value={[input.days]}
+              min={2}
+              max={21}
+              step={1}
+              onValueChange={([v]) => set("days", v)}
+            />
           </div>
 
           <div>
@@ -62,17 +75,30 @@ function Simulator() {
               <span className="font-display text-3xl">{input.travelers}</span>
               <span className="text-xs text-muted-foreground">1 – 8</span>
             </div>
-            <Slider className="mt-3" value={[input.travelers]} min={1} max={8} step={1}
-              onValueChange={([v]) => set("travelers", v)} />
+            <Slider
+              className="mt-3"
+              value={[input.travelers]}
+              min={1}
+              max={8}
+              step={1}
+              onValueChange={([v]) => set("travelers", v)}
+            />
           </div>
 
           <div>
             <Label className="text-xs">Tier</Label>
             <div className="mt-3 grid grid-cols-3 gap-2">
               {(["Economy", "Comfort", "Luxury"] as const).map((t) => (
-                <button key={t} onClick={() => set("tier", t)}
-                  className={cn("rounded-xl border p-3 text-sm transition",
-                    input.tier === t ? "border-primary bg-primary/8 font-semibold" : "border-border bg-background hover:border-primary/40")}>
+                <button
+                  key={t}
+                  onClick={() => set("tier", t)}
+                  className={cn(
+                    "rounded-xl border p-3 text-sm transition",
+                    input.tier === t
+                      ? "border-primary bg-primary/8 font-semibold"
+                      : "border-border bg-background hover:border-primary/40",
+                  )}
+                >
                   {t}
                 </button>
               ))}
@@ -83,9 +109,16 @@ function Simulator() {
             <Label className="text-xs">Transport</Label>
             <div className="mt-3 grid grid-cols-3 gap-2">
               {(["Train", "Flight", "Private car"] as const).map((t) => (
-                <button key={t} onClick={() => set("transport", t)}
-                  className={cn("rounded-xl border p-3 text-sm transition",
-                    input.transport === t ? "border-primary bg-primary/8 font-semibold" : "border-border bg-background hover:border-primary/40")}>
+                <button
+                  key={t}
+                  onClick={() => set("transport", t)}
+                  className={cn(
+                    "rounded-xl border p-3 text-sm transition",
+                    input.transport === t
+                      ? "border-primary bg-primary/8 font-semibold"
+                      : "border-border bg-background hover:border-primary/40",
+                  )}
+                >
                   {t}
                 </button>
               ))}
@@ -111,17 +144,26 @@ function Simulator() {
                   <span className="text-muted-foreground">{k}</span>
                   <span className="tabular-nums text-muted-foreground line-through">{a}</span>
                   <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className={cn("tabular-nums font-semibold", changed ? "text-primary" : "text-foreground")}>{b}</span>
+                  <span
+                    className={cn(
+                      "tabular-nums font-semibold",
+                      changed ? "text-primary" : "text-foreground",
+                    )}
+                  >
+                    {b}
+                  </span>
                 </motion.li>
               );
             })}
           </ul>
           <div className="mt-6 rounded-2xl border border-border/60 bg-background/50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-primary">Aventra suggests</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+              Aventra suggests
+            </p>
             <p className="mt-1 text-sm">
               {proj.projected > input.budget
-                ? `Dropping to Comfort tier would recover ${inr(proj.projected - input.budget)}. Want a plan you can accept in one tap?`
-                : `You're ${inr(input.budget - proj.projected)} under budget. Aventra can upgrade one stay or add a chef-tasting night.`}
+                ? `You're ${inr(proj.projected - input.budget)} over budget. Consider Economy tier or reducing your days to fit your budget.`
+                : `You're ${inr(input.budget - proj.projected)} under budget. You could upgrade your accommodation tier or add more days.`}
             </p>
           </div>
         </div>

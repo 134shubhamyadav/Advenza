@@ -1,7 +1,13 @@
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function AiBadge({ children, className }: { children?: React.ReactNode; className?: string }) {
+export function AiBadge({
+  children,
+  className,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
   return (
     <span
       className={cn(

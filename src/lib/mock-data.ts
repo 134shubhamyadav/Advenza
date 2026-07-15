@@ -1,7 +1,11 @@
-const udaipur = "https://images.unsplash.com/photo-1695956353120-54ce5e91632b?fm=jpg&q=75&w=1400&auto=format&fit=crop";
-const varanasi = "https://images.unsplash.com/photo-1768123668769-a575ec482e39?fm=jpg&q=75&w=1400&auto=format&fit=crop";
-const ladakh = "https://images.unsplash.com/photo-1772165075119-a427cb258651?fm=jpg&q=75&w=1400&auto=format&fit=crop";
-const jaipur = "https://images.unsplash.com/photo-1772533254933-ee692487aba2?fm=jpg&q=75&w=1400&auto=format&fit=crop";
+const udaipur =
+  "https://images.unsplash.com/photo-1695956353120-54ce5e91632b?fm=jpg&q=75&w=1400&auto=format&fit=crop";
+const varanasi =
+  "https://images.unsplash.com/photo-1768123668769-a575ec482e39?fm=jpg&q=75&w=1400&auto=format&fit=crop";
+const ladakh =
+  "https://images.unsplash.com/photo-1772165075119-a427cb258651?fm=jpg&q=75&w=1400&auto=format&fit=crop";
+const jaipur =
+  "https://images.unsplash.com/photo-1772533254933-ee692487aba2?fm=jpg&q=75&w=1400&auto=format&fit=crop";
 
 export const destinations = [
   {
@@ -90,9 +94,19 @@ export const timeline = [
     date: "Jun 12",
     title: "Arrive in Udaipur",
     items: [
-      { time: "10:00", title: "Land at Maharana Pratap Airport (UDR)", type: "transport", meta: "IndiGo 6E 5311" },
+      {
+        time: "10:00",
+        title: "Land at Maharana Pratap Airport (UDR)",
+        type: "transport",
+        meta: "IndiGo 6E 5311",
+      },
       { time: "12:30", title: "Check in — Taj Lake Palace", type: "stay", meta: "Lake-view suite" },
-      { time: "18:00", title: "Sunset dinner at Ambrai", type: "food", meta: "Reserved · 2 guests" },
+      {
+        time: "18:00",
+        title: "Sunset dinner at Ambrai",
+        type: "food",
+        meta: "Reserved · 2 guests",
+      },
     ],
   },
   {
@@ -100,9 +114,24 @@ export const timeline = [
     date: "Jun 13",
     title: "City Palace & Old Town",
     items: [
-      { time: "09:00", title: "City Palace + Crystal Gallery", type: "activity", meta: "3 hr guided" },
-      { time: "14:00", title: "Cooking class in Hanuman Ghat", type: "activity", meta: "Thali workshop" },
-      { time: "20:30", title: "Live sitar at Jheel's Ginger Coffee Bar", type: "activity", meta: "Optional" },
+      {
+        time: "09:00",
+        title: "City Palace + Crystal Gallery",
+        type: "activity",
+        meta: "3 hr guided",
+      },
+      {
+        time: "14:00",
+        title: "Cooking class in Hanuman Ghat",
+        type: "activity",
+        meta: "Thali workshop",
+      },
+      {
+        time: "20:30",
+        title: "Live sitar at Jheel's Ginger Coffee Bar",
+        type: "activity",
+        meta: "Optional",
+      },
     ],
   },
   {
@@ -110,7 +139,12 @@ export const timeline = [
     date: "Jun 14",
     title: "Lake Pichola & Villages",
     items: [
-      { time: "08:30", title: "Boat ride to Jag Mandir", type: "transport", meta: "Sunrise cruise" },
+      {
+        time: "08:30",
+        title: "Boat ride to Jag Mandir",
+        type: "transport",
+        meta: "Sunrise cruise",
+      },
       { time: "13:00", title: "Lunch at Jag Mandir", type: "food", meta: "Included" },
       { time: "19:00", title: "Free evening in old Udaipur", type: "activity", meta: "" },
     ],
@@ -119,14 +153,30 @@ export const timeline = [
 
 export const groupMembers = [
   { name: "You", role: "Organizer", initials: "YO", color: "bg-primary text-primary-foreground" },
-  { name: "Maya Patel", role: "Confirmed", initials: "MP", color: "bg-accent text-accent-foreground" },
-  { name: "Arjun Mehta", role: "Confirmed", initials: "AM", color: "bg-secondary text-secondary-foreground" },
+  {
+    name: "Maya Patel",
+    role: "Confirmed",
+    initials: "MP",
+    color: "bg-accent text-accent-foreground",
+  },
+  {
+    name: "Arjun Mehta",
+    role: "Confirmed",
+    initials: "AM",
+    color: "bg-secondary text-secondary-foreground",
+  },
   { name: "Priya Sharma", role: "Pending", initials: "PS", color: "bg-muted text-foreground" },
 ];
 
 export const chatSeed = [
-  { role: "assistant" as const, text: "Namaste, I'm Aventra. Tell me where in India you'd like to go — or say 'surprise me'." },
-  { role: "user" as const, text: "Plan a 5-day trip through Kerala with great food and backwaters." },
+  {
+    role: "assistant" as const,
+    text: "Namaste, I'm Aventra. Tell me where in India you'd like to go — or say 'surprise me'.",
+  },
+  {
+    role: "user" as const,
+    text: "Plan a 5-day trip through Kerala with great food and backwaters.",
+  },
   {
     role: "assistant" as const,
     text: "Lovely choice. I'd suggest 2 nights in Fort Kochi (Chinese fishing nets, Mattancherry spice walk), 1 night houseboat in Alleppey backwaters, and 2 nights in Munnar for the tea estates. Want me to draft the full itinerary?",

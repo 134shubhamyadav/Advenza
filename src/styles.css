@@ -203,11 +203,15 @@
 }
 
 @utility text-shadow-hero {
-  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+  text-shadow:
+    0 2px 20px rgba(0, 0, 0, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
 @utility hover-lift {
-  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s ease;
+  transition:
+    transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.35s ease;
   &:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-lift);
@@ -215,31 +219,56 @@
 }
 
 @keyframes train-bob {
-  0%, 100% { transform: translateY(0) scale(1.03); }
-  50% { transform: translateY(-6px) scale(1.03); }
+  0%,
+  100% {
+    transform: translateY(0) scale(1.03);
+  }
+  50% {
+    transform: translateY(-6px) scale(1.03);
+  }
 }
 
 @keyframes marquee {
-  0% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(-50%, 0, 0); }
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
 }
 
 @keyframes blob {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  33% { transform: translate3d(30px, -20px, 0) scale(1.08); }
-  66% { transform: translate3d(-20px, 20px, 0) scale(0.95); }
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(30px, -20px, 0) scale(1.08);
+  }
+  66% {
+    transform: translate3d(-20px, 20px, 0) scale(0.95);
+  }
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 @keyframes ken-burns {
-  0%   { transform: scale(1.05) translate(0, 0); }
-  100% { transform: scale(1.18) translate(-1.5%, -1.5%); }
+  0% {
+    transform: scale(1.05) translate(0, 0);
+  }
+  100% {
+    transform: scale(1.18) translate(-1.5%, -1.5%);
+  }
 }
-@utility animate-ken-burns { animation: ken-burns 9s ease-out both; }
-
+@utility animate-ken-burns {
+  animation: ken-burns 9s ease-out both;
+}
 
 @utility animate-bob {
   animation: train-bob 3s ease-in-out infinite;
@@ -257,31 +286,58 @@
   transform: translateZ(0);
 }
 @utility animate-shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
   background-size: 200% 100%;
   animation: shimmer 2.4s linear infinite;
 }
 
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @keyframes float-slow {
-  0%, 100% { transform: translateY(0) rotate(0); }
-  50%      { transform: translateY(-14px) rotate(2deg); }
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  50% {
+    transform: translateY(-14px) rotate(2deg);
+  }
 }
 @keyframes sheen {
-  0%   { transform: translateX(-120%) skewX(-20deg); }
-  100% { transform: translateX(220%)  skewX(-20deg); }
+  0% {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-20deg);
+  }
 }
 @keyframes drift {
-  0%,100% { background-position: 0% 50%; }
-  50%     { background-position: 100% 50%; }
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
-@utility animate-float-slow { animation: float-slow 9s ease-in-out infinite; }
-@utility animate-page-in    { animation: page-in 0.6s cubic-bezier(0.2,0.8,0.2,1) both; }
-@utility animate-drift      { background-size: 200% 200%; animation: drift 18s ease-in-out infinite; }
+@utility animate-float-slow {
+  animation: float-slow 9s ease-in-out infinite;
+}
+@utility animate-page-in {
+  animation: page-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@utility animate-drift {
+  background-size: 200% 200%;
+  animation: drift 18s ease-in-out infinite;
+}
 
 /* Universal glassmorphism panel — sits over the aurora background */
 @utility glass-panel {
@@ -292,8 +348,11 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.55),
     0 10px 40px -18px rgba(15, 30, 60, 0.25);
-  transition: background 0.35s ease, transform 0.35s cubic-bezier(0.2,0.8,0.2,1),
-              box-shadow 0.35s ease, border-color 0.35s ease;
+  transition:
+    background 0.35s ease,
+    transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.35s ease,
+    border-color 0.35s ease;
 }
 @utility glass-panel-hover {
   &:hover {
@@ -307,7 +366,10 @@
   background: color-mix(in oklab, white 40%, transparent);
   backdrop-filter: blur(14px) saturate(140%);
   border: 1px solid color-mix(in oklab, white 40%, transparent);
-  transition: background 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
+  transition:
+    background 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.3s ease;
   &:hover {
     background: color-mix(in oklab, white 65%, transparent);
     border-color: color-mix(in oklab, var(--primary) 35%, transparent);
@@ -323,10 +385,16 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%);
+    background: linear-gradient(
+      120deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.35) 50%,
+      transparent 70%
+    );
     transform: translateX(-120%) skewX(-20deg);
     pointer-events: none;
   }
-  &:hover::after { animation: sheen 0.9s ease-out; }
+  &:hover::after {
+    animation: sheen 0.9s ease-out;
+  }
 }
-

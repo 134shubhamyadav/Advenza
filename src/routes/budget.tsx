@@ -23,7 +23,7 @@ const COLORS = [
 
 const CATEGORIES = ["Flights", "Stays", "Food", "Activities", "Transit", "Other"];
 
-type Expense = { _id?: string; name: string; amount: number; category: string; date: string; };
+type Expense = { _id?: string; name: string; amount: number; category: string; date: string };
 
 function Budget() {
   const { user } = useAuth();
@@ -33,13 +33,18 @@ function Budget() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: "", amount: "", category: "Food", date: new Date().toISOString().slice(0, 10) });
+  const [form, setForm] = useState({
+    name: "",
+    amount: "",
+    category: "Food",
+    date: new Date().toISOString().slice(0, 10),
+  });
 
   // Fetch all trips and set up the active trip
   useEffect(() => {
     if (!user) return;
-    apiFetch('/api/trips')
-      .then(data => {
+    apiFetch("/api/trips")
+      .then((data) => {
         const tripList = Array.isArray(data) ? data : [];
         setTrips(tripList);
         if (tripList.length > 0) {
@@ -51,12 +56,12 @@ function Budget() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  const activeTrip = trips.find(t => t._id === activeTripId);
+  const activeTrip = trips.find((t) => t._id === activeTripId);
 
   // Compute chart data from actual expenses
   const categoryMap: Record<string, number> = {};
-  CATEGORIES.forEach(c => categoryMap[c] = 0);
-  expenses.forEach(e => {
+  CATEGORIES.forEach((c) => (categoryMap[c] = 0));
+  expenses.forEach((e) => {
     const cat = CATEGORIES.includes(e.category) ? e.category : "Other";
     categoryMap[cat] = (categoryMap[cat] || 0) + e.amount;
   });
@@ -65,8 +70,10 @@ function Budget() {
   const remaining = totalBudget - totalSpent;
   const pct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
 
-  const chartData = CATEGORIES.filter(c => categoryMap[c] > 0).map((c, i) => ({
-    name: c, value: categoryMap[c], color: COLORS[i % COLORS.length]
+  const chartData = CATEGORIES.filter((c) => categoryMap[c] > 0).map((c, i) => ({
+    name: c,
+    value: categoryMap[c],
+    color: COLORS[i % COLORS.length],
   }));
 
   const addExpense = async () => {
@@ -75,11 +82,16 @@ function Budget() {
     setSaving(true);
     try {
       const updatedTrip = await apiFetch(`/api/trips/${activeTripId}/expenses`, {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({ name: form.name, amount, category: form.category, date: form.date }),
       });
       setExpenses(updatedTrip.expenses || []);
-      setForm({ name: "", amount: "", category: "Food", date: new Date().toISOString().slice(0, 10) });
+      setForm({
+        name: "",
+        amount: "",
+        category: "Food",
+        date: new Date().toISOString().slice(0, 10),
+      });
       setShowModal(false);
     } catch (err: any) {
       alert(err.message);
@@ -88,24 +100,30 @@ function Budget() {
     }
   };
 
-  if (loading) return (
-    <AppShell title="Budget" subtitle="Loading...">
-      <div className="grid gap-6 md:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="animate-pulse h-40 rounded-2xl glass-panel" />
-        ))}
-      </div>
-    </AppShell>
-  );
+  if (loading)
+    return (
+      <AppShell title="Budget" subtitle="Loading...">
+        <div className="grid gap-6 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="animate-pulse h-40 rounded-2xl glass-panel" />
+          ))}
+        </div>
+      </AppShell>
+    );
 
   return (
     <AppShell
       title="Budget"
-      subtitle={activeTrip ? `${activeTrip.title} · ${activeTrip.destination || ""}` : "Select a trip to track budget"}
+      subtitle={
+        activeTrip
+          ? `${activeTrip.title} · ${activeTrip.destination || ""}`
+          : "Select a trip to track budget"
+      }
       actions={
         activeTripId ? (
           <Button onClick={() => setShowModal(true)}>
-            <Plus className="mr-1.5 h-4 w-4" />Add expense
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add expense
           </Button>
         ) : undefined
       }
@@ -113,10 +131,13 @@ function Budget() {
       {/* Trip selector */}
       {trips.length > 1 && (
         <div className="mb-4 flex flex-wrap gap-2">
-          {trips.map(t => (
+          {trips.map((t) => (
             <button
               key={t._id}
-              onClick={() => { setActiveTripId(t._id); setExpenses(t.expenses || []); }}
+              onClick={() => {
+                setActiveTripId(t._id);
+                setExpenses(t.expenses || []);
+              }}
               className={`rounded-xl border px-3 py-1.5 text-sm transition ${activeTripId === t._id ? "border-primary bg-primary/8 font-semibold" : "border-border hover:border-primary/40"}`}
             >
               {t.destination?.split(",")[0] || t.title}
@@ -131,24 +152,42 @@ function Budget() {
           <div className="w-full max-w-md rounded-2xl glass-panel p-6 shadow-2xl">
             <div className="mb-5 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Add Expense</h3>
-              <button onClick={() => setShowModal(false)} className="rounded-lg p-1 hover:bg-muted/50">
+              <button
+                onClick={() => setShowModal(false)}
+                className="rounded-lg p-1 hover:bg-muted/50"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-4">
               <div>
                 <Label className="text-xs">Description</Label>
-                <Input className="mt-1.5 h-11 rounded-xl" placeholder="e.g. Dinner at Ambrai" value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} />
+                <Input
+                  className="mt-1.5 h-11 rounded-xl"
+                  placeholder="e.g. Dinner at Ambrai"
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                />
               </div>
               <div>
                 <Label className="text-xs">Amount (₹)</Label>
-                <Input className="mt-1.5 h-11 rounded-xl" type="number" placeholder="0" value={form.amount} onChange={(e) => setForm(f => ({ ...f, amount: e.target.value }))} />
+                <Input
+                  className="mt-1.5 h-11 rounded-xl"
+                  type="number"
+                  placeholder="0"
+                  value={form.amount}
+                  onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                />
               </div>
               <div>
                 <Label className="text-xs">Category</Label>
                 <div className="mt-1.5 grid grid-cols-3 gap-2">
-                  {CATEGORIES.map(c => (
-                    <button key={c} onClick={() => setForm(f => ({ ...f, category: c }))} className={`rounded-xl border p-2.5 text-sm transition ${form.category === c ? "border-primary bg-primary/8 font-semibold" : "border-border bg-background hover:border-primary/40"}`}>
+                  {CATEGORIES.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setForm((f) => ({ ...f, category: c }))}
+                      className={`rounded-xl border p-2.5 text-sm transition ${form.category === c ? "border-primary bg-primary/8 font-semibold" : "border-border bg-background hover:border-primary/40"}`}
+                    >
                       {c}
                     </button>
                   ))}
@@ -156,7 +195,12 @@ function Budget() {
               </div>
               <div>
                 <Label className="text-xs">Date</Label>
-                <Input className="mt-1.5 h-11 rounded-xl" type="date" value={form.date} onChange={(e) => setForm(f => ({ ...f, date: e.target.value }))} />
+                <Input
+                  className="mt-1.5 h-11 rounded-xl"
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                />
               </div>
               <Button className="w-full h-11" onClick={addExpense} disabled={saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -169,7 +213,13 @@ function Budget() {
 
       {!activeTripId ? (
         <div className="rounded-2xl glass-panel p-12 text-center">
-          <p className="text-muted-foreground">No trips found. <a href="/trips/new" className="text-primary underline">Create a trip first</a>.</p>
+          <p className="text-muted-foreground">
+            No trips found.{" "}
+            <a href="/trips/new" className="text-primary underline">
+              Create a trip first
+            </a>
+            .
+          </p>
         </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-3">
@@ -187,8 +237,16 @@ function Budget() {
                 <div className="relative mx-auto h-52 w-52">
                   <ResponsiveContainer>
                     <PieChart>
-                      <Pie data={chartData} dataKey="value" innerRadius={65} outerRadius={95} paddingAngle={2}>
-                        {chartData.map((c, i) => <Cell key={i} fill={c.color} />)}
+                      <Pie
+                        data={chartData}
+                        dataKey="value"
+                        innerRadius={65}
+                        outerRadius={95}
+                        paddingAngle={2}
+                      >
+                        {chartData.map((c, i) => (
+                          <Cell key={i} fill={c.color} />
+                        ))}
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
@@ -203,12 +261,18 @@ function Budget() {
                     <div key={b.name}>
                       <div className="flex justify-between text-sm">
                         <span className="flex items-center gap-2">
-                          <span className="h-2.5 w-2.5 rounded-full" style={{ background: b.color }} />
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ background: b.color }}
+                          />
                           {b.name}
                         </span>
                         <span className="text-muted-foreground">{inr(b.value)}</span>
                       </div>
-                      <Progress value={(b.value / (totalBudget || 1)) * 100} className="mt-1.5 h-1.5" />
+                      <Progress
+                        value={(b.value / (totalBudget || 1)) * 100}
+                        className="mt-1.5 h-1.5"
+                      />
                     </div>
                   ))}
                 </div>
@@ -220,9 +284,15 @@ function Budget() {
           <div className="space-y-6">
             <div className="rounded-2xl glass-panel p-6">
               <p className="text-sm text-muted-foreground">Remaining</p>
-              <p className={`mt-1 font-display text-4xl ${remaining < 0 ? "text-destructive" : "text-accent"}`}>{inr(Math.abs(remaining))}</p>
+              <p
+                className={`mt-1 font-display text-4xl ${remaining < 0 ? "text-destructive" : "text-accent"}`}
+              >
+                {inr(Math.abs(remaining))}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {remaining < 0 ? `₹${inr(Math.abs(remaining))} over budget!` : `${pct}% used · ${100 - pct}% remaining`}
+                {remaining < 0
+                  ? `₹${inr(Math.abs(remaining))} over budget!`
+                  : `${pct}% used · ${100 - pct}% remaining`}
               </p>
             </div>
             <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-primary/5 to-accent/5 p-6">
@@ -230,7 +300,9 @@ function Budget() {
                 <Sparkles className="h-5 w-5 text-primary" />
                 <div>
                   <p className="font-semibold">Aventra tip</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Expenses are saved to your trip and persist across sessions.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Expenses are saved to your trip and persist across sessions.
+                  </p>
                 </div>
               </div>
             </div>
@@ -241,18 +313,23 @@ function Budget() {
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-semibold">All expenses</h3>
               <span className="flex items-center gap-1 text-xs text-accent">
-                <TrendingDown className="h-3.5 w-3.5" />{expenses.length} recorded
+                <TrendingDown className="h-3.5 w-3.5" />
+                {expenses.length} recorded
               </span>
             </div>
             {expenses.length === 0 ? (
-              <p className="text-center text-sm text-muted-foreground py-6">No expenses yet. Click "Add expense" to start tracking.</p>
+              <p className="text-center text-sm text-muted-foreground py-6">
+                No expenses yet. Click "Add expense" to start tracking.
+              </p>
             ) : (
               <div className="divide-y divide-border/60">
                 {[...expenses].reverse().map((e, i) => (
                   <div key={e._id || i} className="flex items-center justify-between py-3 text-sm">
                     <div>
                       <p className="font-medium">{e.name}</p>
-                      <p className="text-xs text-muted-foreground">{e.date} · {e.category}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {e.date} · {e.category}
+                      </p>
                     </div>
                     <p className="font-semibold">{inr(e.amount)}</p>
                   </div>

@@ -15,7 +15,11 @@ export function FactorBar({
   suggestion?: string;
 }) {
   const tone =
-    status === "bad" ? "bg-destructive" : status === "warn" ? "bg-[oklch(0.78_0.16_75)]" : "bg-accent";
+    status === "bad"
+      ? "bg-destructive"
+      : status === "warn"
+        ? "bg-[oklch(0.78_0.16_75)]"
+        : "bg-accent";
   return (
     <div className="rounded-xl px-4 py-3 hover:bg-muted/40">
       <div className="flex items-baseline justify-between">

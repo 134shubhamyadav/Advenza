@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Share2, Copy, Check, Instagram, Music } from "lucide-react";
@@ -33,7 +39,7 @@ export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModal
   const captions = [
     `Lost in the magic of ${dayData.place}. ✨ Aventra knew exactly where I needed to be today.`,
     `${dayData.weather.split(",")[1]?.trim() || "Beautiful"} days and unforgettable views in ${dayData.place}. 🏰🤍`,
-    `A quiet moment at ${dayData.place}. Planned by AI, lived by me. 🌅`
+    `A quiet moment at ${dayData.place}. Planned by AI, lived by me. 🌅`,
   ];
 
   const handleCopy = (text: string, index: number) => {
@@ -61,36 +67,38 @@ export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModal
             <TabsTrigger value="story">Story Collage</TabsTrigger>
             <TabsTrigger value="post">Feed Post</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="story" className="mt-4 flex flex-col items-center">
             {/* Story Layout (9:16 approx) */}
             <div className="relative w-[240px] h-[426px] bg-black rounded-xl overflow-hidden shadow-xl border border-border/50">
-              <img 
-                src={dayData.photo} 
-                alt="Main" 
-                className="absolute inset-0 w-full h-full object-cover opacity-60 blur-sm scale-110" 
+              <img
+                src={dayData.photo}
+                alt="Main"
+                className="absolute inset-0 w-full h-full object-cover opacity-60 blur-sm scale-110"
               />
               <div className="absolute inset-0 p-4 flex flex-col justify-center gap-3">
-                <img 
-                  src={dayData.photo} 
-                  alt="Collage 1" 
-                  className="w-full h-40 object-cover rounded-lg shadow-lg border-2 border-white/20 -rotate-2" 
+                <img
+                  src={dayData.photo}
+                  alt="Collage 1"
+                  className="w-full h-40 object-cover rounded-lg shadow-lg border-2 border-white/20 -rotate-2"
                 />
                 <div className="flex gap-2">
-                  <img 
-                    src={dayData.photo} 
-                    alt="Collage 2" 
-                    className="w-1/2 h-28 object-cover rounded-lg shadow-lg border-2 border-white/20 rotate-3" 
+                  <img
+                    src={dayData.photo}
+                    alt="Collage 2"
+                    className="w-1/2 h-28 object-cover rounded-lg shadow-lg border-2 border-white/20 rotate-3"
                   />
                   <div className="w-1/2 h-28 bg-white/10 backdrop-blur-md rounded-lg border border-white/30 flex flex-col justify-center items-center text-center p-2 shadow-lg -rotate-1">
                     <MapPinIcon className="h-4 w-4 mb-1 text-white" />
-                    <span className="text-xs font-bold text-white leading-tight">{dayData.place}</span>
+                    <span className="text-xs font-bold text-white leading-tight">
+                      {dayData.place}
+                    </span>
                     <span className="text-[10px] text-white/80">{dayData.date}</span>
                   </div>
                 </div>
               </div>
             </div>
-            
+
             <Button className="w-full mt-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0">
               <Share2 className="mr-2 h-4 w-4" /> Share to Story
             </Button>
@@ -99,13 +107,13 @@ export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModal
           <TabsContent value="post" className="mt-4">
             {/* Post Layout */}
             <div className="rounded-xl overflow-hidden shadow-md">
-              <img 
-                src={dayData.photo} 
-                alt="Post Preview" 
+              <img
+                src={dayData.photo}
+                alt="Post Preview"
                 className={`w-full aspect-square object-cover transition-all duration-300 ${activeFilter.class}`}
               />
             </div>
-            
+
             <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-none">
               {filters.map((filter) => (
                 <button
@@ -113,23 +121,36 @@ export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModal
                   onClick={() => setActiveFilter(filter)}
                   className={`flex flex-col items-center gap-1 min-w-[60px] ${activeFilter.name === filter.name ? "opacity-100" : "opacity-50 hover:opacity-100"}`}
                 >
-                  <img src={dayData.photo} className={`w-12 h-12 rounded-md object-cover ${filter.class}`} alt={filter.name} />
+                  <img
+                    src={dayData.photo}
+                    className={`w-12 h-12 rounded-md object-cover ${filter.class}`}
+                    alt={filter.name}
+                  />
                   <span className="text-[10px] font-medium">{filter.name}</span>
                 </button>
               ))}
             </div>
 
             <div className="mt-4 space-y-3">
-              <h4 className="text-sm font-semibold flex items-center gap-1"><Sparkles className="h-3 w-3 text-primary" /> AI Captions</h4>
+              <h4 className="text-sm font-semibold flex items-center gap-1">
+                <Sparkles className="h-3 w-3 text-primary" /> AI Captions
+              </h4>
               <div className="space-y-2">
                 {captions.map((cap, i) => (
-                  <div key={i} className="group relative rounded-lg bg-muted/50 p-3 pr-10 text-xs text-foreground/90 border border-border/50">
+                  <div
+                    key={i}
+                    className="group relative rounded-lg bg-muted/50 p-3 pr-10 text-xs text-foreground/90 border border-border/50"
+                  >
                     {cap}
-                    <button 
+                    <button
                       onClick={() => handleCopy(cap, i)}
                       className="absolute right-2 top-2 p-1.5 rounded-md hover:bg-background transition-colors text-muted-foreground"
                     >
-                      {copied === i ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copied === i ? (
+                        <Check className="h-3.5 w-3.5 text-green-500" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
                     </button>
                   </div>
                 ))}
@@ -137,10 +158,15 @@ export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModal
             </div>
 
             <div className="mt-5">
-              <h4 className="text-sm font-semibold flex items-center gap-1 mb-2"><Music className="h-3 w-3 text-primary" /> Suggested Audio</h4>
+              <h4 className="text-sm font-semibold flex items-center gap-1 mb-2">
+                <Music className="h-3 w-3 text-primary" /> Suggested Audio
+              </h4>
               <div className="space-y-2">
                 {songs.map((song) => (
-                  <div key={song.name} className="flex items-center justify-between rounded-lg border border-border/40 bg-card p-2 text-sm">
+                  <div
+                    key={song.name}
+                    className="flex items-center justify-between rounded-lg border border-border/40 bg-card p-2 text-sm"
+                  >
                     <div className="flex flex-col">
                       <span className="font-medium text-xs">{song.name}</span>
                       <span className="text-[10px] text-muted-foreground">{song.artist}</span>
@@ -152,10 +178,8 @@ export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModal
                 ))}
               </div>
             </div>
-            
-            <Button className="w-full mt-6">
-              Download assets & copy caption
-            </Button>
+
+            <Button className="w-full mt-6">Download assets & copy caption</Button>
           </TabsContent>
         </Tabs>
       </DialogContent>

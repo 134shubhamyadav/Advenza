@@ -32,8 +32,8 @@ function Group() {
 
   useEffect(() => {
     if (!user) return;
-    apiFetch('/api/trips')
-      .then(data => {
+    apiFetch("/api/trips")
+      .then((data) => {
         const list = Array.isArray(data) ? data : [];
         setTrips(list);
         if (list.length > 0) {
@@ -55,7 +55,7 @@ function Group() {
     setSaving(true);
     try {
       const updated = await apiFetch(`/api/trips/${activeTripId}/vote`, {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({ optionName, uid: user?.uid }),
       });
       setTripData(updated);
@@ -71,7 +71,7 @@ function Group() {
     setSaving(true);
     try {
       const updated = await apiFetch(`/api/trips/${activeTripId}/members`, {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({ email: inviteEmail }),
       });
       setTripData(updated);
@@ -85,13 +85,16 @@ function Group() {
     }
   };
 
-  if (loading) return (
-    <AppShell title="Group planning" subtitle="Loading...">
-      <div className="grid gap-4 md:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="animate-pulse h-40 rounded-2xl glass-panel" />)}
-      </div>
-    </AppShell>
-  );
+  if (loading)
+    return (
+      <AppShell title="Group planning" subtitle="Loading...">
+        <div className="grid gap-4 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="animate-pulse h-40 rounded-2xl glass-panel" />
+          ))}
+        </div>
+      </AppShell>
+    );
 
   const destination = tripData?.destination || "Your trip";
 
@@ -100,10 +103,13 @@ function Group() {
       {/* Trip selector */}
       {trips.length > 1 && (
         <div className="mb-4 flex flex-wrap gap-2">
-          {trips.map(t => (
+          {trips.map((t) => (
             <button
               key={t._id}
-              onClick={() => { setActiveTripId(t._id); setTripData(t); }}
+              onClick={() => {
+                setActiveTripId(t._id);
+                setTripData(t);
+              }}
               className={`rounded-xl border px-3 py-1.5 text-sm transition ${activeTripId === t._id ? "border-primary bg-primary/8 font-semibold" : "border-border hover:border-primary/40"}`}
             >
               {t.destination?.split(",")[0] || t.title}
@@ -114,7 +120,13 @@ function Group() {
 
       {!activeTripId ? (
         <div className="rounded-2xl glass-panel p-12 text-center">
-          <p className="text-muted-foreground">No trips found. <a href="/trips/new" className="text-primary underline">Create a trip first</a>.</p>
+          <p className="text-muted-foreground">
+            No trips found.{" "}
+            <a href="/trips/new" className="text-primary underline">
+              Create a trip first
+            </a>
+            .
+          </p>
         </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-3">
@@ -123,7 +135,8 @@ function Group() {
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Members</h3>
               <span className="text-xs text-muted-foreground">
-                {members.filter((m: any) => m.role !== 'Pending').length} confirmed · {members.filter((m: any) => m.role === 'Pending').length} pending
+                {members.filter((m: any) => m.role !== "Pending").length} confirmed ·{" "}
+                {members.filter((m: any) => m.role === "Pending").length} pending
               </span>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -142,7 +155,9 @@ function Group() {
               {members.map((m: any, i: number) => (
                 <div key={m._id || i} className="flex items-center gap-3 rounded-xl glass-tile p-4">
                   <Avatar className="h-10 w-10">
-                    <AvatarFallback className={COLORS[(i + 1) % COLORS.length]}>{m.initials || m.name?.slice(0, 2).toUpperCase()}</AvatarFallback>
+                    <AvatarFallback className={COLORS[(i + 1) % COLORS.length]}>
+                      {m.initials || m.name?.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{m.name}</p>
@@ -160,7 +175,11 @@ function Group() {
                 onKeyDown={(e) => e.key === "Enter" && handleInvite()}
               />
               <Button className="h-11" onClick={handleInvite} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <UserPlus className="mr-1.5 h-4 w-4" />}
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <UserPlus className="mr-1.5 h-4 w-4" />
+                )}
                 {inviteSent ? "Invite sent! ✓" : "Invite"}
               </Button>
             </div>
@@ -174,7 +193,11 @@ function Group() {
                 <div>
                   <p className="text-xs text-muted-foreground">Interests</p>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {tripData.interests.map((t: string) => <Badge key={t} variant="secondary" className="rounded-full">{t}</Badge>)}
+                    {tripData.interests.map((t: string) => (
+                      <Badge key={t} variant="secondary" className="rounded-full">
+                        {t}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
               ) : (
@@ -183,7 +206,9 @@ function Group() {
               {tripData?.style && (
                 <div>
                   <p className="text-xs text-muted-foreground">Travel Style</p>
-                  <Badge variant="secondary" className="mt-1.5 rounded-full">{tripData.style}</Badge>
+                  <Badge variant="secondary" className="mt-1.5 rounded-full">
+                    {tripData.style}
+                  </Badge>
                 </div>
               )}
             </div>
@@ -198,17 +223,34 @@ function Group() {
                   const pct = totalVotes > 0 ? Math.round((o.votes / totalVotes) * 100) : 0;
                   const isMyVote = myVote === o.name;
                   return (
-                    <div key={o.name} className={cn("rounded-xl border p-5 transition", isMyVote ? "border-accent bg-accent/5" : "glass-tile")}>
+                    <div
+                      key={o.name}
+                      className={cn(
+                        "rounded-xl border p-5 transition",
+                        isMyVote ? "border-accent bg-accent/5" : "glass-tile",
+                      )}
+                    >
                       <div className="flex items-center justify-between">
                         <p className="font-semibold">{o.name}</p>
                         {isMyVote && <Check className="h-4 w-4 text-accent" />}
                       </div>
                       <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
+                        <div
+                          className="h-full rounded-full bg-primary transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
                       </div>
                       <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{o.votes} votes · {pct}%</span>
-                        <Button size="icon" variant={isMyVote ? "default" : "ghost"} className="h-7 w-7" onClick={() => handleVote(o.name)} disabled={saving}>
+                        <span>
+                          {o.votes} votes · {pct}%
+                        </span>
+                        <Button
+                          size="icon"
+                          variant={isMyVote ? "default" : "ghost"}
+                          className="h-7 w-7"
+                          onClick={() => handleVote(o.name)}
+                          disabled={saving}
+                        >
                           <Check className="h-3.5 w-3.5" />
                         </Button>
                       </div>

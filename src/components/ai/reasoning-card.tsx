@@ -17,7 +17,12 @@ export function ReasoningCard({ r, compact = false }: { r: Reasoning; compact?: 
           <AiBadge>{r.match}% match</AiBadge>
           <span className="text-xs text-muted-foreground line-clamp-1">{r.why}</span>
         </div>
-        <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", open && "rotate-180")} />
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
       </button>
       {open && (
         <div className="space-y-2 border-t border-border/60 px-3 py-3">
@@ -41,9 +46,21 @@ export function ReasoningCard({ r, compact = false }: { r: Reasoning; compact?: 
             </ul>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-[11px] text-muted-foreground">
-            {r.costImpact && <span>Cost · <span className="text-foreground">{r.costImpact}</span></span>}
-            {r.timeImpact && <span>Time · <span className="text-foreground">{r.timeImpact}</span></span>}
-            {r.distance && <span>Distance · <span className="text-foreground">{r.distance}</span></span>}
+            {r.costImpact && (
+              <span>
+                Cost · <span className="text-foreground">{r.costImpact}</span>
+              </span>
+            )}
+            {r.timeImpact && (
+              <span>
+                Time · <span className="text-foreground">{r.timeImpact}</span>
+              </span>
+            )}
+            {r.distance && (
+              <span>
+                Distance · <span className="text-foreground">{r.distance}</span>
+              </span>
+            )}
           </div>
         </div>
       )}
