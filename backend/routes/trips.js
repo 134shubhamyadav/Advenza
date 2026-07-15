@@ -143,4 +143,77 @@ router.post("/:id/vote", async (req, res) => {
   }
 });
 
+// PUT /api/trips/:id/itinerary — smart-patch: replace only the supplied days, preserve the rest
+router.put("/:id/itinerary", async (req, res) => {
+  try {
+    const { days } = req.body;
+
+    console.log(`[PUT /itinerary] tripId=${req.params.id} uid=${req.uid}`);
+    console.log(`[PUT /itinerary] received days count: ${Array.isArray(days) ? days.length : "MISSING"}`);
+
+    if (!days || !Array.isArray(days) || days.length === 0) {
+      console.error("[PUT /itinerary] Validation failed — days array is missing or empty");
+      return res.status(400).json({ error: "days array is required and must not be empty" });
+    }
+
+    // Load the trip and verify ownership
+    const trip = await Trip.findOne({ _id: req.params.id, createdBy: req.uid });
+    if (!trip) {
+      console.error("[PUT /itinerary] Trip not found or user does not own it");
+      return res.status(404).json({ error: "Trip not found or unauthorized" });
+    }
+
+    console.log(`[PUT /itinerary] existing days count: ${trip.days.length}`);
+
+    // Strip _id / __v from incoming subdocuments so Mongoose doesn't choke on
+    // ObjectId mismatches when merging frontend-serialised day objects.
+    const sanitiseDays = (rawDays) =>
+      rawDays.map((d) => ({
+        dayNumber: d.dayNumber,
+        date:      d.date      || "",
+        title:     d.title     || "",
+        activities: (d.activities || []).map((a) => ({
+          time:        a.time        || "",
+          description: a.description || "",
+        })),
+      }));
+
+    // Build the merged days array: proposed days overwrite matching dayNumbers,
+    // all other original days are preserved exactly.
+    const proposedMap = new Map(
+      sanitiseDays(days).map((d) => [d.dayNumber, d])
+    );
+
+    const mergedDays = trip.days.map((origDay) => {
+      const patch = proposedMap.get(origDay.dayNumber);
+      if (patch) {
+        console.log(`[PUT /itinerary] patching Day ${origDay.dayNumber}`);
+        return patch;
+      }
+      return {
+        dayNumber:  origDay.dayNumber,
+        date:       origDay.date || "",
+        title:      origDay.title || "",
+        activities: (origDay.activities || []).map((a) => ({
+          time:        a.time        || "",
+          description: a.description || "",
+        })),
+      };
+    });
+
+    console.log(`[PUT /itinerary] merged days count: ${mergedDays.length}`);
+
+    // Replace the days array and save — this fires the pre-save hook (updatedAt)
+    trip.days = mergedDays;
+    const savedTrip = await trip.save();
+
+    console.log(`[PUT /itinerary] ✅ Saved. days count: ${savedTrip.days.length}`);
+    res.json(savedTrip);
+  } catch (err) {
+    console.error("[PUT /itinerary] ❌ Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 export default router;

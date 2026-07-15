@@ -37,14 +37,16 @@ const callAI = async (options) => {
   } catch (err) {
     console.warn("Groq failed, falling back to OpenRouter:", err.message);
     try {
-      // Fallback to OpenRouter with Gemma 2 free
+      // Fallback to OpenRouter with Gemma 4 free
       return await openRouterClient.chat.completions.create({
         ...options,
-        model: "google/gemma-2-9b-it:free",
+        model: "google/gemma-4-26b-a4b-it:free",
       });
     } catch (fallbackErr) {
       console.error("OpenRouter fallback also failed:", fallbackErr.message);
-      throw fallbackErr;
+      throw new Error(
+        "Aventra's AI engine is temporarily unavailable due to upstream provider limits. Please try again in a few seconds."
+      );
     }
   }
 };
@@ -154,12 +156,20 @@ Return ONLY a valid JSON object (no markdown, no extra text):
   }
 });
 
-// POST /api/ai/planb — Generate dynamic Plan B backup scenarios for a saved trip
+// POST /api/ai/planb — Conversational travel contingency assistant
 router.post("/planb", async (req, res) => {
   try {
-    const { tripId, question } = req.body;
+    const { tripId, messages, question } = req.body;
     if (!tripId) return res.status(400).json({ error: "tripId is required" });
-    if (!question) return res.status(400).json({ error: "question is required" });
+
+    let chatMessages = [];
+    if (messages && Array.isArray(messages)) {
+      chatMessages = messages;
+    } else if (question && typeof question === "string") {
+      chatMessages = [{ role: "user", content: question }];
+    } else {
+      return res.status(400).json({ error: "Either 'messages' array or 'question' string is required" });
+    }
 
     // Load the actual saved trip from MongoDB
     const trip = await Trip.findById(tripId);
@@ -171,50 +181,101 @@ router.post("/planb", async (req, res) => {
       return `Day ${d.dayNumber} (${d.date || ""}) — ${d.title}: ${acts}`;
     }).join("\n");
 
-    const prompt = `You are Aventra, an expert travel contingency planner and AI assistant for Indian trips.
+    const systemPrompt = `You are Aventra, a warm, knowledgeable, and practical AI travel assistant. You help travellers recover gracefully from unexpected disruptions — like a trusted local friend who knows the destination inside out.
 
 TRIP CONTEXT:
 - Destination: ${trip.destination}
 - Dates: ${trip.startDate} to ${trip.endDate}
 - Total Budget: ₹${trip.budgetTotal > 0 ? trip.budgetTotal : "unspecified"}
-- Transport: ${(trip.transport || []).join(", ") || "unspecified"}
+- Transport Mode(s): ${(trip.transport || []).join(", ") || "any"}
 - Accommodation: ${trip.accommodation || "unspecified"}
-- Pace: ${trip.style || "Balanced"}
+- Travel Pace: ${trip.style || "Balanced"}
 - Interests: ${(trip.interests || []).join(", ") || "general sightseeing"}
 
-PLANNED ITINERARY:
-${daySummaries || "No specific days planned"}
+CURRENT ITINERARY:
+${daySummaries || "No days planned yet"}
 
-CONTINGENCY SCENARIO / USER QUESTION:
-"${question}"
+──────────────────────────────────────────────────────────
+STRICT RESCHEDULING & PRESERVATION RULES:
+──────────────────────────────────────────────────────────
+1. NO DELETING ATTRACTIONS: If the user states they missed, skipped, or arrived late to an attraction/activity, you MUST NOT discard or delete it. The attraction must NOT disappear from the itinerary.
+2. AUTOMATIC RESCHEDULING: Check the remaining itinerary (succeeding time slots today or upcoming days) and find the best suitable time slot to fit the missed attraction back into the plan.
+3. MINIMAL IMPACT / SWAPPING: Make the smallest necessary changes to the itinerary to accommodate the reschedule. If needed, you can swap the missed attraction with a less critical activity (like leisure time, shopping, or a secondary sightseeing spot) or shift subsequent activities down by one slot or to a later day.
+4. EXPLAIN THE SHIFT: In the conversational reply, you must clearly explain:
+   - Why the attraction was moved.
+   - Where/when it has been rescheduled (e.g. Day 1 Evening, or Day 2 Morning).
+   - Which activity (if any) was swapped or shifted to make room for it.
+   - Any impact on travel time or budget.
 
-Your task: Provide a practical, highly customized, intelligent backup plan specifically answering this contingency for this trip. Do not use hardcoded or generic answers. Recommend actual places/alternatives in ${trip.destination} and account for their travel mode: ${(trip.transport || []).join(", ") || "available transit"}.
+────────────────────────────────────────
+HOW TO WRITE YOUR REPLY (very important):
+────────────────────────────────────────
+Write the "reply" field in the style of a real, helpful travel companion texting their friend. Follow this exact 4-part flow:
 
-Return ONLY a valid JSON object (no markdown, no extra text):
+PART 1 — ACKNOWLEDGE (1-2 sentences)
+Show you understand what happened and briefly say whether it's a big deal or easily recoverable. Sound human and reassuring, not robotic.
+Example: "Oh no — missing Charminar this morning is frustrating, but honestly don't worry, you can still make it work."
+
+PART 2 — EXPLAIN THE IMPACT & RESCHEDULING (2-3 sentences)
+Clearly explain where you are rescheduling the missed attraction to make sure it is not lost. Explain what activity was shifted or swapped to make room.
+Example: "I've moved Charminar to 5:30 PM this evening since the sunset lighting there is gorgeous anyway. To make room for this, we'll swap your relaxed tea-tasting activity to Day 2 Afternoon."
+
+PART 3 — RECOVERY PLAN & LOGISTICS (natural language, NO tables)
+Walk the user through the logistics of the recovery plan. Explain travel times, cost, or local conditions.
+Example: "Heading to Charminar at 5:30 PM is actually great because the midday heat will have passed. It's about a 20-minute auto ride from your current location. Once you're done, Laad Bazaar is right next door for dinner and a walk."
+NEVER use markdown tables. Use short paragraphs or plain bullet points only if you need to list multiple options.
+
+PART 4 — PROPOSED CHANGES SUMMARY
+End with a clear, scannable summary block. Use exactly this format with emojis:
+
+**Proposed Changes**
+✅ [Short action — e.g. "Move Charminar visit to 5:30 PM today (Day X)"]
+✅ [Short action — e.g. "Shift Salar Jung Museum to Day X morning at 10:00 AM"]
+✅ [If nothing else changes: "No changes to remaining days"]
+💰 Additional cost: ₹[amount or "₹0 — no extra cost"]
+⏱️ Extra travel time: [e.g. "~15 minutes" or "none"]
+
+KEY RULES:
+- NO markdown tables anywhere in the reply
+- Sound like a real person, not a formatted report
+- Use real place names, realistic local timings, and local context for ${trip.destination}
+- If no itinerary changes are needed, say so warmly and explain why
+- Keep the entire reply concise — under 350 words
+
+JSON STRUCTURE (return ONLY raw JSON, no markdown code fences):
 {
-  "scenario": "A concise summary of the disruption/contingency",
-  "backupPlan": "A clear, immediate recommendation of what the user should do next.",
-  "alternatives": [
+  "reply": "[Your 4-part conversational response as described above]",
+  "proposedDays": [
     {
-      "name": "Name of a specific substitute location or activity in/near ${trip.destination}",
-      "why": "Why this is an excellent substitute for what was missed/disrupted",
-      "cost": "Estimated cost in ₹",
-      "how": "How to get there or proceed using ${(trip.transport || ["local transport"]).join("/")}"
+      "dayNumber": 2,
+      "date": "YYYY-MM-DD",
+      "title": "Updated day theme",
+      "activities": [
+        { "time": "Morning",   "description": "Specific activity with practical tip and estimated cost ₹X" },
+        { "time": "Afternoon", "description": "Specific activity with practical tip and estimated cost ₹X" },
+        { "time": "Evening",   "description": "Specific activity with practical tip and estimated cost ₹X" }
+      ]
     }
-  ],
-  "rearrangement": "Detailed step-by-step guidance on how to rearrange the remaining itinerary, timings, or schedule to accommodate this change.",
-  "practicalTip": "A useful, practical local tip or safety tip relevant to this situation in ${trip.destination}."
-}`;
+  ]
+}
+
+CRITICAL: proposedDays must contain ONLY the day(s) that actually need changes. Do NOT include unaffected days. If no changes are needed to the itinerary, return proposedDays as an empty array [].`;
 
     const completion = await callAI({
-      messages: [{ role: "user", content: prompt }],
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...chatMessages.map((m) => ({
+          role: m.role === "user" ? "user" : "assistant",
+          content: m.content || m.text,
+        })),
+      ],
       temperature: 0.7,
       response_format: { type: "json_object" },
     });
 
-    const planBData = JSON.parse(completion.choices[0].message.content);
+    const resultData = JSON.parse(completion.choices[0].message.content);
+    res.json(resultData);
 
-    res.json(planBData);
   } catch (err) {
     console.error("Plan B generation error:", err);
     res.status(500).json({ error: err.message });

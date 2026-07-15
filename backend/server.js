@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 5000;
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({ origin: "*" }));
-app.use(express.json({ limit: "10kb" })); // Prevent large payload attacks
+app.use(express.json({ limit: "2mb" })); // Itinerary payloads can be 15-80KB; 2MB is safe with auth in place
 
 // ─── Rate Limiting ─────────────────────────────────────────────────────────────
 const globalLimiter = rateLimit({
