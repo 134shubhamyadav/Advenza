@@ -17,6 +17,13 @@ import {
   Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/simulator")({ component: PlanBChatPage });
 
@@ -158,11 +165,32 @@ function ProposedChangesCard({
   );
 }
 
+// Helper to calculate the current day number of a trip based on today's date
+const getDefaultSimulatedDay = (trip: TripSummary) => {
+  if (!trip.startDate) return 1;
+  try {
+    const start = new Date(trip.startDate);
+    const today = new Date();
+    start.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    const diffTime = today.getTime() - start.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    if (diffDays >= 1 && diffDays <= (trip.days?.length ?? 1)) {
+      return diffDays;
+    }
+  } catch (e) {
+    console.error("Error calculating default simulated day:", e);
+  }
+  return 1;
+};
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 function PlanBChatPage() {
   const [trips, setTrips] = useState<TripSummary[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<TripSummary | null>(null);
   const [loadingTrips, setLoadingTrips] = useState(true);
+
+  const [simulatedDay, setSimulatedDay] = useState<number>(1);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputVal, setInputVal] = useState("");
@@ -192,6 +220,7 @@ function PlanBChatPage() {
 
   const selectTrip = (trip: TripSummary) => {
     setSelectedTrip(trip);
+    setSimulatedDay(getDefaultSimulatedDay(trip));
     setError("");
     setApplyingMsgId(null);
     setMessages([
@@ -228,7 +257,11 @@ function PlanBChatPage() {
 
       const res = await apiFetch("/api/ai/planb", {
         method: "POST",
-        body: JSON.stringify({ tripId: selectedTrip._id, messages: payload }),
+        body: JSON.stringify({
+          tripId: selectedTrip._id,
+          messages: payload,
+          currentDay: simulatedDay,
+        }),
       });
 
       const aiMsg: Message = {
@@ -381,15 +414,35 @@ function PlanBChatPage() {
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => selectTrip(selectedTrip)}
-                  title="Reset conversation"
-                  className="h-8 w-8 rounded-lg p-0 text-muted-foreground hover:text-foreground"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-muted-foreground hidden sm:inline">Simulated Day:</span>
+                    <Select
+                      value={String(simulatedDay)}
+                      onValueChange={(val) => setSimulatedDay(Number(val))}
+                    >
+                      <SelectTrigger className="w-[85px] h-8 text-xs rounded-lg bg-background/50 border-border/80">
+                        <SelectValue placeholder="Day 1" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectedTrip.days?.map((d) => (
+                          <SelectItem key={d.dayNumber} value={String(d.dayNumber)}>
+                            Day {d.dayNumber}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => selectTrip(selectedTrip)}
+                    title="Reset conversation"
+                    className="h-8 w-8 rounded-lg p-0 text-muted-foreground hover:text-foreground hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               {/* Messages */}

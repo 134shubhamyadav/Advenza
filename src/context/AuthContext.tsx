@@ -1,21 +1,79 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../lib/firebase";
+import { UserProfile } from "../lib/db";
 
 interface AuthContextType {
   user: User | null;
+  profile: UserProfile | null;
   loading: boolean;
+  refreshProfile: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  profile: null,
+  loading: true,
+  refreshProfile: async () => {},
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchProfile = async (currentUser: User) => {
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      const prefRef = doc(db, "userPreferences", currentUser.uid);
+
+      const [userSnap, prefSnap] = await Promise.all([
+        getDoc(userRef),
+        getDoc(prefRef),
+      ]);
+
+      let profileData: UserProfile = {
+        uid: currentUser.uid,
+        email: currentUser.email,
+        displayName: currentUser.displayName,
+        photoURL: currentUser.photoURL,
+      };
+
+      if (userSnap.exists()) {
+        profileData = { ...profileData, ...userSnap.data() };
+      }
+      if (prefSnap.exists()) {
+        profileData = { ...profileData, ...prefSnap.data() };
+      }
+
+      setProfile(profileData);
+    } catch (err) {
+      console.error("Error fetching user profile", err);
+      // Fallback
+      setProfile({
+        uid: currentUser.uid,
+        email: currentUser.email,
+        displayName: currentUser.displayName,
+        photoURL: currentUser.photoURL,
+      });
+    }
+  };
+
+  const refreshProfile = async () => {
+    if (auth.currentUser) {
+      await fetchProfile(auth.currentUser);
+    }
+  };
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        await fetchProfile(currentUser);
+      } else {
+        setProfile(null);
+      }
       setLoading(false);
     });
 
@@ -23,7 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, profile, loading, refreshProfile }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

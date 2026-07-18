@@ -48,6 +48,18 @@ const TripSchema = new mongoose.Schema({
   interests: [String],
   transport: [String],          // user-selected transport modes
   accommodation: String,        // user-selected accommodation type
+  hotelLocation: String,        // user's hotel location or area
+  // Specific travel detail fields
+  travelMode: String,           // primary intercity mode: Flight/Train/Bus/Car/Ferry
+  departureHub: String,         // airport / station / terminal at origin
+  arrivalHub: String,           // airport / station / terminal at destination
+  transitRef: String,           // flight number, train name, etc.
+  departureTime: String,        // user-provided departure time (HH:MM)
+  arrivalTime: String,          // user-provided arrival time (HH:MM)
+  // Accommodation detail fields
+  hotelName: String,            // hotel / stay name
+  checkInTime: String,          // expected check-in time (HH:MM)
+  checkOutTime: String,         // expected check-out time (HH:MM)
   travelers: { type: Number, default: 1 },
   days: [DayPlanSchema],
 

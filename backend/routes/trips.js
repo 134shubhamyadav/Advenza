@@ -4,6 +4,47 @@ import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
+/**
+ * Normalizes any time string to 24-hour HH:mm format.
+ * Handles "2:30 PM" → "14:30", "14:30" → "14:30", "9:15 AM" → "09:15", etc.
+ */
+function normalizeTimeTo24h(timeStr) {
+  if (!timeStr) return "";
+  const cleaned = String(timeStr).trim().toUpperCase();
+
+  // 12-hour AM/PM (e.g. "2:30 PM", "2 PM", "02:30PM")
+  const ampmMatch = cleaned.match(/^(\d{1,2})(?:[:.]?(\d{2}))?\s*(AM|PM)$/);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = ampmMatch[2] ? parseInt(ampmMatch[2], 10) : 0;
+    const ampm = ampmMatch[3];
+    if (ampm === "PM" && h < 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  // 24-hour (e.g. "14:30", "9:15")
+  const h24Match = cleaned.match(/^(\d{1,2})[:.:](\d{2})$/);
+  if (h24Match) {
+    const h = parseInt(h24Match[1], 10);
+    const m = parseInt(h24Match[2], 10);
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59)
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  // 4-digit military (e.g. "1430")
+  if (/^\d{4}$/.test(cleaned)) {
+    const h = parseInt(cleaned.slice(0, 2), 10);
+    const m = parseInt(cleaned.slice(2), 10);
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59)
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  return timeStr; // return as-is if unrecognized
+}
+
+
+
 // Apply auth to all routes
 router.use(verifyToken);
 
@@ -173,7 +214,7 @@ router.put("/:id/itinerary", async (req, res) => {
         date:      d.date      || "",
         title:     d.title     || "",
         activities: (d.activities || []).map((a) => ({
-          time:        a.time        || "",
+          time:        normalizeTimeTo24h(a.time || ""),
           description: a.description || "",
         })),
       }));
@@ -181,17 +222,17 @@ router.put("/:id/itinerary", async (req, res) => {
     // Build the merged days array: proposed days overwrite matching dayNumbers,
     // all other original days are preserved exactly.
     const proposedMap = new Map(
-      sanitiseDays(days).map((d) => [d.dayNumber, d])
+      sanitiseDays(days).map((d) => [Number(d.dayNumber), d])
     );
 
     const mergedDays = trip.days.map((origDay) => {
-      const patch = proposedMap.get(origDay.dayNumber);
+      const patch = proposedMap.get(Number(origDay.dayNumber));
       if (patch) {
         console.log(`[PUT /itinerary] patching Day ${origDay.dayNumber}`);
         return patch;
       }
       return {
-        dayNumber:  origDay.dayNumber,
+        dayNumber:  Number(origDay.dayNumber),
         date:       origDay.date || "",
         title:      origDay.title || "",
         activities: (origDay.activities || []).map((a) => ({
@@ -203,8 +244,10 @@ router.put("/:id/itinerary", async (req, res) => {
 
     console.log(`[PUT /itinerary] merged days count: ${mergedDays.length}`);
 
-    // Replace the days array and save — this fires the pre-save hook (updatedAt)
+    // Replace the days array and save — explicitly marking modified so Mongoose
+    // always detects the nested-array mutation even if Versionless keys are reused.
     trip.days = mergedDays;
+    trip.markModified("days");
     const savedTrip = await trip.save();
 
     console.log(`[PUT /itinerary] ✅ Saved. days count: ${savedTrip.days.length}`);

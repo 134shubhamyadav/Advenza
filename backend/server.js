@@ -3,9 +3,15 @@ import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import dns from "dns";
-dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, ".env") });
+
 dns.setServers(["8.8.8.8"]); // Fix for local network/sandbox SRV lookup failures
 
 const app = express();
@@ -66,4 +72,9 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
+  // Sanity-check required credentials so missing keys surface immediately on startup
+  const required = { GROQ_API_KEY: process.env.GROQ_API_KEY, OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY };
+  for (const [k, v] of Object.entries(required)) {
+    console.log(`🔑 ${k}: ${v ? "✅ loaded (" + v.slice(0, 8) + "...)" : "❌ MISSING — AI features will fail!"}`);
+  }
 });

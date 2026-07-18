@@ -1,13 +1,25 @@
-import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useParams, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { MapPin, Calendar, Users, Plane, Share2, Wallet, Plus } from "lucide-react";
+import { MapPin, Calendar, Users, Plane, Share2, Wallet, Plus, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { inr } from "@/lib/utils";
+import { inr, normalizeTimeTo24h } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/trips/$tripId")({ component: TripDetails });
 
@@ -45,12 +57,34 @@ type Trip = {
   days?: Day[];
   expenses?: Expense[];
   members?: { name: string }[];
+  createdBy?: string;
 };
 
 function TripDetails() {
   const { tripId } = Route.useParams();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteConfirm = async () => {
+    setIsDeleting(true);
+    try {
+      await apiFetch(`/api/trips/${tripId}`, { method: "DELETE" });
+      toast.success("Trip deleted successfully");
+      navigate({ to: "/dashboard" });
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to delete trip");
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+    }
+  };
+
+  const isOwner = user && trip && trip.createdBy === user.uid;
 
   useEffect(() => {
     apiFetch(`/api/trips/${tripId}`)
@@ -135,13 +169,24 @@ function TripDetails() {
                 ) : null}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              {isOwner && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  className="bg-red-500/20 text-red-500 border border-red-500/30 hover:bg-red-500/30 shrink-0"
+                >
+                  <Trash2 className="mr-1.5 h-4 w-4" />
+                  Delete
+                </Button>
+              )}
               <Button variant="secondary" size="sm">
                 <Share2 className="mr-1.5 h-4 w-4" />
                 Share
               </Button>
               <Button size="sm" asChild>
-                <Link to="/itinerary">Open itinerary</Link>
+                <Link to="/itinerary" search={{ tripId: trip._id }}>Open itinerary</Link>
               </Button>
             </div>
           </div>
@@ -233,8 +278,8 @@ function TripDetails() {
                   <ul className="mt-4 space-y-3">
                     {(d.activities ?? []).map((item, idx) => (
                       <li key={idx} className="flex gap-4 rounded-xl glass-tile p-4">
-                        <span className="w-14 shrink-0 text-sm font-semibold text-primary">
-                          {item.time}
+                        <span className="w-20 shrink-0 text-sm font-semibold text-primary whitespace-nowrap">
+                          {normalizeTimeTo24h(item.time)}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="font-medium">{item.description}</p>
@@ -297,6 +342,30 @@ function TripDetails() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={(open) => !open && setIsDeleteDialogOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this trip?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the trip and all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteConfirm();
+              }}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }

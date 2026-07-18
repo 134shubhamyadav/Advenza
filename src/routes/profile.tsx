@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { useAuth } from "../context/AuthContext";
 import { signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,16 +12,47 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { apiFetch } from "@/lib/api";
 import { Award, Globe, Plane, Camera, Moon, Plus } from "lucide-react";
+import { updateUserProfile, uploadProfilePicture } from "../lib/db";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/profile")({ component: Profile });
 
 type Trip = { _id: string; title: string; destination?: string };
 
+const DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239ca3af'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z'/></svg>";
+
 function Profile() {
-  const { user } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const nav = useNavigate();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [tripsLoading, setTripsLoading] = useState(true);
+
+  // Modal State
+  const [isOpen, setIsOpen] = useState(false);
+  const [modalName, setModalName] = useState("");
+  const [modalCity, setModalCity] = useState("");
+  const [modalCurrency, setModalCurrency] = useState("");
+  const [modalPhone, setModalPhone] = useState("");
+  const [modalBio, setModalBio] = useState("");
+  const [previewUrl, setPreviewUrl] = useState(DEFAULT_AVATAR);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  // Inline Form State
+  const [inlineFirstName, setInlineFirstName] = useState("");
+  const [inlineLastName, setInlineLastName] = useState("");
+  const [inlineHomeCity, setInlineHomeCity] = useState("");
+  const [inlineCurrency, setInlineCurrency] = useState("");
+  const [inlinePhone, setInlinePhone] = useState("");
+  const [inlineBio, setInlineBio] = useState("");
+
+  const [saveLoading, setSaveLoading] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -34,6 +65,19 @@ function Profile() {
       .finally(() => setTripsLoading(false));
   }, [user]);
 
+  // Sync profile details to inline inputs when loaded
+  useEffect(() => {
+    if (profile) {
+      const parts = (profile.displayName || "").split(" ");
+      setInlineFirstName(parts[0] || "");
+      setInlineLastName(parts.slice(1).join(" ") || "");
+      setInlineHomeCity(profile.homeCity || "");
+      setInlineCurrency(profile.currency || "");
+      setInlinePhone(profile.phoneNumber || "");
+      setInlineBio(profile.bio || "");
+    }
+  }, [profile]);
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -43,25 +87,71 @@ function Profile() {
     }
   };
 
+  const handleSave = async (updatedData: {
+    displayName?: string;
+    homeCity?: string;
+    currency?: string;
+    phoneNumber?: string;
+    bio?: string;
+    photoURL?: string;
+  }) => {
+    if (!user) return;
+    try {
+      setSaveLoading(true);
+      let finalPhotoURL = updatedData.photoURL;
+
+      if (selectedFile) {
+        finalPhotoURL = await uploadProfilePicture(user.uid, selectedFile);
+      }
+
+      await updateUserProfile(user.uid, {
+        displayName: updatedData.displayName,
+        homeCity: updatedData.homeCity,
+        currency: updatedData.currency,
+        phoneNumber: updatedData.phoneNumber,
+        bio: updatedData.bio,
+        photoURL: finalPhotoURL,
+      });
+
+      await refreshProfile();
+      setSelectedFile(null);
+      toast.success("Profile updated successfully!");
+      setIsOpen(false);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to update profile.");
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
   const uniqueDestinations = new Set(
     trips.map((t) => t.destination?.split(",")[0]).filter(Boolean),
   );
+
+  const displayName = profile?.displayName || user?.displayName || user?.email?.split("@")[0] || "Adventurer";
+  const photoURL = profile?.photoURL || user?.photoURL;
 
   return (
     <AppShell>
       <div className="rounded-3xl glass-panel p-8">
         <div className="flex flex-col items-start gap-6 md:flex-row md:items-center">
           <Avatar className="h-24 w-24 shadow-soft">
-            {user?.photoURL ? (
+            {photoURL ? (
               <img
-                src={user.photoURL}
-                alt={user.displayName || "User"}
+                src={photoURL}
+                alt={displayName}
                 className="h-full w-full rounded-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.src = DEFAULT_AVATAR;
+                }}
               />
             ) : (
-              <AvatarFallback className="bg-primary text-2xl text-primary-foreground">
-                {user?.displayName ? user.displayName.substring(0, 2).toUpperCase() : "ME"}
-              </AvatarFallback>
+              <img
+                src={DEFAULT_AVATAR}
+                alt={displayName}
+                className="h-full w-full rounded-full object-cover"
+              />
             )}
           </Avatar>
           <div className="min-w-0 flex-1">
@@ -71,12 +161,29 @@ function Profile() {
                 : "Aventra member"}
             </p>
             <h1 className="mt-1 font-display text-4xl">
-              {user?.displayName || user?.email?.split("@")[0] || "Adventurer"}
+              {displayName}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">{user?.email}</p>
+            {profile?.bio && (
+              <p className="mt-2 text-sm italic text-muted-foreground max-w-xl">{profile.bio}</p>
+            )}
           </div>
           <div className="flex gap-2 mt-4 md:mt-0">
-            <Button variant="outline">Edit profile</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setModalName(displayName);
+                setModalCity(profile?.homeCity || "");
+                setModalCurrency(profile?.currency || "");
+                setModalPhone(profile?.phoneNumber || "");
+                setModalBio(profile?.bio || "");
+                setPreviewUrl(photoURL || DEFAULT_AVATAR);
+                setSelectedFile(null);
+                setIsOpen(true);
+              }}
+            >
+              Edit profile
+            </Button>
             <Button variant="destructive" onClick={handleLogout}>
               Log out
             </Button>
@@ -116,13 +223,18 @@ function Profile() {
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div>
                   <Label className="text-xs">First name</Label>
-                  <Input className="mt-1.5" defaultValue={user?.displayName?.split(" ")[0] || ""} />
+                  <Input
+                    className="mt-1.5 animate-fade-in"
+                    value={inlineFirstName}
+                    onChange={(e) => setInlineFirstName(e.target.value)}
+                  />
                 </div>
                 <div>
                   <Label className="text-xs">Last name</Label>
                   <Input
-                    className="mt-1.5"
-                    defaultValue={user?.displayName?.split(" ").slice(1).join(" ") || ""}
+                    className="mt-1.5 animate-fade-in"
+                    value={inlineLastName}
+                    onChange={(e) => setInlineLastName(e.target.value)}
                   />
                 </div>
                 <div className="sm:col-span-2">
@@ -131,13 +243,70 @@ function Profile() {
                 </div>
                 <div>
                   <Label className="text-xs">Home city</Label>
-                  <Input className="mt-1.5" placeholder="Enter your city" />
+                  <Input
+                    className="mt-1.5"
+                    placeholder="Enter your city"
+                    value={inlineHomeCity}
+                    onChange={(e) => setInlineHomeCity(e.target.value)}
+                  />
                 </div>
                 <div>
                   <Label className="text-xs">Currency</Label>
-                  <Input className="mt-1.5" defaultValue="INR" />
+                  <Input
+                    className="mt-1.5"
+                    placeholder="Not Set"
+                    value={inlineCurrency}
+                    onChange={(e) => setInlineCurrency(e.target.value)}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs">Phone number (optional)</Label>
+                  <Input
+                    className="mt-1.5"
+                    placeholder="Enter phone number"
+                    value={inlinePhone}
+                    onChange={(e) => setInlinePhone(e.target.value)}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs">Bio (optional)</Label>
+                  <textarea
+                    className="mt-1.5 w-full min-h-[80px] rounded-xl border border-white/60 bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="Tell us about yourself..."
+                    value={inlineBio}
+                    onChange={(e) => setInlineBio(e.target.value)}
+                  />
                 </div>
               </div>
+              <Button
+                onClick={async () => {
+                  const fullName = `${inlineFirstName} ${inlineLastName}`.trim();
+                  if (!fullName) {
+                    toast.error("First name and last name cannot be empty");
+                    return;
+                  }
+                  try {
+                    setSaveLoading(true);
+                    await updateUserProfile(user!.uid, {
+                      displayName: fullName,
+                      homeCity: inlineHomeCity,
+                      currency: inlineCurrency,
+                      phoneNumber: inlinePhone,
+                      bio: inlineBio,
+                    });
+                    await refreshProfile();
+                    toast.success("Preferences updated successfully!");
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to update preferences.");
+                  } finally {
+                    setSaveLoading(false);
+                  }
+                }}
+                disabled={saveLoading}
+                className="mt-6 w-full"
+              >
+                {saveLoading ? "Saving..." : "Save changes"}
+              </Button>
             </div>
             <div className="rounded-2xl glass-panel p-6">
               <h3 className="font-semibold">Travel style</h3>
@@ -209,6 +378,144 @@ function Profile() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="sm:max-w-[480px] rounded-3xl glass-panel border border-white/40 p-6 bg-white/80 backdrop-blur-xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-foreground">Edit Profile</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4 animate-fade-in">
+            {/* Avatar Section */}
+            <div className="flex flex-col items-center gap-4">
+              <Avatar className="h-24 w-24 border border-white/60 shadow-soft">
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Preview" className="h-full w-full rounded-full object-cover" />
+                ) : (
+                  <img src={DEFAULT_AVATAR} alt="Default" className="h-full w-full rounded-full object-cover" />
+                )}
+              </Avatar>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  id="avatar-upload"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setSelectedFile(file);
+                      setPreviewUrl(URL.createObjectURL(file));
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => document.getElementById("avatar-upload")?.click()}
+                >
+                  Change picture
+                </Button>
+                {previewUrl !== DEFAULT_AVATAR && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10 animate-fade-in"
+                    onClick={() => {
+                      setSelectedFile(null);
+                      setPreviewUrl(DEFAULT_AVATAR);
+                    }}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Form Fields */}
+            <div className="grid gap-3">
+              <div>
+                <Label htmlFor="modal-fullname" className="text-xs">Full Name</Label>
+                <Input
+                  id="modal-fullname"
+                  value={modalName}
+                  onChange={(e) => setModalName(e.target.value)}
+                  placeholder="Enter full name"
+                  className="mt-1"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="modal-city" className="text-xs">Home City</Label>
+                  <Input
+                    id="modal-city"
+                    value={modalCity}
+                    onChange={(e) => setModalCity(e.target.value)}
+                    placeholder="Enter city"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-currency" className="text-xs">Currency</Label>
+                  <Input
+                    id="modal-currency"
+                    value={modalCurrency}
+                    onChange={(e) => setModalCurrency(e.target.value)}
+                    placeholder="Not Set"
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="modal-phone" className="text-xs">Phone Number (optional)</Label>
+                <Input
+                  id="modal-phone"
+                  value={modalPhone}
+                  onChange={(e) => setModalPhone(e.target.value)}
+                  placeholder="Enter phone number"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="modal-bio" className="text-xs">Bio (optional)</Label>
+                <textarea
+                  id="modal-bio"
+                  value={modalBio}
+                  onChange={(e) => setModalBio(e.target.value)}
+                  placeholder="Tell us about yourself..."
+                  className="mt-1 w-full min-h-[80px] rounded-xl border border-white/60 bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={saveLoading}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!modalName.trim()) {
+                  toast.error("Full Name cannot be empty");
+                  return;
+                }
+                await handleSave({
+                  displayName: modalName,
+                  homeCity: modalCity,
+                  currency: modalCurrency,
+                  phoneNumber: modalPhone,
+                  bio: modalBio,
+                  photoURL: previewUrl === DEFAULT_AVATAR ? "" : previewUrl,
+                });
+              }}
+              disabled={saveLoading}
+            >
+              {saveLoading ? "Saving..." : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

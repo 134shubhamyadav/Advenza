@@ -13,11 +13,23 @@ import {
   TrendingUp,
   Radar,
   ShieldAlert,
+  Trash2,
 } from "lucide-react";
 import { inr } from "@/lib/utils";
 import { AiBadge } from "@/components/ai/ai-badge";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/dashboard")({ component: Dashboard });
 
@@ -43,6 +55,24 @@ function Dashboard() {
   const { user } = useAuth();
   const [trips, setTrips] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteTripId, setDeleteTripId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTripId) return;
+    setIsDeleting(true);
+    try {
+      await apiFetch(`/api/trips/${deleteTripId}`, { method: "DELETE" });
+      setTrips((prev) => prev.filter((t) => t._id !== deleteTripId));
+      toast.success("Trip deleted successfully");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to delete trip");
+    } finally {
+      setIsDeleting(false);
+      setDeleteTripId(null);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -153,10 +183,25 @@ function Dashboard() {
                     />
                   </div>
                   <div className="p-5">
-                    <p className="text-xs text-muted-foreground">
-                      {t.destination || "Destination"}
-                    </p>
-                    <p className="mt-1 text-xl font-semibold">{t.title}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-muted-foreground">
+                          {t.destination || "Destination"}
+                        </p>
+                        <p className="mt-1 text-xl font-semibold truncate">{t.title}</p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteTripId(t._id);
+                        }}
+                        className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
+                        title="Delete Trip"
+                      >
+                        <Trash2 className="h-4.5 w-4.5" />
+                      </button>
+                    </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {t.days?.length ? `${t.days.length} days` : "—"} · {t.members?.length || 1}{" "}
                       traveler{(t.members?.length || 1) > 1 ? "s" : ""}
@@ -267,6 +312,30 @@ function Dashboard() {
           </Link>
         </div>
       </div>
+
+      <AlertDialog open={deleteTripId !== null} onOpenChange={(open) => !open && setDeleteTripId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this trip?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the trip and all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteConfirm();
+              }}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }

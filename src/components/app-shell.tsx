@@ -59,7 +59,11 @@ export function AppShell({
   actions?: ReactNode;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239ca3af'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z'/></svg>";
+  
+  const displayName = profile?.displayName || user?.displayName || user?.email || "User";
+  const photoURL = profile?.photoURL || user?.photoURL;
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
       {/* ============ Cinematic backdrop ============ */}
@@ -169,20 +173,25 @@ export function AppShell({
                   className="glass-tile flex items-center gap-2 rounded-full pl-1 pr-3 py-1"
                 >
                   <Avatar className="h-8 w-8">
-                    {user?.photoURL ? (
+                    {photoURL ? (
                       <img
-                        src={user.photoURL}
-                        alt={user.displayName || "User"}
+                        src={photoURL}
+                        alt={displayName}
                         className="h-full w-full rounded-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = DEFAULT_AVATAR;
+                        }}
                       />
                     ) : (
-                      <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-primary-foreground text-xs">
-                        {user?.displayName ? user.displayName.substring(0, 2).toUpperCase() : "ME"}
-                      </AvatarFallback>
+                      <img
+                        src={DEFAULT_AVATAR}
+                        alt={displayName}
+                        className="h-full w-full rounded-full object-cover"
+                      />
                     )}
                   </Avatar>
                   <span className="hidden text-sm font-medium sm:inline">
-                    {user?.displayName?.split(" ")[0] || "Profile"}
+                    {displayName.split(" ")[0] || "Profile"}
                   </span>
                 </Link>
               </div>

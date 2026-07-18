@@ -6,13 +6,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, ArrowRight, ArrowLeft } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Check, ArrowRight, ArrowLeft, Plane, Train, Bus, Car, Ship } from "lucide-react";
+import { cn, normalizeTimeTo24h } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
+import { TimePicker } from "@/components/ui/time-picker";
 
 export const Route = createFileRoute("/trips/new")({ component: NewTrip });
 
-const steps = ["Destination", "Dates & travelers", "Budget", "Style", "Preferences", "Review"];
+const steps = [
+  "Destination",
+  "Dates & travelers",
+  "Budget",
+  "Travel details",
+  "Accommodation",
+  "Preferences",
+  "Review",
+];
+
+const MODES = [
+  { id: "Flight", icon: Plane },
+  { id: "Train", icon: Train },
+  { id: "Bus", icon: Bus },
+  { id: "Car", icon: Car },
+  { id: "Ferry", icon: Ship },
+];
 
 function NewTrip() {
   const nav = useNavigate();
@@ -21,27 +38,60 @@ function NewTrip() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ── All fields start empty / unset ─────────────────────────────────────────
+  // ── Step 0: Destination ────────────────────────────────────────────────────
   const [destination, setDestination] = useState("");
+  const [originCity, setOriginCity] = useState("");
+
+  // ── Step 1: Dates & Travelers ──────────────────────────────────────────────
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [travelers, setTravelers] = useState<string>("1");
+
+  // ── Step 2: Budget ─────────────────────────────────────────────────────────
   const [budget, setBudget] = useState<string>("");
+
+  // ── Step 3: Travel Details ─────────────────────────────────────────────────
+  const [travelMode, setTravelMode] = useState("");        // primary intercity mode
+  const [departureHub, setDepartureHub] = useState("");    // airport / station / terminal (origin)
+  const [arrivalHub, setArrivalHub] = useState("");        // airport / station / terminal (destination)
+  const [transitRef, setTransitRef] = useState("");        // flight no / train name
+  const [departureTime, setDepartureTime] = useState(""); // HH:MM
+  const [arrivalTime, setArrivalTime] = useState("");     // HH:MM
+  // Keep legacy multi-select for local transport
+  const [transport, setTransport] = useState<string[]>([]);
+
+  // ── Step 4: Accommodation ──────────────────────────────────────────────────
+  const [accommodation, setAccommodation] = useState("");
+  const [hotelName, setHotelName] = useState("");
+  const [hotelLocation, setHotelLocation] = useState("");
+  const [checkInTime, setCheckInTime] = useState("");
+  const [checkOutTime, setCheckOutTime] = useState("");
+
+  // ── Step 5: Preferences ────────────────────────────────────────────────────
   const [style, setStyle] = useState("");
   const [interests, setInterests] = useState<string[]>([]);
-  const [transport, setTransport] = useState<string[]>([]);
-  const [accommodation, setAccommodation] = useState("");
   const [special, setSpecial] = useState("");
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
   const toggle = (s: string, list: string[], set: (v: string[]) => void) =>
     set(list.includes(s) ? list.filter((x) => x !== s) : [...list, s]);
+
+  const budgetNum = parseInt(budget) || 0;
+  const tripDays = (() => {
+    if (!startDate || !endDate) return 1;
+    const diff = Math.ceil(
+      (new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000,
+    );
+    return Math.max(diff, 1);
+  })();
 
   // ── Per-step validation ────────────────────────────────────────────────────
   const canProceed = () => {
     if (step === 0) return destination.trim().length > 0;
     if (step === 1) return startDate && endDate && endDate >= startDate && parseInt(travelers) >= 1;
     if (step === 2) return budget !== "" && parseInt(budget) >= 0;
-    if (step === 3) return style !== "" && transport.length > 0;
+    if (step === 3) return travelMode !== ""; // primary mode required
+    if (step === 4) return hotelLocation.trim().length > 0; // hotel area required
     return true;
   };
 
@@ -55,24 +105,37 @@ function NewTrip() {
       setLoading(true);
       setError("");
 
-      // apiFetch uses Vite's proxy to reach the backend — no CORS, no hardcoded URLs.
       const tripData = await apiFetch("/api/ai/generate", {
         method: "POST",
         body: JSON.stringify({
           destination,
+          origin: originCity,
           startDate,
           endDate,
           budget: parseInt(budget) || 0,
+          travelers,
+          // Travel detail fields
+          travelMode,
+          departureHub,
+          arrivalHub,
+          transitRef,
+          departureTime,
+          arrivalTime,
+          transport: transport.length > 0 ? transport : [travelMode],
+          // Accommodation detail fields
+          accommodation,
+          hotelName,
+          hotelLocation,
+          checkInTime,
+          checkOutTime,
+          // Preferences
           style,
           interests,
-          accommodation,
-          transport,
           special,
           createdBy: user?.uid || "guest",
         }),
       });
 
-      // Navigate to the real trip page with the MongoDB _id
       nav({ to: `/trips/${tripData._id}` });
     } catch (err: any) {
       console.error("Trip generation error:", err);
@@ -82,15 +145,15 @@ function NewTrip() {
     }
   };
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const budgetNum = parseInt(budget) || 0;
-  const tripDays = (() => {
-    if (!startDate || !endDate) return 1;
-    const diff = Math.ceil(
-      (new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000,
-    );
-    return Math.max(diff, 1);
-  })();
+  // ── Labels for contextual fields ──────────────────────────────────────────
+  const hubLabels: Record<string, { dep: string; arr: string; ref: string }> = {
+    Flight: { dep: "Departure Airport", arr: "Arrival Airport", ref: "Flight Number (optional)" },
+    Train:  { dep: "Boarding Station", arr: "Destination Station", ref: "Train Number / Name (optional)" },
+    Bus:    { dep: "Boarding Point / Terminal", arr: "Drop-off Point / Terminal", ref: "Bus Operator / Route (optional)" },
+    Car:    { dep: "Departure Location", arr: "Arrival Location", ref: "Via Route (optional)" },
+    Ferry:  { dep: "Departure Port", arr: "Arrival Port", ref: "Ferry / Vessel Name (optional)" },
+  };
+  const hubs = travelMode ? hubLabels[travelMode] : null;
 
   return (
     <AppShell title="Plan a new trip" subtitle="A few quick answers and Aventra drafts the rest.">
@@ -131,30 +194,31 @@ function NewTrip() {
             {/* ── Step 0: Destination ── */}
             {step === 0 && (
               <div className="space-y-5">
-                <div>
-                  <Label className="text-xs">Where to</Label>
-                  <Input
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                    className="mt-1.5 h-12 rounded-xl text-base"
-                    placeholder="e.g. Varanasi, India"
-                    autoFocus
-                  />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label className="text-xs">Where from (Home city)</Label>
+                    <Input
+                      value={originCity}
+                      onChange={(e) => setOriginCity(e.target.value)}
+                      className="mt-1.5 h-12 rounded-xl text-base"
+                      placeholder="e.g. Mumbai, Kalyan, Noida…"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Where to</Label>
+                    <Input
+                      value={destination}
+                      onChange={(e) => setDestination(e.target.value)}
+                      className="mt-1.5 h-12 rounded-xl text-base"
+                      placeholder="e.g. Hyderabad, Goa, Jaipur…"
+                      autoFocus
+                    />
+                  </div>
                 </div>
-                {/* Quick-pick chips — clicking sets the field but doesn't pre-fill */}
                 <div>
                   <p className="mb-2 text-xs text-muted-foreground">Popular picks</p>
                   <div className="flex flex-wrap gap-2">
-                    {[
-                      "Ladakh",
-                      "Varanasi",
-                      "Jaipur",
-                      "Kerala",
-                      "Goa",
-                      "Meghalaya",
-                      "Rishikesh",
-                      "Andaman",
-                    ].map((c) => (
+                    {["Ladakh", "Varanasi", "Jaipur", "Kerala", "Goa", "Meghalaya", "Rishikesh", "Andaman"].map((c) => (
                       <button
                         key={c}
                         type="button"
@@ -208,10 +272,7 @@ function NewTrip() {
                     type="number"
                     inputMode="numeric"
                     value={travelers}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setTravelers(v);
-                    }}
+                    onChange={(e) => setTravelers(e.target.value)}
                     onBlur={() => {
                       const n = parseInt(travelers);
                       setTravelers(isNaN(n) || n < 1 ? "1" : String(n));
@@ -228,7 +289,7 @@ function NewTrip() {
               </div>
             )}
 
-            {/* ── Step 2: Budget & Accommodation ── */}
+            {/* ── Step 2: Budget ── */}
             {step === 2 && (
               <div className="space-y-6">
                 <div>
@@ -259,9 +320,151 @@ function NewTrip() {
                     </p>
                   )}
                 </div>
+              </div>
+            )}
 
+            {/* ── Step 3: Travel Details ── */}
+            {step === 3 && (
+              <div className="space-y-6">
+                {/* Primary mode selector */}
                 <div>
-                  <Label className="text-xs">Accommodation preference</Label>
+                  <Label className="text-xs">Primary travel mode to {destination || "destination"}</Label>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {MODES.map(({ id, icon: Icon }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setTravelMode(id)}
+                        className={cn(
+                          "flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
+                          travelMode === id
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background hover:border-primary/40",
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {id}
+                      </button>
+                    ))}
+                  </div>
+                  {!travelMode && (
+                    <p className="mt-2 text-xs text-destructive">Select your primary travel mode to continue.</p>
+                  )}
+                </div>
+
+                {/* Contextual fields */}
+                {hubs && (
+                  <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/30 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {travelMode} details <span className="normal-case font-normal">(all optional — helps the AI plan accurately)</span>
+                    </p>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <Label className="text-xs">{hubs.dep}</Label>
+                        <Input
+                          value={departureHub}
+                          onChange={(e) => setDepartureHub(e.target.value)}
+                          className="mt-1.5 h-10 rounded-xl text-sm"
+                          placeholder={
+                            travelMode === "Flight" ? "e.g. CSMIA, BOM" :
+                            travelMode === "Train" ? "e.g. Kalyan Jn, CSMT" :
+                            travelMode === "Bus" ? "e.g. Borivali Bus Stand" :
+                            travelMode === "Ferry" ? "e.g. Gateway of India" :
+                            "e.g. Home address"
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">{hubs.arr}</Label>
+                        <Input
+                          value={arrivalHub}
+                          onChange={(e) => setArrivalHub(e.target.value)}
+                          className="mt-1.5 h-10 rounded-xl text-sm"
+                          placeholder={
+                            travelMode === "Flight" ? "e.g. RGIA, HYD" :
+                            travelMode === "Train" ? "e.g. Hyderabad Decan" :
+                            travelMode === "Bus" ? "e.g. Majestic Bus Stand" :
+                            travelMode === "Ferry" ? "e.g. Port Blair" :
+                            "e.g. Hotel area"
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs">{hubs.ref}</Label>
+                      <Input
+                        value={transitRef}
+                        onChange={(e) => setTransitRef(e.target.value)}
+                        className="mt-1.5 h-10 rounded-xl text-sm"
+                        placeholder={
+                          travelMode === "Flight" ? "e.g. 6E-2415, AI-635" :
+                          travelMode === "Train" ? "e.g. Shatabdi Express, 12701" :
+                          travelMode === "Bus" ? "e.g. MSRTC, Orange Travels" : "optional"
+                        }
+                      />
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <Label className="text-xs">
+                          {travelMode === "Car" ? "Planned departure time" : "Departure time"}
+                        </Label>
+                        <TimePicker
+                          value={departureTime}
+                          onChange={setDepartureTime}
+                          className="mt-1.5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">
+                          {travelMode === "Car" ? "Expected arrival time" : "Arrival time"}
+                        </Label>
+                        <TimePicker
+                          value={arrivalTime}
+                          onChange={setArrivalTime}
+                          className="mt-1.5"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional local transport for within-destination */}
+                <div>
+                  <Label className="text-xs">
+                    Local transport at destination <span className="text-muted-foreground">(select all you plan to use)</span>
+                  </Label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {["Metro", "Auto Rickshaw", "Cab", "Bus", "Walking", "Rental bike"].map((c) => {
+                      const on = transport.includes(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => toggle(c, transport, setTransport)}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 text-sm transition",
+                            on
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background hover:border-primary/40",
+                          )}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Step 4: Accommodation ── */}
+            {step === 4 && (
+              <div className="space-y-6">
+                <div>
+                  <Label className="text-xs">Accommodation type</Label>
                   <div className="mt-3 grid gap-3 sm:grid-cols-3">
                     {[
                       { id: "Economy", desc: "Hostels & street food" },
@@ -284,11 +487,54 @@ function NewTrip() {
                     ))}
                   </div>
                 </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label className="text-xs">Hotel / Stay name <span className="text-muted-foreground">(optional)</span></Label>
+                    <Input
+                      value={hotelName}
+                      onChange={(e) => setHotelName(e.target.value)}
+                      className="mt-1.5 h-10 rounded-xl text-sm"
+                      placeholder="e.g. Taj Banjara, OYO 12345, Airbnb…"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Hotel area / address <span className="text-destructive">*</span></Label>
+                    <Input
+                      value={hotelLocation}
+                      onChange={(e) => setHotelLocation(e.target.value)}
+                      className="mt-1.5 h-10 rounded-xl text-sm"
+                      placeholder="e.g. Banjara Hills, near Charminar…"
+                    />
+                    {!hotelLocation.trim() && (
+                      <p className="mt-1 text-xs text-destructive">Hotel area is required to plan nearby attractions.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label className="text-xs">Expected check-in time <span className="text-muted-foreground">(optional)</span></Label>
+                    <TimePicker
+                      value={checkInTime}
+                      onChange={setCheckInTime}
+                      className="mt-1.5"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Expected check-out time <span className="text-muted-foreground">(optional)</span></Label>
+                    <TimePicker
+                      value={checkOutTime}
+                      onChange={setCheckOutTime}
+                      className="mt-1.5"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* ── Step 3: Style & Transport ── */}
-            {step === 3 && (
+            {/* ── Step 5: Preferences ── */}
+            {step === 5 && (
               <div className="space-y-6">
                 <div>
                   <Label className="text-xs">Trip pace</Label>
@@ -316,58 +562,16 @@ function NewTrip() {
                     ))}
                   </div>
                 </div>
-                <div>
-                  <Label className="text-xs">
-                    Transportation <span className="text-muted-foreground">(select all that apply)</span>
-                  </Label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {["Flights", "Train", "Rental car", "Ferry", "Walking", "Bus"].map((c) => {
-                      const on = transport.includes(c);
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => toggle(c, transport, setTransport)}
-                          className={cn(
-                            "rounded-full border px-3 py-1.5 text-sm transition",
-                            on
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border bg-background hover:border-primary/40",
-                          )}
-                        >
-                          {c}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {transport.length === 0 && (
-                    <p className="mt-2 text-xs text-destructive">Select at least one transport mode.</p>
-                  )}
-                </div>
-              </div>
-            )}
 
-            {/* ── Step 4: Interests & Special Requests ── */}
-            {step === 4 && (
-              <div className="space-y-5">
                 <div>
                   <Label className="text-xs">
                     Interests <span className="text-muted-foreground">(select any that apply)</span>
                   </Label>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {[
-                      "Food",
-                      "Nature",
-                      "History",
-                      "Nightlife",
-                      "Museums",
-                      "Beaches",
-                      "Hiking",
-                      "Photography",
-                      "Wellness",
-                      "Adventure",
-                      "Shopping",
-                      "Architecture",
+                      "Food", "Nature", "History", "Nightlife", "Museums",
+                      "Beaches", "Hiking", "Photography", "Wellness", "Adventure",
+                      "Shopping", "Architecture",
                     ].map((c) => {
                       const on = interests.includes(c);
                       return (
@@ -388,28 +592,7 @@ function NewTrip() {
                     })}
                   </div>
                 </div>
-                <div>
-                  <Label className="text-xs">
-                    Accommodation <span className="text-muted-foreground">(override if needed)</span>
-                  </Label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {["Hotel", "Boutique", "Villa", "Airbnb", "Hostel"].map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setAccommodation(c)}
-                        className={cn(
-                          "rounded-full border px-3 py-1.5 text-sm transition",
-                          accommodation === c
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background hover:border-primary/40",
-                        )}
-                      >
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+
                 <div>
                   <Label className="text-xs">Anything special?</Label>
                   <Textarea
@@ -422,12 +605,14 @@ function NewTrip() {
               </div>
             )}
 
-            {/* ── Step 5: Review ── */}
-            {step === 5 && (
+            {/* ── Step 6: Review ── */}
+            {step === 6 && (
               <div className="space-y-4">
                 <div className="rounded-2xl glass-tile p-5">
-                  <p className="text-xs text-muted-foreground">Destination</p>
-                  <p className="text-lg font-semibold">{destination}</p>
+                  <p className="text-xs text-muted-foreground">Route</p>
+                  <p className="text-lg font-semibold">
+                    {originCity || "—"} → {destination}
+                  </p>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -435,9 +620,20 @@ function NewTrip() {
                     ["Dates", `${startDate} → ${endDate}`],
                     ["Travelers", `${travelers} ${parseInt(travelers) === 1 ? "person" : "people"}`],
                     ["Budget", budget ? `₹${parseInt(budget).toLocaleString("en-IN")}` : "Not set"],
-                    ["Pace", style || "Not set"],
-                    ["Transport", transport.length ? transport.join(", ") : "Not set"],
+                    ["Travel mode", travelMode || "Not set"],
+                    ...(departureTime || arrivalTime
+                      ? [["Journey times", `${normalizeTimeTo24h(departureTime) || "?"} → ${normalizeTimeTo24h(arrivalTime) || "?"}`]]
+                      : []),
+                    ...(departureHub || arrivalHub
+                      ? [["Hubs", `${departureHub || "?"} → ${arrivalHub || "?"}`]]
+                      : []),
+                    ...(transitRef ? [["Transit ref", transitRef]] : []),
                     ["Accommodation", accommodation || "Not set"],
+                    ...(hotelName ? [["Hotel", hotelName]] : []),
+                    ["Hotel area", hotelLocation || "Not set"],
+                    ...(checkInTime ? [["Check-in", normalizeTimeTo24h(checkInTime)]] : []),
+                    ...(checkOutTime ? [["Check-out", normalizeTimeTo24h(checkOutTime)]] : []),
+                    ["Pace", style || "Not set"],
                     ["Interests", interests.length ? interests.join(", ") : "None selected"],
                   ].map(([k, v]) => (
                     <div key={k} className="rounded-xl glass-tile p-4">
@@ -461,7 +657,7 @@ function NewTrip() {
                 )}
 
                 <p className="text-sm text-muted-foreground">
-                  The AI will strictly follow your selections above to generate your itinerary.
+                  The AI will use your travel details above to create a realistic, fatigue-aware itinerary.
                 </p>
               </div>
             )}
@@ -483,7 +679,7 @@ function NewTrip() {
               </Button>
             ) : (
               <Button onClick={handleDraftTrip} disabled={loading}>
-                {loading ? "✨ AI is drafting your trip..." : "Generate with AI"}
+                {loading ? "✨ AI is planning your trip…" : "Generate with AI"}
                 <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             )}

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "../context/AuthContext";
 import { RequireAuth } from "@/components/require-auth";
+import { Toaster } from "@/components/ui/sonner";
 import {
   Outlet,
   Link,
@@ -141,6 +142,7 @@ function RootComponent() {
         <RequireAuth>
           <Outlet />
         </RequireAuth>
+        <Toaster />
       </AuthProvider>
     </QueryClientProvider>
   );

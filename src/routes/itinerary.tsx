@@ -6,8 +6,27 @@ import { Button } from "@/components/ui/button";
 import { Plane, Hotel, Utensils, MapPin, Camera, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { normalizeTimeTo24h } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-export const Route = createFileRoute("/itinerary")({ component: Itinerary });
+type ItinerarySearchSchema = {
+  tripId?: string;
+};
+
+export const Route = createFileRoute("/itinerary")({
+  validateSearch: (search: Record<string, unknown>): ItinerarySearchSchema => {
+    return {
+      tripId: (search.tripId as string) || undefined,
+    };
+  },
+  component: Itinerary,
+});
 
 const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -24,6 +43,8 @@ type Trip = { _id: string; title: string; destination?: string; days?: Day[] };
 
 function Itinerary() {
   const { user } = useAuth();
+  const { tripId } = Route.useSearch();
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -34,14 +55,32 @@ function Itinerary() {
     }
     apiFetch("/api/trips")
       .then((data: Trip[]) => {
-        const trips = Array.isArray(data) ? data : [];
-        // Use the most recently created trip that has days
-        const withDays = trips.find((t) => t.days && t.days.length > 0) ?? trips[0] ?? null;
-        setTrip(withDays);
+        const list = Array.isArray(data) ? data : [];
+        setTrips(list);
+        
+        let selected = null;
+        if (tripId) {
+          selected = list.find((t) => t._id === tripId);
+        }
+        if (!selected) {
+          // Default to the most recently created trip that has days
+          selected = list.find((t) => t.days && t.days.length > 0) ?? list[0] ?? null;
+        }
+        setTrip(selected);
       })
       .catch(() => setTrip(null))
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, tripId]);
+
+  const handleSelectTrip = (id: string) => {
+    const selected = trips.find((t) => t._id === id) || null;
+    setTrip(selected);
+    if (selected) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tripId", id);
+      window.history.pushState({}, "", url.pathname + url.search);
+    }
+  };
 
   const days = trip?.days ?? [];
   const totalActivities = days.reduce((a, d) => a + (d.activities?.length ?? 0), 0);
@@ -60,6 +99,25 @@ function Itinerary() {
           : trip
             ? `${trip.destination ?? trip.title} · ${days.length} day${days.length !== 1 ? "s" : ""} · ${totalActivities} activities`
             : "No itinerary yet"
+      }
+      actions={
+        trips.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Select Trip:</span>
+            <Select value={trip?._id || ""} onValueChange={handleSelectTrip}>
+              <SelectTrigger className="w-[200px] bg-white/50 backdrop-blur-sm border-white/60">
+                <SelectValue placeholder="Choose a trip" />
+              </SelectTrigger>
+              <SelectContent>
+                {trips.map((t) => (
+                  <SelectItem key={t._id} value={t._id}>
+                    {t.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )
       }
     >
       {loading ? (
@@ -102,8 +160,8 @@ function Itinerary() {
                     const Icon = item.type && icons[item.type] ? icons[item.type] : MapPin;
                     return (
                       <div key={idx} className="flex gap-4 rounded-xl px-3 py-3 hover:bg-muted/50">
-                        <div className="w-14 shrink-0 text-sm font-semibold text-primary">
-                          {item.time}
+                        <div className="w-20 shrink-0 text-sm font-semibold text-primary whitespace-nowrap">
+                          {normalizeTimeTo24h(item.time)}
                         </div>
                         <div className="relative shrink-0">
                           <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/8 text-primary">
