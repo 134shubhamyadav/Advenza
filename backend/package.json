@@ -1,7 +1,7 @@
 {
-  "name": "aventra-backend",
+  "name": "Advenza-backend",
   "version": "1.0.0",
-  "description": "Backend for Aventra trip planning app",
+  "description": "Backend for Advenza trip planning app",
   "main": "server.js",
   "type": "module",
   "scripts": {

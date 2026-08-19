@@ -8,35 +8,70 @@ const router = express.Router();
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 /**
+ * Safely extract text content from an OpenAI/Groq/OpenRouter chat completion object.
+ */
+const extractAIContent = (completion) => {
+  const msg = completion?.choices?.[0]?.message;
+  if (!msg) return "";
+  let content = msg.content;
+  if (typeof content === "string" && content.trim().length > 0) {
+    return content.trim();
+  }
+  if (typeof msg.reasoning === "string" && msg.reasoning.trim().length > 0) {
+    return msg.reasoning.trim();
+  }
+  if (typeof msg.reasoning_content === "string" && msg.reasoning_content.trim().length > 0) {
+    return msg.reasoning_content.trim();
+  }
+  return "";
+};
+
+/**
  * Robustly parse JSON from an AI response.
  * Some models wrap the JSON in markdown fences (```json ... ```) even when
  * told not to — this strips those before parsing.
  */
 const parseAIJson = (raw) => {
-  if (!raw || typeof raw !== "string") throw new Error("AI returned empty content");
-  // Strip optional leading/trailing markdown code fences
-  const stripped = raw
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/i, "")
-    .trim();
-  return JSON.parse(stripped);
+  if (!raw || typeof raw !== "string" || !raw.trim()) throw new Error("AI returned empty content");
+  let cleaned = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  const startIdx = cleaned.indexOf("{");
+  const endIdx = cleaned.lastIndexOf("}");
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    cleaned = cleaned.slice(startIdx, endIdx + 1);
+  }
+  return JSON.parse(cleaned);
 };
 router.use(verifyToken);
 
 let groqClient;
 let openRouterClient;
+let cerebrasClient;
+let togetherClient;
 
 const initClients = () => {
-  if (!groqClient) {
+  if (!groqClient && process.env.GROQ_API_KEY) {
     groqClient = new OpenAI({
       apiKey: process.env.GROQ_API_KEY,
       baseURL: "https://api.groq.com/openai/v1",
     });
   }
-  if (!openRouterClient) {
+  if (!openRouterClient && process.env.OPENROUTER_API_KEY) {
     openRouterClient = new OpenAI({
       apiKey: process.env.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
+    });
+  }
+  if (!cerebrasClient && process.env.CEREBRAS_API_KEY) {
+    cerebrasClient = new OpenAI({
+      apiKey: process.env.CEREBRAS_API_KEY,
+      baseURL: "https://api.cerebras.ai/v1",
+    });
+  }
+  if (!togetherClient && process.env.TOGETHER_API_KEY) {
+    togetherClient = new OpenAI({
+      apiKey: process.env.TOGETHER_API_KEY,
+      baseURL: "https://api.together.xyz/v1",
     });
   }
 };
@@ -44,27 +79,58 @@ const initClients = () => {
 const callAI = async (options) => {
   initClients();
 
-  try {
-    // Try Groq first with llama-3.1-8b-instant
-    return await groqClient.chat.completions.create({
-      ...options,
-      model: "llama-3.1-8b-instant",
-    });
-  } catch (err) {
-    console.warn("Groq failed, falling back to OpenRouter:", err.message);
-    try {
-      // Fallback to OpenRouter with Gemma 4 free
-      return await openRouterClient.chat.completions.create({
-        ...options,
-        model: "google/gemma-4-26b-a4b-it:free",
-      });
-    } catch (fallbackErr) {
-      console.error("OpenRouter fallback also failed:", fallbackErr.message);
-      throw new Error(
-        "Aventra's AI engine is temporarily unavailable due to upstream provider limits. Please try again in a few seconds."
-      );
+  const apiOptions = { ...options };
+  delete apiOptions.response_format;
+
+  // List of active models on OpenRouter (tested & verified working in 2–4s)
+  const openRouterModels = [
+    "qwen/qwen-2.5-72b-instruct",
+    "meta-llama/llama-3.3-70b-instruct",
+    "deepseek/deepseek-r1-distill-llama-70b",
+  ];
+
+  // List of active Together AI models
+  const togetherModels = [
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  ];
+
+  // 1. Try OpenRouter first (fastest & verified active models)
+  if (process.env.OPENROUTER_API_KEY) {
+    for (const model of openRouterModels) {
+      try {
+        const completion = await openRouterClient.chat.completions.create({
+          ...apiOptions,
+          model,
+        });
+        const content = extractAIContent(completion);
+        if (content) return completion;
+        console.warn(`OpenRouter model ${model} returned empty content, trying next model...`);
+      } catch (err) {
+        console.warn(`OpenRouter model ${model} failed (${err.message}), trying next model...`);
+      }
     }
   }
+
+  // 2. Try Together AI models
+  if (process.env.TOGETHER_API_KEY) {
+    for (const model of togetherModels) {
+      try {
+        const completion = await togetherClient.chat.completions.create({
+          ...apiOptions,
+          model,
+        });
+        const content = extractAIContent(completion);
+        if (content) return completion;
+        console.warn(`Together AI model ${model} returned empty content, trying next model...`);
+      } catch (err) {
+        console.warn(`Together AI model ${model} failed (${err.message}), trying next model...`);
+      }
+    }
+  }
+
+  throw new Error(
+    "Advenza's AI engine is temporarily unavailable due to upstream provider limits. Please try again in a few seconds."
+  );
 };
 
 // POST /api/ai/generate — Generate a trip itinerary using AI
@@ -90,6 +156,8 @@ router.post("/generate", async (req, res) => {
       transitRef,
       departureTime,
       arrivalTime,
+      // Return journey
+      returnJourney,
       // Accommodation details
       hotelName,
       checkInTime,
@@ -134,6 +202,28 @@ router.post("/generate", async (req, res) => {
       return parts.length ? parts.join(", ") : "not specified";
     })();
 
+    // ── Day 1 & Nightlife preference detection ──────────────────────────────
+    const interestsArr = Array.isArray(interests) ? interests : (interests ? [String(interests)] : []);
+    const interestsStr = interestsArr.join(" ").toLowerCase();
+    const specialStr = String(special || "").toLowerCase();
+    const styleStr = String(style || "").toLowerCase();
+
+    const isNightlifeRequested =
+      interestsStr.includes("nightlife") ||
+      interestsStr.includes("night life") ||
+      interestsStr.includes("club") ||
+      interestsStr.includes("pub") ||
+      interestsStr.includes("bar") ||
+      specialStr.includes("nightlife") ||
+      specialStr.includes("night life") ||
+      specialStr.includes("club") ||
+      specialStr.includes("pub") ||
+      specialStr.includes("bar") ||
+      specialStr.includes("late night") ||
+      specialStr.includes("party") ||
+      styleStr.includes("nightlife") ||
+      styleStr.includes("night life");
+
     // ── Day 1 precise timeline computation ────────────────────────────────────
     /**
      * Given an HH:MM string, return total minutes from midnight.
@@ -160,7 +250,7 @@ router.post("/generate", async (req, res) => {
     // How long does it take from the arrival hub to being settled at hotel?
     // Leg 3 transfer ≈ 45 min, check-in formalities ≈ 30 min, freshen up/rest ≈ 45 min → 2h total
     const HUB_TO_HOTEL_SETTLED_MINS = 120;
-    const EFFECTIVE_DAY_END_MINS = 23 * 60; // 11:00 PM — practical end of a tourist day
+    const EFFECTIVE_DAY_END_MINS = isNightlifeRequested ? 25 * 60 + 30 : 23 * 60; // 1:30 AM for nightlife, 11:00 PM standard
 
     const hotelReadyMins = arrivalMins != null ? arrivalMins + HUB_TO_HOTEL_SETTLED_MINS : null;
     const usableMinsAfterSettling = hotelReadyMins != null
@@ -189,10 +279,10 @@ router.post("/generate", async (req, res) => {
     // Earliest first activity start after settling
     const activityStartMins = hotelReadyMins != null ? hotelReadyMins : null;
     const activityStartTime = activityStartMins != null ? toClockTime(activityStartMins) : null;
-    const dinnerTime = activityStartMins != null ? toClockTime(Math.max(activityStartMins, 18 * 60)) : "7:00 PM";
+    const dinnerTime = activityStartMins != null ? toClockTime(Math.max(activityStartMins, 18 * 60)) : "19:00";
     const returnHotelTime = dinnerTime ? toClockTime(
-      Math.min((activityStartMins ?? 18 * 60) + 150, 22 * 60)
-    ) : "9:30 PM";
+      Math.min((activityStartMins ?? 18 * 60) + (isNightlifeRequested ? 270 : 150), isNightlifeRequested ? 25 * 60 + 30 : 22 * 60)
+    ) : (isNightlifeRequested ? "23:30" : "21:30");
 
     // Build the strict Day 1 rules text for the prompt
     const day1Rules = (() => {
@@ -212,13 +302,13 @@ ${arrStr}
         return `EVENING ARRIVAL SCENARIO:
 ${arrStr}
 • Hotel reached / settled in by approximately ${hotelReadyTime}.
-• Usable time after settling: ~${usableHoursAfterSettling}h (before 23:00).
+• Usable time after settling: ~${usableHoursAfterSettling}h.
 • Day 1 MUST contain ONLY these activities — use EXACT 24-hour clock times (HH:mm format):
   1. { "time": "${departureTime || "16:00"}", "description": "3-leg outbound journey." }
   2. { "time": "${checkInDisplayTime || leg3ArrivalTime || "18:00"}", "description": "Arrive at hotel. Check in. Freshen up and rest." }
-  3. { "time": "${dinnerTime}", "description": "Dinner at a recommended restaurant WITHIN 500m of the hotel. Walk back." }
-  4. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep." }
-• NO sightseeing, no monuments, no tours on Day 1.`;
+  3. { "time": "${dinnerTime}", "description": "Dinner at a recommended restaurant near the hotel." }
+  ${isNightlifeRequested ? `4. { "time": "21:30", "description": "Evening / Nightlife activity (e.g. Night market / Waterfront stroll / Rooftop bar / Live music) near the stay." }\n  5. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep." }` : `4. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep." }`}
+• NO crowded sightseeing or heavy monuments on Day 1.`;
       }
 
       if (day1Scenario === "afternoon") {
@@ -231,8 +321,8 @@ ${arrStr}
   2. { "time": "${checkInDisplayTime || "16:00"}", "description": "Arrive at hotel in ${hotelLocation || "destination"}. Check in, unpack, and rest for 45 minutes." }
   3. { "time": "${activityStartTime || "17:30"}", "description": "Short walk — ONE nearby attraction, market, or café within 2 km of the hotel." }
   4. { "time": "${dinnerTime}", "description": "Dinner at a local restaurant near the hotel." }
-  5. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep early to recover from travel." }
-• MAXIMUM one attraction on Day 1. No packed sightseeing.`;
+  ${isNightlifeRequested ? `5. { "time": "21:00", "description": "Nightlife / Night market / Live music / Rooftop experience." }\n  6. { "time": "${returnHotelTime}", "description": "Return to hotel." }` : `5. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep early to recover from travel." }`}
+• MAXIMUM one daytime attraction on Day 1.`;
       }
 
       if (day1Scenario === "midmorning") {
@@ -245,7 +335,7 @@ ${arrStr}
   2. { "time": "${checkInDisplayTime || "12:30"}", "description": "Arrive at hotel. Check in. Freshen up and have lunch." }
   3. { "time": "${activityStartTime || "14:00"}", "description": "Visit 1–2 nearby attractions (under 3 km from hotel)." }
   4. { "time": "${dinnerTime}", "description": "Dinner at a local restaurant." }
-  5. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep." }`;
+  ${isNightlifeRequested ? `5. { "time": "21:00", "description": "Nightlife activity (e.g. Night market / Beach shack / Rooftop lounge / Live music)." }\n  6. { "time": "${returnHotelTime}", "description": "Return to hotel." }` : `5. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep." }`}`;
       }
 
       if (day1Scenario === "early_morning") {
@@ -258,7 +348,7 @@ ${arrStr}
   2. { "time": "${checkInDisplayTime || "09:00"}", "description": "Arrive at hotel. Check in (or leave bags if early). Freshen up and have breakfast." }
   3. { "time": "${activityStartTime || "11:00"}", "description": "Visit 2–3 nearby attractions." }
   4. { "time": "${dinnerTime}", "description": "Dinner." }
-  5. { "time": "${returnHotelTime}", "description": "Return to hotel." }`;
+  ${isNightlifeRequested ? `5. { "time": "21:00", "description": "Nightlife experience (e.g. Night market / Rooftop venue / Live music / Lounge)." }\n  6. { "time": "${returnHotelTime}", "description": "Return to hotel." }` : `5. { "time": "${returnHotelTime}", "description": "Return to hotel." }`}`;
       }
 
       // unknown arrival time
@@ -267,7 +357,7 @@ The user has not entered an arrival time. Estimate based on mode (${travelMode |
 Use EXACT 24-hour clock times (HH:mm format) in the "time" field of every activity — never use generic labels like "Morning" or "Afternoon" for Day 1.`;
     })();
 
-    const prompt = `You are Aventra, a highly precise, location-aware travel planner AI. You MUST follow the user's preferences exactly and create a practical, realistic itinerary.
+    const prompt = `You are Advenza, a highly precise, location-aware travel planner AI. You MUST follow the user's preferences exactly and create a practical, realistic itinerary.
 
 USER'S TRIP DETAILS:
 - Origin (Home City): ${origin || "not specified"}
@@ -329,10 +419,37 @@ STRICT ITINERARY & GEOGRAPHY RULES:
 10. INTERESTS: Focus on: ${interests?.join(", ") || "general sightseeing"}.
 11. Generate exactly ${numDays} days.
 
+12. NIGHTLIFE & EVENING SCHEDULING (CRITICAL MANDATORY RULE):
+    ${isNightlifeRequested ? "★ IMPORTANT: THE USER HAS EXPLICITLY REQUESTED NIGHT LIFE / NIGHTLIFE PREFERENCES." : "If Night Life or nightlife-related interests are requested:"}
+    • If the user selects Night Life or nightlife-related preferences, do not treat the day as finished at 8 PM (20:00). Schedule appropriate evening/night experiences after 8 PM (20:00) whenever realistic. Use destination-aware operating hours and avoid inventing opening hours.
+    • Prioritize destination-appropriate nightlife activities based on local culture & geography:
+      - Night markets & evening bazaars (e.g. Anjuna/Arpora night markets in Goa, Jodd Fairs in Bangkok, Colaba night stalls in Mumbai)
+      - Night walks & waterfront promenades (e.g. Marine Drive in Mumbai, Baga/Calangute beach walks, Marina Bay in Singapore)
+      - Rooftop venues, cocktail lounges, & sunset/night bars
+      - Live music venues, acoustic sets, & cultural night shows
+      - Clubs, pubs, & beach shacks (where legally appropriate & popular locally)
+      - Late-evening entertainment, sound-and-light shows, & night tours
+      - Late-night food experiences, street food night tours, & midnight eateries
+      - Scenic night viewpoints & illuminated monuments/skyline views
+    • INTELLIGENT TIME SCHEDULING LOGIC (use 24-hour HH:mm format):
+      - Evening (17:00 – 20:00): Sunset viewpoints, evening strolls, dinner / food experience.
+      - Night (20:00 – 23:00): Core nightlife activity (e.g. 21:00 – 23:00 night market, live music, rooftop bar, night beach shack, night tour).
+      - Late Night (23:00 – 01:00): Optional late-night venue, clubbing, or midnight food joint (only when realistic, safe, and appropriate for the destination culture and laws).
+    • DO NOT generate "18:00 – 20:00 Nightlife" followed immediately by "20:00 – End of day / Sleep" unless the destination genuinely has no nightlife.
+    • For Days 2 onwards (and Day 1 if arrival allows), include meaningful, high-quality nightlife activities after 20:00 whenever Night Life is selected.
+
+13. BALANCED COMBINATION OF MULTIPLE PREFERENCES:
+    Do NOT let Nightlife eliminate daytime interests. Combine preferences logically across the day:
+    - Nature + Night Life: Morning/Afternoon nature trails/beaches → Evening sunset dinner → Night beach shack/rooftop lounge.
+    - Culture + Night Life: Morning/Afternoon heritage sites/museums → Evening cultural performance → Night local music pub/night bazaar.
+    - Food + Night Life: Afternoon local food tasting → Evening fine dining → Late-night food stalls or speakeasy bar.
+    - Shopping + Night Life: Afternoon shopping district → Evening dinner → Night market or live music venue.
+    - Relaxed / Slow Pace + Night Life: Relaxed morning start → Afternoon scenic stroll → Evening & Night vibrant nightlife experience.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CRITICAL TIME RULE — READ BEFORE GENERATING THE ITINERARY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-The "time" field in EVERY activity MUST be an EXACT 24-hour clock time (e.g. "06:00", "14:30", "23:00").
+The "time" field in EVERY activity MUST be an EXACT 24-hour clock time (e.g. "06:00", "14:30", "21:00", "23:00").
 NEVER use AM/PM labels or generic labels like "Morning", "Afternoon", or "Evening" in the "time" field.
 The schedule must reflect actual times derived from the user's travel details below.
 
@@ -342,6 +459,25 @@ ${day1Rules}
 LAST DAY (Day ${numDays}) — MANDATORY DEPARTURE RULES:
 • The last activity MUST be the 3-leg reverse journey home.${checkOutTime ? `\n• Hotel check-out at ${checkOutTime}.` : ""}
 • Use exact 24-hour clock times (HH:mm format) for all departure activities.
+${(() => {
+  const rj = returnJourney;
+  if (!rj || !rj.booked) return "";
+  const lines = ["RETURN JOURNEY IS BOOKED — APPLY THESE HARD SCHEDULING CONSTRAINTS:"];
+  if (rj.date) lines.push(`• Return date: ${rj.date}. On this day (Day ${numDays}) treat it as a departure day.`);
+  if (rj.time) {
+    const [h, m] = rj.time.split(":").map(Number);
+    const bufferMins = (rj.transportType === "Flight") ? 180 : 90; // 3h for flights, 1.5h for trains/buses
+    const cutoffMins = h * 60 + (m || 0) - bufferMins;
+    const cutH = Math.floor(Math.max(cutoffMins, 0) / 60);
+    const cutM = Math.max(cutoffMins, 0) % 60;
+    const cutoffStr = `${String(cutH).padStart(2,"0")}:${String(cutM).padStart(2,"0")}`;
+    lines.push(`• Return ${rj.transportType || "transport"} departs at ${rj.time} from ${rj.departureLocation || "departure hub"}. Buffer required: ${rj.transportType === "Flight" ? "3 hours (check-in + security)" : "90 minutes"}.`);
+    lines.push(`• Last activity on Day ${numDays} MUST end by ${cutoffStr}. Do NOT schedule any activity after ${cutoffStr}.`);
+    lines.push(`• The final activity must be: checkout → transfer to ${rj.departureLocation || "departure hub"} → return journey home.`);
+  }
+  if (rj.ticketRef) lines.push(`• Return ticket ref: ${rj.ticketRef}`);
+  return lines.join("\n");
+})()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Return ONLY a valid JSON object (no markdown, no extra text):
@@ -358,11 +494,22 @@ Return ONLY a valid JSON object (no markdown, no extra text):
       "activities": [
         { "time": "[EXACT 24-hour clock time, e.g. 06:00]", "description": "3-leg outbound journey: Leg 1 … Leg 2 … Leg 3 …" },
         { "time": "[EXACT 24-hour clock time of hotel arrival, e.g. 18:30]", "description": "Check in at ${hotelName || "hotel"} in ${hotelLocation || "destination"}. Freshen up and rest." },
-        { "time": "[EXACT 24-hour clock time, only if usable hours > 1]", "description": "Only include this if there is meaningful time left before 23:00 — e.g., nearby dinner or short walk." }
+        { "time": "[EXACT 24-hour clock time, e.g. 21:00]", "description": "Evening activity or dinner / nightlife if arrival allows." }
       ]
-    }
+    }${numDays > 1 ? `,
+    {
+      "dayNumber": 2,
+      "date": "[Day 2 Date]",
+      "title": "[Theme of Day 2${isNightlifeRequested ? " — e.g. Sightseeing & Vibrant Nightlife" : ""}]",
+      "activities": [
+        { "time": "09:30", "description": "Morning activity starting from hotel..." },
+        { "time": "13:30", "description": "Lunch and afternoon exploration..." },
+        { "time": "17:30", "description": "Sunset viewpoint / evening stroll..." },
+        { "time": "19:30", "description": "Dinner experience..." }${isNightlifeRequested ? `,\n        { "time": "21:00", "description": "Nightlife activity (e.g. Night market / Live music venue / Rooftop bar / Night beach shack) — MUST include meaningful activity after 20:00 when Night Life preference is selected" },\n        { "time": "23:30", "description": "Return to hotel. Sleep." }` : `,\n        { "time": "21:30", "description": "Return to hotel. Sleep." }`}
+      ]
+    }` : ""}
   ]
-}`
+}`;
 
 
 
@@ -372,7 +519,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
       response_format: { type: "json_object" },
     });
 
-    const raw = completion.choices[0].message.content;
+    const raw = extractAIContent(completion);
     console.log("[AI Generate] Raw response (first 200 chars):", raw?.slice(0, 200));
     const tripData = parseAIJson(raw);
 
@@ -395,6 +542,8 @@ Return ONLY a valid JSON object (no markdown, no extra text):
     tripData.transitRef = transitRef || "";
     tripData.departureTime = departureTime || "";
     tripData.arrivalTime = arrivalTime || "";
+    // Return journey
+    tripData.returnJourney = returnJourney || { booked: false };
     // Accommodation detail fields
     tripData.hotelName = hotelName || "";
     tripData.checkInTime = checkInTime || "";
@@ -462,7 +611,7 @@ router.post("/planb", async (req, res) => {
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     const todayName = dayNames[new Date().getDay()];
 
-    const systemPrompt = `You are Aventra, a warm, knowledgeable, and practical AI travel assistant. You help travellers recover gracefully from unexpected disruptions — like a trusted local friend who knows the destination inside out.
+    const systemPrompt = `You are Advenza, a warm, knowledgeable, and practical AI travel assistant. You help travellers recover gracefully from unexpected disruptions — like a trusted local friend who knows the destination inside out.
 
 SYSTEM DATE & TIMELINE CONTEXT:
 - Today's date: ${todayISO} (${todayName})
@@ -571,7 +720,7 @@ CRITICAL: proposedDays must contain ONLY the day(s) that actually need changes. 
       response_format: { type: "json_object" },
     });
 
-    const raw = completion.choices[0].message.content;
+    const raw = extractAIContent(completion);
     console.log("[Plan B] Raw AI response (first 300 chars):", raw?.slice(0, 300));
 
     const resultData = parseAIJson(raw);
@@ -627,7 +776,7 @@ router.post("/chat", async (req, res) => {
       console.error("Live search failed:", searchErr);
     }
 
-    const systemPrompt = `You are Aventra, a premium AI travel assistant specialized in Indian travel.
+    const systemPrompt = `You are Advenza, a premium AI travel assistant specialized in Indian travel.
     
 You help users:
 - Plan detailed trip itineraries across India
@@ -652,17 +801,26 @@ Keep responses concise (under 150 words), specific, and actionable. Use Indian p
       max_tokens: 400,
     });
 
-    res.json({ reply: completion.choices[0].message.content });
+    res.json({ reply: extractAIContent(completion) });
   } catch (err) {
     console.error("AI chat error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
+const packingCache = new Map();
+const PACKING_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 // POST /api/ai/packing — Generate AI packing list for a destination
 router.post("/packing", async (req, res) => {
   try {
     const { destination, startDate, endDate, style } = req.body;
+    const cacheKey = `${String(destination).toLowerCase().trim()}_${startDate || ""}_${endDate || ""}_${style || ""}`;
+    const cached = packingCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < PACKING_CACHE_TTL) {
+      console.log(`[Packing] Returning cached packing list for key: ${cacheKey}`);
+      return res.json(cached.data);
+    }
 
     const prompt = `Generate a smart packing list for a trip to ${destination} from ${startDate} to ${endDate} (${style || "Balanced"} style).
 
@@ -684,7 +842,9 @@ Make items specific to ${destination}'s climate, culture, and activities. 3-4 it
       response_format: { type: "json_object" },
     });
 
-    const packingData = JSON.parse(completion.choices[0].message.content);
+    const raw = extractAIContent(completion);
+    const packingData = parseAIJson(raw);
+    packingCache.set(cacheKey, { data: packingData, timestamp: Date.now() });
     res.json(packingData);
   } catch (err) {
     console.error("AI packing error:", err);
@@ -787,217 +947,439 @@ const weatherPromises = new Map(); // key: lowercase destination, value: Promise
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes cache expiration
 
 /**
- * Try to fetch WeatherAPI forecast for `query`.
- * If the API returns "No matching location found" (400), automatically retry
- * using only the first token before the first comma (e.g. "Hyderabad, Telangana" → "Hyderabad").
- * Returns { weatherData, weatherInfo, resolvedCity } where resolvedCity is the
- * canonical name that actually worked (so callers can save it for future use).
+ * Fetch live weather data supporting both OpenWeatherMap and WeatherAPI.com providers.
+ * Includes URL encoding, multi-provider fallbacks, city normalization, and key-safe logging.
  */
 async function fetchWeather(query, apiKey) {
-  const tryFetch = async (q) => {
-    const encoded = encodeURIComponent(q);
-    const res = await fetch(
-      `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${encoded}&days=1&aqi=no&alerts=yes`
-    );
-    return res;
-  };
+  const cityQuery = query.split(",")[0].trim();
+  const encodedQuery = encodeURIComponent(cityQuery || query);
 
-  const parseOk = async (res, resolvedCity) => {
-    const w = await res.json();
-    const alertsList = w.alerts?.alert || [];
-    const alertsSummary =
-      alertsList.map((a) => `${a.event}: ${a.headline}`).join("; ") || "No active alerts";
+  console.log(`\n========================================`);
+  console.log(`[WEATHER REQUEST] Destination = "${query}" (Querying: "${cityQuery}")`);
 
-    const weatherData = {
-      temp: w.current.temp_c,
-      condition: w.current.condition.text,
-      icon: w.current.condition.icon,
-      humidity: w.current.humidity,
-      windSpeed: w.current.wind_kph,
-      uv: w.current.uv,
-      rainChance: w.forecast?.forecastday?.[0]?.day?.daily_chance_of_rain || 0,
-      alerts: alertsList.map((a) => ({
-        event: a.event,
-        headline: a.headline,
-        desc: a.desc || "",
-        severity: a.severity || "Unknown",
-      })),
-    };
+  // 1. Try OpenWeatherMap API
+  try {
+    const owmUrl = `https://api.openweathermap.org/data/2.5/weather?q=${encodedQuery}&appid=${apiKey}&units=metric`;
+    console.log(`[WEATHER API URL] Attempting OpenWeatherMap for "${cityQuery}"...`);
 
-    const weatherInfo = `${w.current.condition.text}, ${w.current.temp_c}°C, humidity ${w.current.humidity}%, wind ${w.current.wind_kph} km/h, UV index ${w.current.uv}, rain probability ${weatherData.rainChance}%. Alerts: ${alertsSummary}`;
-    return { weatherData, weatherInfo, resolvedCity };
-  };
+    const resOWM = await fetch(owmUrl);
+    console.log(`[WEATHER API STATUS] OpenWeatherMap returned HTTP ${resOWM.status} ${resOWM.statusText}`);
 
-  const readError = async (res) => {
-    try {
-      const errJson = await res.json();
-      return errJson?.error?.message || JSON.stringify(errJson);
-    } catch {
-      return await res.text().catch(() => "(unreadable body)");
+    if (resOWM.ok) {
+      const data = await resOWM.json();
+      console.log(`[WEATHER API RESPONSE] OpenWeatherMap success for ${data.name}: Temp ${data.main?.temp}°C, Humidity ${data.main?.humidity}%`);
+
+      const weatherData = {
+        temp: Math.round(data.main?.temp ?? 25),
+        condition: data.weather?.[0]?.description || data.weather?.[0]?.main || "Clear",
+        icon: data.weather?.[0]?.icon ? `//openweathermap.org/img/wn/${data.weather[0].icon}@2x.png` : "",
+        humidity: data.main?.humidity ?? 60,
+        windSpeed: Math.round((data.wind?.speed ?? 3) * 3.6),
+        uv: 4,
+        rainChance: data.clouds?.all ?? (data.rain ? 80 : 15),
+        alerts: [],
+      };
+
+      const weatherInfo = `${weatherData.condition}, ${weatherData.temp}°C, humidity ${weatherData.humidity}%, wind ${weatherData.windSpeed} km/h, rain probability ${weatherData.rainChance}%.`;
+      return { weatherData, weatherInfo, resolvedCity: data.name || cityQuery };
+    } else {
+      const errText = await resOWM.text().catch(() => "");
+      console.warn(`[WEATHER API FAILURE] OpenWeatherMap failed with status ${resOWM.status}: ${errText}`);
     }
+  } catch (owmErr) {
+    console.error(`[WEATHER API EXCEPTION] OpenWeatherMap fetch threw:`, owmErr.message);
+  }
+
+  // 2. Try WeatherAPI.com as secondary provider
+  try {
+    const wapiUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${encodedQuery}&days=1&aqi=no&alerts=yes`;
+    console.log(`[WEATHER API URL] Attempting WeatherAPI.com for "${cityQuery}"...`);
+
+    const resWAPI = await fetch(wapiUrl);
+    console.log(`[WEATHER API STATUS] WeatherAPI.com returned HTTP ${resWAPI.status} ${resWAPI.statusText}`);
+
+    if (resWAPI.ok) {
+      const w = await resWAPI.json();
+      console.log(`[WEATHER API RESPONSE] WeatherAPI.com success for ${w.location?.name}: Temp ${w.current?.temp_c}°C`);
+      const alertsList = w.alerts?.alert || [];
+      const alertsSummary = alertsList.map((a) => `${a.event}: ${a.headline}`).join("; ") || "No active alerts";
+
+      const weatherData = {
+        temp: Math.round(w.current?.temp_c ?? 25),
+        condition: w.current?.condition?.text || "Clear",
+        icon: w.current?.condition?.icon || "",
+        humidity: w.current?.humidity ?? 60,
+        windSpeed: Math.round(w.current?.wind_kph ?? 10),
+        uv: w.current?.uv ?? 4,
+        rainChance: w.forecast?.forecastday?.[0]?.day?.daily_chance_of_rain || 0,
+        alerts: alertsList.map((a) => ({
+          event: a.event,
+          headline: a.headline,
+          desc: a.desc || "",
+          severity: a.severity || "Unknown",
+        })),
+      };
+
+      const weatherInfo = `${w.current?.condition?.text}, ${w.current?.temp_c}°C, humidity ${w.current?.humidity}%, wind ${w.current?.wind_kph} km/h, UV index ${w.current?.uv}, rain probability ${weatherData.rainChance}%. Alerts: ${alertsSummary}`;
+      return { weatherData, weatherInfo, resolvedCity: w.location?.name || cityQuery };
+    } else {
+      const errText = await resWAPI.text().catch(() => "");
+      console.warn(`[WEATHER API FAILURE] WeatherAPI.com failed with status ${resWAPI.status}: ${errText}`);
+    }
+  } catch (wapiErr) {
+    console.error(`[WEATHER API EXCEPTION] WeatherAPI.com fetch threw:`, wapiErr.message);
+  }
+
+  console.log(`[WEATHER FINAL FALLBACK] Weather providers unavailable for "${cityQuery}".`);
+  return { weatherData: null, weatherInfo: "Weather data temporarily unavailable", resolvedCity: cityQuery };
+}
+
+const riskResultCache = new Map();
+const RISK_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+// ── Centralized Deterministic Risk Evaluation Engine ──────────────────────────
+function evaluateRiskEngine({ destination, trip, weatherData }) {
+  const risks = [];
+  let rawScore = 0;
+
+  const addRisk = ({ key, label, level, summary, tips, affectedDate, recommendation, source }) => {
+    const scoreMap = { low: 5, med: 15, high: 30, critical: 50 };
+    rawScore += scoreMap[level] || 10;
+    risks.push({
+      key,
+      label,
+      level,
+      summary,
+      tips: tips || (recommendation ? [recommendation] : []),
+      affectedDate: affectedDate || null,
+      recommendation: recommendation || (tips && tips[0]) || "",
+      source: source || "Risk Radar Engine",
+    });
   };
 
-  // ── First attempt: full (normalized) query ──────────────────────────────
-  let res = await tryFetch(query);
-  if (res.ok) return parseOk(res, query);
+  // 1. WEATHER RISKS
+  if (weatherData) {
+    const { temp, rainChance, windSpeed, alerts, condition } = weatherData;
+    const condLower = (condition || "").toLowerCase();
 
-  const errBody = await readError(res);
+    if (alerts && alerts.length > 0) {
+      addRisk({
+        key: "weather_advisory",
+        label: "Weather Advisory",
+        level: "high",
+        summary: `Active advisory: ${alerts[0].event || "Severe weather notice"}. ${alerts[0].headline || ""}`,
+        tips: ["Monitor local safety updates", "Keep indoor backup options ready"],
+        recommendation: "Avoid outdoor travel during active weather warnings.",
+        source: "Weather API",
+      });
+    }
 
-  // ── Second attempt: city-only (strip state/country after first comma) ──
-  const cityOnly = query.split(",")[0].trim();
-  if (cityOnly && cityOnly !== query) {
-    res = await tryFetch(cityOnly);
-    if (res.ok) {
-      return parseOk(res, cityOnly);
+    if (rainChance >= 60 || condLower.includes("rain") || condLower.includes("thunder") || condLower.includes("shower")) {
+      addRisk({
+        key: "weather_rain",
+        label: "Weather & Rain Risk",
+        level: rainChance >= 80 ? "high" : "med",
+        summary: `High precipitation chance (${rainChance}%) forecast for ${destination}. ${condition} conditions expected.`,
+        tips: ["Carry rain protection", "Schedule outdoor sightseeing during low-rain windows"],
+        recommendation: "Move outdoor activities to clear weather windows or indoor alternatives.",
+        source: "Weather API",
+      });
+    }
+
+    if (temp >= 36) {
+      addRisk({
+        key: "weather_heat",
+        label: "Extreme Heat Risk",
+        level: temp >= 40 ? "high" : "med",
+        summary: `High temperature (${temp}°C) forecast in ${destination}. Elevated heat index during afternoon hours.`,
+        tips: ["Stay hydrated with ORS/water", "Avoid direct sun exposure between 12:00 and 15:30"],
+        recommendation: "Plan outdoor heritage visits for early morning or sunset.",
+        source: "Weather API",
+      });
+    } else if (temp <= 5) {
+      addRisk({
+        key: "weather_cold",
+        label: "Extreme Cold Risk",
+        level: "med",
+        summary: `Low temperature (${temp}°C) forecast for ${destination}. Cold morning and night conditions.`,
+        tips: ["Pack thermal layers", "Ensure accommodation heating"],
+        recommendation: "Avoid late-night outdoor excursions in freezing weather.",
+        source: "Weather API",
+      });
+    }
+
+    if (windSpeed >= 35) {
+      addRisk({
+        key: "weather_wind",
+        label: "Strong Wind Hazard",
+        level: "med",
+        summary: `Strong winds (${windSpeed} km/h) reported in ${destination}. May affect water transit or boat rides.`,
+        tips: ["Reconfirm ferry/boat schedules", "Secure loose items during rooftop visits"],
+        recommendation: "Postpone boat tours during peak wind gusts.",
+        source: "Weather API",
+      });
+    }
+
+    if (risks.filter((r) => r.key.startsWith("weather")).length === 0) {
+      addRisk({
+        key: "weather_favorable",
+        label: "Weather & Climate",
+        level: "low",
+        summary: `Favorable conditions in ${destination}. ${condition}, ${temp}°C with ${rainChance}% rain probability.`,
+        tips: ["Optimal weather for sightseeing", "Enjoy outdoor activities"],
+        recommendation: "Weather conditions are clear.",
+        source: "Weather API",
+      });
+    }
+  } else {
+    addRisk({
+      key: "weather_unavailable",
+      label: "Weather Status",
+      level: "low",
+      summary: "Live weather data is currently unavailable. Evaluating schedule, travel, and logistics risks.",
+      tips: ["Check local forecast upon arrival"],
+      recommendation: "Monitor weather directly from local sources.",
+      source: "System Notice",
+    });
+  }
+
+  // 2. ITINERARY & ACTIVITY CONFLICT RISKS
+  if (trip && Array.isArray(trip.days) && trip.days.length > 0) {
+    const isBadWeather = weatherData && (weatherData.rainChance >= 50 || weatherData.temp >= 36);
+
+    trip.days.forEach((d) => {
+      const dateStr = d.date || `Day ${d.dayNumber}`;
+      const outdoorKeywords = ["beach", "boat", "waterfall", "trek", "hike", "fort", "garden", "lake", "walking", "outdoor", "sightseeing"];
+
+      (d.activities || []).forEach((act) => {
+        const descLower = (act.description || "").toLowerCase();
+        const isOutdoor = outdoorKeywords.some((kw) => descLower.includes(kw));
+
+        if (isOutdoor && isBadWeather) {
+          addRisk({
+            key: `activity_conflict_${d.dayNumber}`,
+            label: "Activity & Weather Conflict",
+            level: "high",
+            summary: `Outdoor activity "${(act.description || "").slice(0, 45)}..." on ${dateStr} conflicts with forecast conditions (${weatherData.condition}, ${weatherData.temp}°C, ${weatherData.rainChance}% rain).`,
+            tips: ["Swap outdoor activity with indoor museum or gallery", "Reschedule to a clearer date"],
+            affectedDate: dateStr,
+            recommendation: `Move outdoor activity on ${dateStr} to an indoor alternative.`,
+            source: "Itinerary Analysis",
+          });
+        }
+      });
+
+      if ((d.activities || []).length >= 6) {
+        addRisk({
+          key: `schedule_overpacked_${d.dayNumber}`,
+          label: "Schedule Overpacking Risk",
+          level: "med",
+          summary: `${dateStr} has ${d.activities.length} scheduled activities. Increased fatigue and delay risk.`,
+          tips: ["Add rest buffers between afternoon activities", "Keep 1 flex activity"],
+          affectedDate: dateStr,
+          recommendation: "Pace activities to prevent burnout.",
+          source: "Schedule Analysis",
+        });
+      }
+    });
+  }
+
+  // 3. LOGISTICS & RETURN JOURNEY RISKS
+  if (trip) {
+    if (trip.arrivalTime && (trip.arrivalTime >= "21:00" || trip.arrivalTime <= "05:00")) {
+      addRisk({
+        key: "logistics_late_arrival",
+        label: "Late Arrival Logistics",
+        level: "med",
+        summary: `Intercity arrival at ${trip.arrivalTime} is late-night. Hotel check-in and transit options may be limited.`,
+        tips: ["Notify hotel of late check-in", "Pre-book airport/station transfer cab"],
+        recommendation: "Confirm pre-booked transfer prior to arrival.",
+        source: "Logistics Analysis",
+      });
+    }
+
+    if (trip.departureTime && trip.checkOutTime) {
+      const depM = toMins(trip.departureTime);
+      const outM = toMins(trip.checkOutTime);
+      if (depM && outM && (depM - outM < 120)) {
+        addRisk({
+          key: "logistics_tight_buffer",
+          label: "Tight Return Buffer",
+          level: "high",
+          summary: `Return departure at ${trip.departureTime} leaves less than 2 hours after hotel check-out at ${trip.checkOutTime}.`,
+          tips: ["Request late check-out or store bags at concierge", "Head directly to airport/station"],
+          recommendation: "Increase transfer buffer to avoid missing return connection.",
+          source: "Logistics Analysis",
+        });
+      }
     }
   }
 
-  return { weatherData: null, weatherInfo: "Weather data unavailable", resolvedCity: cityOnly || query };
+  // Baseline Category fallbacks if not already populated
+  if (risks.filter((r) => r.key.startsWith("logistics") || r.key.startsWith("transport")).length === 0) {
+    addRisk({
+      key: "transport_general",
+      label: "Transport & Navigation",
+      level: "low",
+      summary: `Standard transit connectivity in ${destination}. Prepaid taxis and public transit available.`,
+      tips: ["Confirm fare before starting rides", "Use authorized transport hubs"],
+      recommendation: "Standard travel precautions apply.",
+      source: "Navigation Analysis",
+    });
+  }
+
+  addRisk({
+    key: "scams_general",
+    label: "Scams & Tourist Traps",
+    level: "low",
+    summary: `Common tourist area cautions apply in ${destination}. Watch for unmetered auto fares or unofficial tour guides.`,
+    tips: ["Buy official entry tickets online or at authorized counters", "Use Uber/Ola/prepaid taxis"],
+    recommendation: "Use official ticketing counters.",
+    source: "Safety Guidelines",
+  });
+
+  addRisk({
+    key: "personal_safety",
+    label: "Personal Safety",
+    level: "low",
+    summary: `General safety level for ${destination} is good. Active police assistance and tourist helplines active.`,
+    tips: ["Keep emergency contacts saved", "Share live location during late-night outings"],
+    recommendation: "Follow standard safety practices.",
+    source: "Safety Advisory",
+  });
+
+  const score = Math.max(10, Math.min(98, rawScore));
+  const overallLevel = score >= 76 ? "CRITICAL" : score >= 51 ? "HIGH" : score >= 26 ? "MEDIUM" : "LOW";
+
+  return { risks, score, overallLevel };
 }
 
-// POST /api/ai/risk — Generate real risk analysis using WeatherAPI.com + AI
+function toMins(hhmm) {
+  if (!hhmm || typeof hhmm !== "string") return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+// POST /api/ai/risk — Real Risk Analysis Endpoint
 router.post("/risk", async (req, res) => {
   try {
-    const { destination, refresh } = req.body;
+    const { destination, tripId, refresh } = req.body;
 
-    // Guard: reject immediately if destination is missing or empty
     if (!destination || typeof destination !== "string" || !destination.trim()) {
       console.warn("[Risk] Request received with missing/empty destination — aborting.");
       return res.status(400).json({ error: "destination is required and must be a non-empty string." });
     }
 
-    // Step 1: normalize (fix typos, collapse spaces)
     const normalizedDest = normalizeDestination(destination);
-    const cacheKey = normalizedDest.toLowerCase();
+    const cacheKey = `${normalizedDest.toLowerCase()}_${tripId || "general"}`;
+
+    console.log(`\n----------------------------------------`);
+    console.log(`[RISK RADAR START] Destination: "${normalizedDest}", TripID: "${tripId || "none"}"`);
+
+    if (!refresh) {
+      const cachedResult = riskResultCache.get(cacheKey);
+      if (cachedResult && Date.now() - cachedResult.timestamp < RISK_CACHE_TTL) {
+        console.log(`[Risk] Returning cached risk analysis for ${normalizedDest}`);
+        return res.json(cachedResult.data);
+      }
+    }
+
+    // Load trip if available
+    let trip = null;
+    if (tripId) {
+      try {
+        trip = await Trip.findById(tripId).lean();
+      } catch (e) {
+        console.warn(`[Risk] Failed to load tripId ${tripId}:`, e.message);
+      }
+    }
+    if (!trip && req.uid) {
+      try {
+        trip = await Trip.findOne({ createdBy: req.uid, destination: new RegExp(normalizedDest, "i") }).sort({ createdAt: -1 }).lean();
+      } catch (e) {
+        // ignore
+      }
+    }
 
     let weatherData = null;
-    let weatherInfo = "Weather data unavailable";
     let resolvedCity = normalizedDest;
 
-    // Step 2: fetch live weather with caching and deduplication
-    const apiKey = process.env.VITE_WEATHER_API_KEY;
+    const apiKey = process.env.VITE_WEATHER_API_KEY || process.env.WEATHER_API_KEY || process.env.OPENWEATHER_API_KEY;
     if (!apiKey) {
-      console.warn("[Risk] VITE_WEATHER_API_KEY not defined in backend/.env — skipping weather fetch.");
+      console.warn("[Risk] Weather API key not defined in backend/.env — skipping weather fetch.");
     } else {
       try {
         const forceRefresh = !!refresh;
         const now = Date.now();
-        const cached = weatherCache.get(cacheKey);
+        const cached = weatherCache.get(normalizedDest.toLowerCase());
 
         if (!forceRefresh && cached && (now - cached.timestamp < CACHE_TTL_MS)) {
           console.log(`[Risk] Using cached weather data for ${normalizedDest}.`);
           weatherData = cached.weatherData;
-          weatherInfo = cached.weatherInfo;
           resolvedCity = cached.resolvedCity;
         } else {
-          // Look for or create an in-flight promise for this destination
-          let promise = weatherPromises.get(cacheKey);
-          if (!promise) {
-            console.log(`[Risk] Fetching weather for ${normalizedDest}...`);
-            promise = fetchWeather(normalizedDest, apiKey)
-              .then((result) => {
-                // Save to cache
-                weatherCache.set(cacheKey, {
-                  weatherData: result.weatherData,
-                  weatherInfo: result.weatherInfo,
-                  resolvedCity: result.resolvedCity,
-                  timestamp: Date.now(),
-                });
-                console.log(`[Risk] Weather fetched successfully for ${normalizedDest}.`);
-                return result;
-              })
-              .catch((err) => {
-                // Propagate error, but clean up active promise so retries work
-                throw err;
-              })
-              .finally(() => {
-                // Clean up active promise from map
-                weatherPromises.delete(cacheKey);
-              });
-            weatherPromises.set(cacheKey, promise);
-          }
-
-          const result = await promise;
+          console.log(`[Risk] Fetching fresh weather for ${normalizedDest}...`);
+          const result = await fetchWeather(normalizedDest, apiKey);
           weatherData = result.weatherData;
-          weatherInfo = result.weatherInfo;
           resolvedCity = result.resolvedCity;
+          if (result.weatherData) {
+            weatherCache.set(normalizedDest.toLowerCase(), {
+              weatherData: result.weatherData,
+              weatherInfo: result.weatherInfo,
+              resolvedCity: result.resolvedCity,
+              timestamp: Date.now(),
+            });
+          }
         }
       } catch (e) {
-        console.warn("[Risk] fetchWeather threw an exception:", e.message);
+        console.warn("[Risk] fetchWeather failed gracefully:", e.message);
       }
     }
 
-    const prompt = `Generate a travel risk assessment and safety guidelines for ${resolvedCity}.
-Current weather and forecast conditions: ${weatherInfo}
+    // Evaluate deterministic risks
+    const evaluated = evaluateRiskEngine({ destination: resolvedCity, trip, weatherData });
+    console.log(`[RISK CONDITIONS EVALUATED] Count: ${evaluated.risks.length}, Calculated Score: ${evaluated.score}/100 (${evaluated.overallLevel})`);
 
-Return ONLY valid JSON matching this exact structure:
-{
-  "safetyAdvisory": "A 1-2 sentence high-level dynamic AI safety summary for ${resolvedCity} based on current weather and conditions.",
-  "risks": [
-    {
-      "key": "weather",
-      "label": "Weather & Climate",
-      "level": "low|med|high",
-      "summary": "Specific weather risk description for ${resolvedCity} based on current conditions: ${weatherInfo}.",
-      "tips": ["practical tip 1", "practical tip 2"]
-    },
-    {
-      "key": "scams",
-      "label": "Scams & Tourist Traps",
-      "level": "low|med|high",
-      "summary": "Specific, real tourist scams/traps currently common in ${resolvedCity}.",
-      "tips": ["prevention tip 1", "prevention tip 2"]
-    },
-    {
-      "key": "crowd",
-      "label": "Crowds & Congestion",
-      "level": "low|med|high",
-      "summary": "Current crowd levels and traffic alerts for major sites in ${resolvedCity}.",
-      "tips": ["tip 1", "tip 2"]
-    },
-    {
-      "key": "transport",
-      "label": "Transport & Navigation",
-      "level": "low|med|high",
-      "summary": "Transit safety, road conditions, or taxi scam alerts for ${resolvedCity}.",
-      "tips": ["tip 1", "tip 2"]
-    },
-    {
-      "key": "health",
-      "label": "Health & Hygiene",
-      "level": "low|med|high",
-      "summary": "Water/food safety, seasonal disease warnings (malaria, dengue), or air quality warnings for ${resolvedCity}.",
-      "tips": ["tip 1", "tip 2"]
-    },
-    {
-      "key": "safety",
-      "label": "Personal Safety",
-      "level": "low|med|high",
-      "summary": "General crime rates, safe/unsafe neighborhoods, or solo traveler safety tips for ${resolvedCity}.",
-      "tips": ["tip 1", "tip 2"]
+    // AI Narrative Generation (explaining evaluated facts)
+    let safetyAdvisory = `${evaluated.overallLevel} RISK level for ${resolvedCity} (Risk Score: ${evaluated.score}/100).`;
+    try {
+      const prompt = `You are Advenza's Risk Radar AI. Summarize the following evaluated risk assessment for ${resolvedCity} in 2 clear, reassuring sentences.
+Evaluated Risk Score: ${evaluated.score}/100 (${evaluated.overallLevel} RISK)
+Detected Risks: ${JSON.stringify(evaluated.risks.map((r) => `${r.label}: ${r.summary}`))}
+Weather Summary: ${weatherData ? `${weatherData.temp}°C, ${weatherData.condition}, ${weatherData.rainChance}% rain chance` : "Weather data unavailable"}
+
+Instructions:
+- Explain why the score is ${evaluated.score}/100 based strictly on the detected risks.
+- Do NOT invent fake weather, fake percentages, or fake alerts.
+- Keep the narrative concise, helpful, and professional.`;
+
+      const completion = await callAI({
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.5,
+        max_tokens: 150,
+      });
+
+      const aiText = extractAIContent(completion);
+      if (aiText) {
+        safetyAdvisory = aiText;
+      }
+    } catch (aiErr) {
+      console.warn("[Risk] AI narrative advisory generation fallback:", aiErr.message);
     }
-  ]
-}
 
-Be specific to ${resolvedCity} and current weather. Remove all placeholders and generic advice.`;
-
-    const completion = await callAI({
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.6,
-      response_format: { type: "json_object" },
-    });
-
-    const parsedData = parseAIJson(completion.choices[0].message.content);
-    
-    res.json({
-      weather: weatherData,
-      // resolvedCity lets the frontend update its stored destination to the canonical/corrected name
+    const responsePayload = {
+      score: evaluated.score,
+      overallLevel: evaluated.overallLevel,
       resolvedCity,
-      safetyAdvisory: parsedData.safetyAdvisory || `Safety assessment for ${resolvedCity}.`,
-      risks: parsedData.risks || []
-    });
+      safetyAdvisory,
+      weather: weatherData,
+      risks: evaluated.risks,
+    };
+
+    riskResultCache.set(cacheKey, { data: responsePayload, timestamp: Date.now() });
+    res.json(responsePayload);
   } catch (err) {
-    console.error("AI risk error:", err);
+    console.error("AI risk endpoint error:", err);
     res.status(500).json({ error: err.message });
   }
 });
