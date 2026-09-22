@@ -40,7 +40,7 @@ app.use(globalLimiter);
 app.use("/api/ai", aiLimiter);
 
 // ─── MongoDB ───────────────────────────────────────────────────────────────────
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/aventra";
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/Advenza";
 
 mongoose
   .connect(MONGODB_URI)
@@ -51,7 +51,7 @@ mongoose
 app.get("/", (req, res) =>
   res.json({
     status: "ok",
-    service: "Aventra API",
+    service: "Advenza API",
     version: "1.0.0",
     db: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   }),
@@ -60,9 +60,11 @@ app.get("/", (req, res) =>
 // ─── Routes ────────────────────────────────────────────────────────────────────
 import tripRoutes from "./routes/trips.js";
 import aiRoutes from "./routes/ai.js";
+import commanderRoutes from "./routes/commander.js";
 
 app.use("/api/trips", tripRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/commander", commanderRoutes);
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
@@ -73,7 +75,11 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   // Sanity-check required credentials so missing keys surface immediately on startup
-  const required = { GROQ_API_KEY: process.env.GROQ_API_KEY, OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY };
+  const required = {
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY,
+  };
   for (const [k, v] of Object.entries(required)) {
     console.log(`🔑 ${k}: ${v ? "✅ loaded (" + v.slice(0, 8) + "...)" : "❌ MISSING — AI features will fail!"}`);
   }

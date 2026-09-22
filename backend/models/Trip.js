@@ -60,6 +60,15 @@ const TripSchema = new mongoose.Schema({
   hotelName: String,            // hotel / stay name
   checkInTime: String,          // expected check-in time (HH:MM)
   checkOutTime: String,         // expected check-out time (HH:MM)
+  // Return journey details
+  returnJourney: {
+    booked: { type: Boolean, default: false },
+    date: String,               // YYYY-MM-DD
+    time: String,               // HH:MM departure time for return
+    departureLocation: String,  // airport / station at destination
+    transportType: String,      // Flight / Train / Bus / Car / Ferry / Other
+    ticketRef: String,          // optional ticket / flight number
+  },
   travelers: { type: Number, default: 1 },
   days: [DayPlanSchema],
 
@@ -77,9 +86,12 @@ const TripSchema = new mongoose.Schema({
   // Metadata
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
-  createdBy: { type: String, required: true },
+  createdBy: { type: String, required: true, index: true },
   healthScore: { type: Number, default: 87 },
 });
+
+// Compound index for querying user trips ordered by date
+TripSchema.index({ createdBy: 1, createdAt: -1 });
 
 // Auto-update updatedAt on save
 TripSchema.pre("save", function (next) {

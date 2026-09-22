@@ -1,4 +1,4 @@
-# ✈️ Aventra
+# ✈️ Advenza
 
 > **Plan beyond the map.** 
 > An AI travel companion that designs trips as thoughtfully as you would, with real budgets, gentle pacing, and the quiet corners guidebooks miss.

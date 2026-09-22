@@ -1,9 +1,8 @@
 import admin from "firebase-admin";
 
-// Initialize Firebase Admin with project credentials
-// NOTE FOR DEVELOPER: You need to set FIREBASE_SERVICE_ACCOUNT_JSON in backend/.env
-// Get it from: Firebase Console → Project Settings → Service Accounts → Generate new private key
-// Then copy the entire JSON file content as a one-line JSON string into the env variable.
+// Firebase Admin SDK — verifies Firebase ID tokens issued by the frontend.
+// FIREBASE_SERVICE_ACCOUNT_JSON must be the full service account JSON as a single-line string.
+// Project: advenzaa7 (must match the projectId used in frontend/src/lib/firebase.ts)
 
 let adminInitialized = false;
 
@@ -13,17 +12,17 @@ const initAdmin = () => {
   try {
     if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      // Ensure newlines in the private key are real newlines, not escaped \n
       if (serviceAccount.private_key) {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
       }
       admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+      console.log(`🔐 Firebase Admin initialized for project: ${serviceAccount.project_id}`);
     } else {
-      // Fallback: initialize with application default credentials or skip
-      // This allows the server to run without auth enforcement during local dev
       console.warn(
         "⚠️  FIREBASE_SERVICE_ACCOUNT_JSON not set. Auth middleware will run in BYPASS mode.",
       );
-      admin.initializeApp({ projectId: "aventra-2fd33" });
+      admin.initializeApp({ projectId: "advenzaa7" });
     }
     adminInitialized = true;
   } catch (e) {
@@ -51,6 +50,8 @@ export const verifyToken = async (req, res, next) => {
     req.uid = decoded.uid;
     next();
   } catch (err) {
+    // Log the exact Firebase error for easier debugging
+    console.error("Token verification failed:", err.code, err.message);
     return res.status(403).json({ error: "Forbidden: Invalid or expired token." });
   }
 };

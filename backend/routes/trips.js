@@ -45,14 +45,36 @@ function normalizeTimeTo24h(timeStr) {
 
 
 
+const DEFAULT_VOTE_OPTIONS = [
+  { name: "Sightseeing & Cultural Landmarks", votes: 0, voters: [] },
+  { name: "Relaxed Beach & Local Food Tour", votes: 0, voters: [] },
+  { name: "Vibrant Nightlife & Evening Experiences", votes: 0, voters: [] },
+  { name: "Nature, Hiking & Outdoor Adventure", votes: 0, voters: [] },
+];
+
+const ensureVoteOptions = (trip) => {
+  if (!trip.voteOptions || trip.voteOptions.length === 0) {
+    trip.voteOptions = DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] }));
+  }
+};
+
 // Apply auth to all routes
 router.use(verifyToken);
 
 // GET /api/trips — all trips for the authenticated user
 router.get("/", async (req, res) => {
   try {
-    const trips = await Trip.find({ createdBy: req.uid }).sort({ createdAt: -1 });
-    res.json(trips);
+    const trips = await Trip.find({ createdBy: req.uid }).sort({ createdAt: -1 }).lean();
+    const result = trips.map((trip) => {
+      if (!trip.voteOptions || trip.voteOptions.length === 0) {
+        return {
+          ...trip,
+          voteOptions: DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] })),
+        };
+      }
+      return trip;
+    });
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -61,8 +83,11 @@ router.get("/", async (req, res) => {
 // GET /api/trips/:id — specific trip
 router.get("/:id", async (req, res) => {
   try {
-    const trip = await Trip.findById(req.params.id);
+    const trip = await Trip.findById(req.params.id).lean();
     if (!trip) return res.status(404).json({ error: "Trip not found" });
+    if (!trip.voteOptions || trip.voteOptions.length === 0) {
+      trip.voteOptions = DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] }));
+    }
     res.json(trip);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -72,7 +97,14 @@ router.get("/:id", async (req, res) => {
 // POST /api/trips — create trip (used internally by /api/ai/generate)
 router.post("/", async (req, res) => {
   try {
-    const tripData = { ...req.body, createdBy: req.uid || req.body.createdBy || "guest" };
+    const tripData = {
+      ...req.body,
+      createdBy: req.uid || req.body.createdBy || "guest",
+      voteOptions:
+        req.body.voteOptions && req.body.voteOptions.length > 0
+          ? req.body.voteOptions
+          : DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] })),
+    };
     const newTrip = new Trip(tripData);
     const savedTrip = await newTrip.save();
     res.status(201).json(savedTrip);
@@ -160,23 +192,62 @@ router.post("/:id/members", async (req, res) => {
 router.post("/:id/vote", async (req, res) => {
   try {
     const { optionName, uid } = req.body;
+    if (!optionName) return res.status(400).json({ error: "optionName is required" });
+
     const voterId = uid || req.uid;
+    if (!voterId) return res.status(401).json({ error: "User ID is required to vote" });
+
     const trip = await Trip.findById(req.params.id);
     if (!trip) return res.status(404).json({ error: "Trip not found" });
 
+    ensureVoteOptions(trip);
+
     // Remove user's existing vote from all options
     trip.voteOptions.forEach((o) => {
-      o.voters = o.voters.filter((v) => v !== voterId);
+      o.voters = (o.voters || []).filter((v) => String(v) !== String(voterId));
       o.votes = o.voters.length;
     });
 
-    // Add vote to specified option
-    const option = trip.voteOptions.find((o) => o.name === optionName);
-    if (option) {
-      option.voters.push(voterId);
-      option.votes = option.voters.length;
+    // Add vote to specified option (or create if missing)
+    let option = trip.voteOptions.find((o) => o.name === optionName);
+    if (!option) {
+      trip.voteOptions.push({ name: optionName, votes: 0, voters: [] });
+      option = trip.voteOptions[trip.voteOptions.length - 1];
     }
 
+    if (!option.voters.map(String).includes(String(voterId))) {
+      option.voters.push(String(voterId));
+    }
+
+    // Recalculate votes counts
+    trip.voteOptions.forEach((o) => {
+      o.votes = o.voters.length;
+    });
+
+    await trip.save();
+    res.json(trip);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/trips/:id/options — add a custom vote option / proposal
+router.post("/:id/options", async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: "Option name is required" });
+
+    const trip = await Trip.findById(req.params.id);
+    if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+    ensureVoteOptions(trip);
+
+    const trimmed = name.trim();
+    if (trip.voteOptions.some((o) => o.name.toLowerCase() === trimmed.toLowerCase())) {
+      return res.status(400).json({ error: "Option already exists" });
+    }
+
+    trip.voteOptions.push({ name: trimmed, votes: 0, voters: [] });
     await trip.save();
     res.json(trip);
   } catch (err) {
