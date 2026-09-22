@@ -2,7 +2,11 @@ import admin from "firebase-admin";
 
 // Firebase Admin SDK — verifies Firebase ID tokens issued by the frontend.
 // FIREBASE_SERVICE_ACCOUNT_JSON must be the full service account JSON as a single-line string.
+<<<<<<< HEAD
 // Project: advenzaa7 (must match the projectId used in frontend/src/lib/firebase.ts)
+=======
+// Project: advenza-7  (must match the projectId used in frontend/src/lib/firebase.ts)
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
 
 let adminInitialized = false;
 
@@ -19,10 +23,18 @@ const initAdmin = () => {
       admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
       console.log(`🔐 Firebase Admin initialized for project: ${serviceAccount.project_id}`);
     } else {
+<<<<<<< HEAD
       console.warn(
         "⚠️  FIREBASE_SERVICE_ACCOUNT_JSON not set. Auth middleware will run in BYPASS mode.",
       );
       admin.initializeApp({ projectId: "advenzaa7" });
+=======
+      // No service account — run in dev bypass mode (no token verification)
+      console.warn(
+        "⚠️  FIREBASE_SERVICE_ACCOUNT_JSON not set. Auth middleware will run in BYPASS mode.",
+      );
+      admin.initializeApp({ projectId: "advenza-7" });
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
     }
     adminInitialized = true;
   } catch (e) {

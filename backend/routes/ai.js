@@ -8,6 +8,7 @@ const router = express.Router();
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 /**
+<<<<<<< HEAD
  * Normalizes any time string to 24-hour HH:mm format.
  */
 const normalizeTime = (timeStr, fallback = "09:00") => {
@@ -91,6 +92,8 @@ const generateTripDates = (startDateStr, endDateStr) => {
 };
 
 /**
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
  * Safely extract text content from an OpenAI/Groq/OpenRouter chat completion object.
  */
 const extractAIContent = (completion) => {
@@ -248,6 +251,7 @@ const initClients = () => {
 const callAI = async (options) => {
   initClients();
 
+<<<<<<< HEAD
   // Strip response_format — we handle JSON parsing manually for all providers
   const apiOptions = { max_tokens: 8192, ...options };
   delete apiOptions.response_format;
@@ -265,10 +269,33 @@ const callAI = async (options) => {
     for (const model of groqModels) {
       try {
         const completion = await groqClient.chat.completions.create({
+=======
+  const apiOptions = { ...options };
+  delete apiOptions.response_format;
+
+  // List of active models on OpenRouter (tested & verified working in 2–4s)
+  const openRouterModels = [
+    "qwen/qwen-2.5-72b-instruct",
+    "meta-llama/llama-3.3-70b-instruct",
+    "deepseek/deepseek-r1-distill-llama-70b",
+  ];
+
+  // List of active Together AI models
+  const togetherModels = [
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  ];
+
+  // 1. Try OpenRouter first (fastest & verified active models)
+  if (process.env.OPENROUTER_API_KEY) {
+    for (const model of openRouterModels) {
+      try {
+        const completion = await openRouterClient.chat.completions.create({
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
           ...apiOptions,
           model,
         });
         const content = extractAIContent(completion);
+<<<<<<< HEAD
         if (content) {
           console.log(`[callAI] ✅ Groq model ${model} succeeded.`);
           return completion;
@@ -276,10 +303,17 @@ const callAI = async (options) => {
         console.warn(`[callAI] Groq model ${model} returned empty content, trying next...`);
       } catch (err) {
         console.warn(`[callAI] Groq model ${model} failed (${err.message}), trying next...`);
+=======
+        if (content) return completion;
+        console.warn(`OpenRouter model ${model} returned empty content, trying next model...`);
+      } catch (err) {
+        console.warn(`OpenRouter model ${model} failed (${err.message}), trying next model...`);
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
       }
     }
   }
 
+<<<<<<< HEAD
   // 2. Try OpenRouter — instruct models only (no reasoning/R1 variants)
   const openRouterModels = [
     "qwen/qwen-2.5-72b-instruct",
@@ -312,6 +346,9 @@ const callAI = async (options) => {
     "meta-llama/Llama-3.3-70B-Instruct-Turbo",
   ];
 
+=======
+  // 2. Try Together AI models
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
   if (process.env.TOGETHER_API_KEY) {
     for (const model of togetherModels) {
       try {
@@ -320,6 +357,7 @@ const callAI = async (options) => {
           model,
         });
         const content = extractAIContent(completion);
+<<<<<<< HEAD
         if (content) {
           console.log(`[callAI] ✅ Together AI model ${model} succeeded.`);
           return completion;
@@ -327,11 +365,18 @@ const callAI = async (options) => {
         console.warn(`[callAI] Together AI model ${model} returned empty content, trying next...`);
       } catch (err) {
         console.warn(`[callAI] Together AI model ${model} failed (${err.message}), trying next...`);
+=======
+        if (content) return completion;
+        console.warn(`Together AI model ${model} returned empty content, trying next model...`);
+      } catch (err) {
+        console.warn(`Together AI model ${model} failed (${err.message}), trying next model...`);
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
       }
     }
   }
 
   throw new Error(
+<<<<<<< HEAD
     "Advenza's AI engine is temporarily unavailable. Please try again in a few seconds."
   );
 };
@@ -555,6 +600,10 @@ ${expectedDates.map((d, i) => `    {
     }`).join(",\n")}
   ]
 }`;
+=======
+    "Advenza's AI engine is temporarily unavailable due to upstream provider limits. Please try again in a few seconds."
+  );
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
 };
 
 // POST /api/ai/generate — Generate a trip itinerary using AI
@@ -579,7 +628,13 @@ router.post("/generate", async (req, res) => {
       transitRef,
       departureTime,
       arrivalTime,
+<<<<<<< HEAD
       returnJourney,
+=======
+      // Return journey
+      returnJourney,
+      // Accommodation details
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
       hotelName,
       checkInTime,
       checkOutTime,
@@ -620,6 +675,7 @@ router.post("/generate", async (req, res) => {
       return parts.length ? parts.join(", ") : "not specified";
     })();
 
+<<<<<<< HEAD
     const promptParams = {
       destination,
       origin,
@@ -646,6 +702,318 @@ router.post("/generate", async (req, res) => {
     };
 
     const prompt = buildItineraryPrompt(promptParams, expectedDates);
+=======
+    // ── Day 1 & Nightlife preference detection ──────────────────────────────
+    const interestsArr = Array.isArray(interests) ? interests : (interests ? [String(interests)] : []);
+    const interestsStr = interestsArr.join(" ").toLowerCase();
+    const specialStr = String(special || "").toLowerCase();
+    const styleStr = String(style || "").toLowerCase();
+
+    const isNightlifeRequested =
+      interestsStr.includes("nightlife") ||
+      interestsStr.includes("night life") ||
+      interestsStr.includes("club") ||
+      interestsStr.includes("pub") ||
+      interestsStr.includes("bar") ||
+      specialStr.includes("nightlife") ||
+      specialStr.includes("night life") ||
+      specialStr.includes("club") ||
+      specialStr.includes("pub") ||
+      specialStr.includes("bar") ||
+      specialStr.includes("late night") ||
+      specialStr.includes("party") ||
+      styleStr.includes("nightlife") ||
+      styleStr.includes("night life");
+
+    // ── Day 1 precise timeline computation ────────────────────────────────────
+    /**
+     * Given an HH:MM string, return total minutes from midnight.
+     */
+    const toMinutes = (hhmm) => {
+      if (!hhmm) return null;
+      const [h, m] = hhmm.split(":").map(Number);
+      return h * 60 + (m || 0);
+    };
+
+    /**
+     * Format minutes-from-midnight back to a readable "HH:mm" 24-hour string.
+     */
+    const toClockTime = (mins) => {
+      if (mins == null) return null;
+      const clamped = Math.min(Math.max(mins, 0), 23 * 60 + 59);
+      const h24 = Math.floor(clamped / 60) % 24;
+      const mm = clamped % 60;
+      return `${String(h24).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    };
+
+    const arrivalMins = toMinutes(arrivalTime); // user-entered arrival at destination hub
+
+    // How long does it take from the arrival hub to being settled at hotel?
+    // Leg 3 transfer ≈ 45 min, check-in formalities ≈ 30 min, freshen up/rest ≈ 45 min → 2h total
+    const HUB_TO_HOTEL_SETTLED_MINS = 120;
+    const EFFECTIVE_DAY_END_MINS = isNightlifeRequested ? 25 * 60 + 30 : 23 * 60; // 1:30 AM for nightlife, 11:00 PM standard
+
+    const hotelReadyMins = arrivalMins != null ? arrivalMins + HUB_TO_HOTEL_SETTLED_MINS : null;
+    const usableMinsAfterSettling = hotelReadyMins != null
+      ? Math.max(0, EFFECTIVE_DAY_END_MINS - hotelReadyMins)
+      : null;
+    const usableHoursAfterSettling = usableMinsAfterSettling != null
+      ? Math.round((usableMinsAfterSettling / 60) * 10) / 10
+      : null;
+
+    const hotelReadyTime = hotelReadyMins != null ? toClockTime(hotelReadyMins) : null;
+
+    // Classify Day 1 scenario
+    const day1Scenario = (() => {
+      if (arrivalMins == null) return "unknown";
+      if (arrivalMins >= 21 * 60) return "late_night";     // 9 PM+
+      if (arrivalMins >= 17 * 60) return "evening";         // 5 PM–9 PM
+      if (arrivalMins >= 13 * 60) return "afternoon";       // 1 PM–5 PM
+      if (arrivalMins >= 9 * 60) return "midmorning";       // 9 AM–1 PM
+      return "early_morning";                               // before 9 AM
+    })();
+
+    // Build exact time labels for each Day 1 milestone
+    const leg3ArrivalTime = arrivalMins != null ? toClockTime(arrivalMins + 45) : null;   // ~45 min transfer hub→hotel
+    const checkInDisplayTime = leg3ArrivalTime ?? (checkInTime || null);
+    const freshenUpEnd = hotelReadyMins != null ? toClockTime(hotelReadyMins) : null;
+    // Earliest first activity start after settling
+    const activityStartMins = hotelReadyMins != null ? hotelReadyMins : null;
+    const activityStartTime = activityStartMins != null ? toClockTime(activityStartMins) : null;
+    const dinnerTime = activityStartMins != null ? toClockTime(Math.max(activityStartMins, 18 * 60)) : "19:00";
+    const returnHotelTime = dinnerTime ? toClockTime(
+      Math.min((activityStartMins ?? 18 * 60) + (isNightlifeRequested ? 270 : 150), isNightlifeRequested ? 25 * 60 + 30 : 22 * 60)
+    ) : (isNightlifeRequested ? "23:30" : "21:30");
+
+    // Build the strict Day 1 rules text for the prompt
+    const day1Rules = (() => {
+      const arrStr = arrivalTime ? `The user's flight/train arrives at ${arrivalTime} (${toClockTime(arrivalMins)}).` : "The user's arrival time is not specified — estimate it from journey details.";
+
+      if (day1Scenario === "late_night") {
+        return `LATE-NIGHT ARRIVAL SCENARIO:
+${arrStr}
+• Hotel reached by approximately ${hotelReadyTime}.
+• Day 1 MUST contain ONLY three activities:
+  1. { "time": "${departureTime || "09:00"}", "description": "3-leg outbound journey (Leg 1 + Leg 2 + Leg 3 as specified in rule 3 above)." }
+  2. { "time": "${checkInDisplayTime || "23:00"}", "description": "Arrive at ${hotelName || "hotel"} in ${hotelLocation || "destination"}. Check in. Freshen up and sleep immediately — no activities tonight." }
+• ABSOLUTELY NO sightseeing, dinner out, or walks on Day 1. Night arrival means straight to bed.`;
+      }
+
+      if (day1Scenario === "evening") {
+        return `EVENING ARRIVAL SCENARIO:
+${arrStr}
+• Hotel reached / settled in by approximately ${hotelReadyTime}.
+• Usable time after settling: ~${usableHoursAfterSettling}h.
+• Day 1 MUST contain ONLY these activities — use EXACT 24-hour clock times (HH:mm format):
+  1. { "time": "${departureTime || "16:00"}", "description": "3-leg outbound journey." }
+  2. { "time": "${checkInDisplayTime || leg3ArrivalTime || "18:00"}", "description": "Arrive at hotel. Check in. Freshen up and rest." }
+  3. { "time": "${dinnerTime}", "description": "Dinner at a recommended restaurant near the hotel." }
+  ${isNightlifeRequested ? `4. { "time": "21:30", "description": "Evening / Nightlife activity (e.g. Night market / Waterfront stroll / Rooftop bar / Live music) near the stay." }\n  5. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep." }` : `4. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep." }`}
+• NO crowded sightseeing or heavy monuments on Day 1.`;
+      }
+
+      if (day1Scenario === "afternoon") {
+        return `AFTERNOON ARRIVAL SCENARIO:
+${arrStr}
+• Hotel reached / settled in by approximately ${hotelReadyTime}.
+• Usable time after settling: ~${usableHoursAfterSettling}h.
+• Day 1 MUST use EXACT 24-hour clock times (HH:mm format):
+  1. { "time": "${departureTime || "09:00"}", "description": "3-leg outbound journey." }
+  2. { "time": "${checkInDisplayTime || "16:00"}", "description": "Arrive at hotel in ${hotelLocation || "destination"}. Check in, unpack, and rest for 45 minutes." }
+  3. { "time": "${activityStartTime || "17:30"}", "description": "Short walk — ONE nearby attraction, market, or café within 2 km of the hotel." }
+  4. { "time": "${dinnerTime}", "description": "Dinner at a local restaurant near the hotel." }
+  ${isNightlifeRequested ? `5. { "time": "21:00", "description": "Nightlife / Night market / Live music / Rooftop experience." }\n  6. { "time": "${returnHotelTime}", "description": "Return to hotel." }` : `5. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep early to recover from travel." }`}
+• MAXIMUM one daytime attraction on Day 1.`;
+      }
+
+      if (day1Scenario === "midmorning") {
+        return `MID-MORNING ARRIVAL SCENARIO:
+${arrStr}
+• Hotel reached / settled in by approximately ${hotelReadyTime}.
+• Usable time after settling: ~${usableHoursAfterSettling}h — good for light sightseeing.
+• Day 1 MUST use EXACT 24-hour clock times (HH:mm format):
+  1. { "time": "${departureTime || "08:00"}", "description": "3-leg outbound journey." }
+  2. { "time": "${checkInDisplayTime || "12:30"}", "description": "Arrive at hotel. Check in. Freshen up and have lunch." }
+  3. { "time": "${activityStartTime || "14:00"}", "description": "Visit 1–2 nearby attractions (under 3 km from hotel)." }
+  4. { "time": "${dinnerTime}", "description": "Dinner at a local restaurant." }
+  ${isNightlifeRequested ? `5. { "time": "21:00", "description": "Nightlife activity (e.g. Night market / Beach shack / Rooftop lounge / Live music)." }\n  6. { "time": "${returnHotelTime}", "description": "Return to hotel." }` : `5. { "time": "${returnHotelTime}", "description": "Return to hotel. Sleep." }`}`;
+      }
+
+      if (day1Scenario === "early_morning") {
+        return `EARLY MORNING ARRIVAL SCENARIO:
+${arrStr}
+• Hotel reached / settled in by approximately ${hotelReadyTime}.
+• Usable time after settling: ~${usableHoursAfterSettling}h — most of the day available.
+• Day 1 can include a full light day. Use EXACT 24-hour clock times (HH:mm format):
+  1. { "time": "${departureTime || "05:00"}", "description": "3-leg outbound journey (overnight or dawn travel)." }
+  2. { "time": "${checkInDisplayTime || "09:00"}", "description": "Arrive at hotel. Check in (or leave bags if early). Freshen up and have breakfast." }
+  3. { "time": "${activityStartTime || "11:00"}", "description": "Visit 2–3 nearby attractions." }
+  4. { "time": "${dinnerTime}", "description": "Dinner." }
+  ${isNightlifeRequested ? `5. { "time": "21:00", "description": "Nightlife experience (e.g. Night market / Rooftop venue / Live music / Lounge)." }\n  6. { "time": "${returnHotelTime}", "description": "Return to hotel." }` : `5. { "time": "${returnHotelTime}", "description": "Return to hotel." }`}`;
+      }
+
+      // unknown arrival time
+      return `UNKNOWN ARRIVAL TIME — ESTIMATE FROM JOURNEY:
+The user has not entered an arrival time. Estimate based on mode (${travelMode || "unknown"}) and distance. Apply the appropriate scenario above (late-night / evening / afternoon / morning) once you know the estimated arrival.
+Use EXACT 24-hour clock times (HH:mm format) in the "time" field of every activity — never use generic labels like "Morning" or "Afternoon" for Day 1.`;
+    })();
+
+    const prompt = `You are Advenza, a highly precise, location-aware travel planner AI. You MUST follow the user's preferences exactly and create a practical, realistic itinerary.
+
+USER'S TRIP DETAILS:
+- Origin (Home City): ${origin || "not specified"}
+- Destination: ${destination}
+- Dates: ${startDate} to ${endDate} (${numDays} day${numDays !== 1 ? "s" : ""})
+- Number of travelers: ${travelersNum}
+- Total Budget: ₹${budgetNum} INR${perDayBudget ? ` (≈₹${perDayBudget}/day, ≈₹${perPersonBudget}/person)` : " (no budget limit specified)"}
+- Travel Pace: ${style || "Balanced"}
+- Interests: ${interests?.join(", ") || "General sightseeing"}
+- Accommodation: ${accommodationLine}
+- Primary Intercity Journey: ${journeyLine}
+- Local transport at destination: ${transportList}
+- Special requests: ${special || "None"}
+
+STRICT TRANSPORT RULES:
+1. USE REAL LOCATION-AWARE & NEAREST MAJOR HUBS:
+   - For all transit, use actual, real-world airports, railway stations, or bus terminals that physically belong to the origin city (${origin || "departure city"}) and the destination city (${destination}). Never invent fictional hubs.
+   - If the Home City (${origin || "departure city"}) or Destination (${destination}) is a smaller city, town, or suburb that does not have its own major airport or railway station (e.g. Kalyan, Noida, Thane, Gurgaon, Auroville), you MUST map it to the nearest real-world major transportation hub for the selected travel mode.
+     - Flights: Map to the nearest major airport (e.g., Kalyan/Thane -> Chhatrapati Shivaji Maharaj International Airport (BOM) in Mumbai; Noida/Gurgaon -> Indira Gandhi International Airport (DEL) in Delhi). Never invent "Kalyan Airport" or "Noida Airport".
+     - Trains: Map to the nearest suitable railway station (e.g. Kalyan Junction, Thane Station, Delhi Junction).
+     - Buses: Map to the nearest major bus terminal (e.g. ISBT Kashmiri Gate in Delhi, Majestic Bus Stand in Bengaluru).
+
+2. CHOOSE THE MOST APPROPRIATE TRAVEL MODE & DETAILS:
+   - Flights: State actual departure/arrival airports, realistic flight duration (e.g. 2h 10m), realistic flight timing/schedule, and approximate fare per person in ₹.
+   - Train: Specify actual railway stations, realistic travel duration, specific train name/number (e.g. Rajdhani Express, Shatabdi Express), and estimated fare per person in ₹.
+   - Bus: Specify actual bus terminals (e.g. ISBT Kashmiri Gate, Majestic Bus Stand), duration, and fare in ₹.
+   - Rental Car / Car: Estimate driving distance, travel duration, toll charges, and approximate fuel costs in ₹.
+
+3. BREAKDOWN FIRST & LAST LEGS (3-LEG JOURNEY REPRESENTATION):
+   - The very first activity on Day 1 MUST describe the outbound journey from the user's home to the destination hotel in three distinct steps:
+     1. Leg 1: From home in ${origin || "departure city"} to the nearest departure station/airport/terminal (via cab, auto, local train, metro, etc. with distance, travel time, and cost).
+     2. Leg 2: From the departure station/airport/terminal to the destination station/airport/terminal (via selected flight/train/bus details, duration, timing, and fare).
+     3. Leg 3: From the destination station/airport/terminal to the hotel/stay area (${hotelLocation ? `in ${hotelLocation}` : "hotel"} via local transport with duration, distance, and cost).
+   - The very last activity on Day ${numDays} Evening MUST describe the return journey back home in the reverse three steps (Hotel to destination hub -> transit hub to origin hub -> origin hub to home in ${origin || "departure city"}).
+
+4. INTELLIGENT TRANSPORT DECISION-MAKING:
+   - Distance Check: If the driving distance between ${origin || "departure city"} and ${destination} is short (under 300 km, e.g. Delhi to Jaipur, Mumbai to Pune, Bangalore to Mysore), do NOT recommend a flight, even if "Flights" is in the selected transport list.
+   - Evaluate route practicality. If flights are unavailable, unnecessary, or impractical for the route, recommend a Train. If trains are also unavailable or impractical, recommend a Bus or Car (Road Trip) as the best option.
+
+STRICT ITINERARY & GEOGRAPHY RULES:
+5. HOTEL-AWARE, GEOGRAPHICALLY OPTIMIZED PLANNING:
+   - Hotel as the Starting & Ending Point: The hotel/stay location "${hotelName ? `${hotelName} in ${hotelLocation}` : hotelLocation || "hotel"}" MUST be used as the anchor starting point and ending point of the itinerary every single day.
+     - Every following day (except final departure day): The morning itinerary must always start from the hotel. The evening/night itinerary must always end with returning back to the hotel.
+     - Final departure day: Starts from the hotel in the morning, does activities, and ends at the Airport/Station/Hub for the return journey home.
+   - Daily Proximity: Group nearby attractions together in the same day to minimize travel time.
+   - Geographic Continuity & Smart Route Optimization: Plan the day in a logical order based on geography. Never suggest zigzagging across the destination city in a single day.
+   - Deferred Sightseeing: Postpone all packed sightseeing, monument visits, and intensive itineraries to Day 2 morning, when the traveler is well-rested.
+
+6. LOCAL TRANSPORTATION, DISTANCES & TRAVEL TIMES:
+   - Local Transit details: For every single attraction, activity, or meal in the itinerary (except the intercity transit day), explain exactly how to travel from the previous location (or the hotel) using the most suitable local option: Walking (🚶), Cab (🚕), Auto Rickshaw (🛺), Metro (🚇), Bus (🚌), or Bicycle (🚲). Include approximate distance (km) and travel time (mins).
+
+7. CLEAN ITINERARY & BUDGET CONTROL:
+   - Only display costs where actually useful: Intercity tickets, hotel cost, entry fees, total budget.
+   - Do NOT show cost for every local taxi ride, auto, metro fare, or cafe visit.
+   - Budget Constraint: Total ₹${budgetNum}. SUM of all estimated costs MUST NOT exceed ₹${budgetNum}.
+
+8. ACCOMMODATION: Recommend only "${accommodation || "standard"}" type accommodation.
+9. PACE: Match "${style || "Balanced"}" pace — ${style === "Slow" ? "max 1-2 activities per day, long meals, relaxed mornings" : style === "Packed" ? "fill every slot, maximize sightseeing" : "2-3 anchor activities per day with free exploration time"}.
+10. INTERESTS: Focus on: ${interests?.join(", ") || "general sightseeing"}.
+11. Generate exactly ${numDays} days.
+
+12. NIGHTLIFE & EVENING SCHEDULING (CRITICAL MANDATORY RULE):
+    ${isNightlifeRequested ? "★ IMPORTANT: THE USER HAS EXPLICITLY REQUESTED NIGHT LIFE / NIGHTLIFE PREFERENCES." : "If Night Life or nightlife-related interests are requested:"}
+    • If the user selects Night Life or nightlife-related preferences, do not treat the day as finished at 8 PM (20:00). Schedule appropriate evening/night experiences after 8 PM (20:00) whenever realistic. Use destination-aware operating hours and avoid inventing opening hours.
+    • Prioritize destination-appropriate nightlife activities based on local culture & geography:
+      - Night markets & evening bazaars (e.g. Anjuna/Arpora night markets in Goa, Jodd Fairs in Bangkok, Colaba night stalls in Mumbai)
+      - Night walks & waterfront promenades (e.g. Marine Drive in Mumbai, Baga/Calangute beach walks, Marina Bay in Singapore)
+      - Rooftop venues, cocktail lounges, & sunset/night bars
+      - Live music venues, acoustic sets, & cultural night shows
+      - Clubs, pubs, & beach shacks (where legally appropriate & popular locally)
+      - Late-evening entertainment, sound-and-light shows, & night tours
+      - Late-night food experiences, street food night tours, & midnight eateries
+      - Scenic night viewpoints & illuminated monuments/skyline views
+    • INTELLIGENT TIME SCHEDULING LOGIC (use 24-hour HH:mm format):
+      - Evening (17:00 – 20:00): Sunset viewpoints, evening strolls, dinner / food experience.
+      - Night (20:00 – 23:00): Core nightlife activity (e.g. 21:00 – 23:00 night market, live music, rooftop bar, night beach shack, night tour).
+      - Late Night (23:00 – 01:00): Optional late-night venue, clubbing, or midnight food joint (only when realistic, safe, and appropriate for the destination culture and laws).
+    • DO NOT generate "18:00 – 20:00 Nightlife" followed immediately by "20:00 – End of day / Sleep" unless the destination genuinely has no nightlife.
+    • For Days 2 onwards (and Day 1 if arrival allows), include meaningful, high-quality nightlife activities after 20:00 whenever Night Life is selected.
+
+13. BALANCED COMBINATION OF MULTIPLE PREFERENCES:
+    Do NOT let Nightlife eliminate daytime interests. Combine preferences logically across the day:
+    - Nature + Night Life: Morning/Afternoon nature trails/beaches → Evening sunset dinner → Night beach shack/rooftop lounge.
+    - Culture + Night Life: Morning/Afternoon heritage sites/museums → Evening cultural performance → Night local music pub/night bazaar.
+    - Food + Night Life: Afternoon local food tasting → Evening fine dining → Late-night food stalls or speakeasy bar.
+    - Shopping + Night Life: Afternoon shopping district → Evening dinner → Night market or live music venue.
+    - Relaxed / Slow Pace + Night Life: Relaxed morning start → Afternoon scenic stroll → Evening & Night vibrant nightlife experience.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL TIME RULE — READ BEFORE GENERATING THE ITINERARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The "time" field in EVERY activity MUST be an EXACT 24-hour clock time (e.g. "06:00", "14:30", "21:00", "23:00").
+NEVER use AM/PM labels or generic labels like "Morning", "Afternoon", or "Evening" in the "time" field.
+The schedule must reflect actual times derived from the user's travel details below.
+
+DAY 1 — MANDATORY RULES BASED ON USER'S ACTUAL ARRIVAL TIME:
+${day1Rules}
+
+LAST DAY (Day ${numDays}) — MANDATORY DEPARTURE RULES:
+• The last activity MUST be the 3-leg reverse journey home.${checkOutTime ? `\n• Hotel check-out at ${checkOutTime}.` : ""}
+• Use exact 24-hour clock times (HH:mm format) for all departure activities.
+${(() => {
+  const rj = returnJourney;
+  if (!rj || !rj.booked) return "";
+  const lines = ["RETURN JOURNEY IS BOOKED — APPLY THESE HARD SCHEDULING CONSTRAINTS:"];
+  if (rj.date) lines.push(`• Return date: ${rj.date}. On this day (Day ${numDays}) treat it as a departure day.`);
+  if (rj.time) {
+    const [h, m] = rj.time.split(":").map(Number);
+    const bufferMins = (rj.transportType === "Flight") ? 180 : 90; // 3h for flights, 1.5h for trains/buses
+    const cutoffMins = h * 60 + (m || 0) - bufferMins;
+    const cutH = Math.floor(Math.max(cutoffMins, 0) / 60);
+    const cutM = Math.max(cutoffMins, 0) % 60;
+    const cutoffStr = `${String(cutH).padStart(2,"0")}:${String(cutM).padStart(2,"0")}`;
+    lines.push(`• Return ${rj.transportType || "transport"} departs at ${rj.time} from ${rj.departureLocation || "departure hub"}. Buffer required: ${rj.transportType === "Flight" ? "3 hours (check-in + security)" : "90 minutes"}.`);
+    lines.push(`• Last activity on Day ${numDays} MUST end by ${cutoffStr}. Do NOT schedule any activity after ${cutoffStr}.`);
+    lines.push(`• The final activity must be: checkout → transfer to ${rj.departureLocation || "departure hub"} → return journey home.`);
+  }
+  if (rj.ticketRef) lines.push(`• Return ticket ref: ${rj.ticketRef}`);
+  return lines.join("\n");
+})()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Return ONLY a valid JSON object (no markdown, no extra text):
+{
+  "title": "Creative trip title for ${destination}",
+  "destination": "${destination}",
+  "summary": "2-3 sentence trip summary mentioning exact transport mode, pace, and budget tier",
+  "budgetEstimate": "Total: ₹${budgetNum} — Accommodation: ₹X (${numDays} nights), Food: ₹X, Transport: ₹X, Activities: ₹X, Misc: ₹X",
+  "days": [
+    {
+      "dayNumber": 1,
+      "date": "${startDate}",
+      "title": "Arrival — [describe day theme based on arrival time]",
+      "activities": [
+        { "time": "[EXACT 24-hour clock time, e.g. 06:00]", "description": "3-leg outbound journey: Leg 1 … Leg 2 … Leg 3 …" },
+        { "time": "[EXACT 24-hour clock time of hotel arrival, e.g. 18:30]", "description": "Check in at ${hotelName || "hotel"} in ${hotelLocation || "destination"}. Freshen up and rest." },
+        { "time": "[EXACT 24-hour clock time, e.g. 21:00]", "description": "Evening activity or dinner / nightlife if arrival allows." }
+      ]
+    }${numDays > 1 ? `,
+    {
+      "dayNumber": 2,
+      "date": "[Day 2 Date]",
+      "title": "[Theme of Day 2${isNightlifeRequested ? " — e.g. Sightseeing & Vibrant Nightlife" : ""}]",
+      "activities": [
+        { "time": "09:30", "description": "Morning activity starting from hotel..." },
+        { "time": "13:30", "description": "Lunch and afternoon exploration..." },
+        { "time": "17:30", "description": "Sunset viewpoint / evening stroll..." },
+        { "time": "19:30", "description": "Dinner experience..." }${isNightlifeRequested ? `,\n        { "time": "21:00", "description": "Nightlife activity (e.g. Night market / Live music venue / Rooftop bar / Night beach shack) — MUST include meaningful activity after 20:00 when Night Life preference is selected" },\n        { "time": "23:30", "description": "Return to hotel. Sleep." }` : `,\n        { "time": "21:30", "description": "Return to hotel. Sleep." }`}
+      ]
+    }` : ""}
+  ]
+}`;
+
+
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
 
     const completion = await callAI({
       messages: [{ role: "user", content: prompt }],
@@ -658,6 +1026,7 @@ router.post("/generate", async (req, res) => {
     console.log("[AI Generate] Raw response (first 200 chars):", raw?.slice(0, 200));
     const parsed = parseAIJson(raw);
 
+<<<<<<< HEAD
     const sanitized = validateAndSanitizeItinerary(parsed, expectedDates, {
       destination,
       origin,
@@ -692,6 +1061,33 @@ router.post("/generate", async (req, res) => {
       checkInTime: checkInTime || "",
       checkOutTime: checkOutTime || "",
     };
+=======
+    // Persist ALL user inputs
+    tripData.createdBy = req.uid || "guest";
+    tripData.createdAt = new Date().toISOString();
+    tripData.budgetTotal = budgetNum;
+    tripData.transport = transport || [];
+    tripData.accommodation = accommodation || "";
+    tripData.hotelLocation = hotelLocation || "";
+    tripData.travelers = travelersNum;
+    tripData.style = style || "Balanced";
+    tripData.startDate = startDate;
+    tripData.endDate = endDate;
+    tripData.interests = interests || [];
+    // New travel detail fields
+    tripData.travelMode = travelMode || "";
+    tripData.departureHub = departureHub || "";
+    tripData.arrivalHub = arrivalHub || "";
+    tripData.transitRef = transitRef || "";
+    tripData.departureTime = departureTime || "";
+    tripData.arrivalTime = arrivalTime || "";
+    // Return journey
+    tripData.returnJourney = returnJourney || { booked: false };
+    // Accommodation detail fields
+    tripData.hotelName = hotelName || "";
+    tripData.checkInTime = checkInTime || "";
+    tripData.checkOutTime = checkOutTime || "";
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
 
     // Save to MongoDB
     const newTrip = new Trip(tripData);

@@ -56,11 +56,15 @@ type Trip = {
 
 function Commander() {
   const { user } = useAuth();
+<<<<<<< HEAD
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [processingId, setProcessingId] = useState<string | null>(null);
 
+<<<<<<< HEAD
   // Fetch user trips
   const { data: trips = [], isLoading: loadingTrips } = useQuery<Trip[]>({
     queryKey: queryKeys.trips(),
@@ -85,6 +89,18 @@ function Commander() {
       console.log(`[Commander Frontend] Requesting events for trip ${activeTripId}...`);
       const url = activeTripId ? `/api/commander/events?tripId=${activeTripId}` : "/api/commander/events";
       const data = await apiFetch(url);
+=======
+  const {
+    data: rawEvents = [],
+    isLoading: loading,
+    isFetching,
+    refetch,
+  } = useQuery<TripEvent[]>({
+    queryKey: queryKeys.commanderEvents(),
+    queryFn: async () => {
+      console.log("[Commander Frontend] Requesting trip commander events...");
+      const data = await apiFetch("/api/commander/events");
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
       console.log("[Commander Frontend] Response received:", data);
       return Array.isArray(data) ? data : [];
     },
@@ -92,8 +108,11 @@ function Commander() {
     staleTime: 5 * 60 * 1000, // 5 minutes cache
   });
 
+<<<<<<< HEAD
   const loading = loadingTrips || (loadingEvents && rawEvents.length === 0);
 
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
   const accept = async (id: string) => {
     if (processingId) return;
     setProcessingId(id);
@@ -124,11 +143,15 @@ function Commander() {
   return (
     <AppShell
       title="Trip Commander"
+<<<<<<< HEAD
       subtitle={
         activeTrip
           ? `Monitoring ${activeTrip.title} · ${activeTrip.destination || "Live Insights"}`
           : "Your AI travel manager, watching the plan so you don't have to."
       }
+=======
+      subtitle="Your AI travel manager, watching the plan so you don't have to."
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
       actions={
         <div className="flex items-center gap-2">
           <Button

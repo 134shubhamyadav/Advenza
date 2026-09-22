@@ -224,6 +224,7 @@ router.post("/:id/vote", async (req, res) => {
       o.votes = o.voters.length;
     });
 
+<<<<<<< HEAD
     await trip.save();
     res.json(trip);
   } catch (err) {
@@ -248,6 +249,8 @@ router.post("/:id/options", async (req, res) => {
     }
 
     trip.voteOptions.push({ name: trimmed, votes: 0, voters: [] });
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
     await trip.save();
     res.json(trip);
   } catch (err) {

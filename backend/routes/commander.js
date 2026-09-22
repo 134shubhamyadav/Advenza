@@ -134,11 +134,15 @@ router.get("/events", async (req, res) => {
       return res.json([]);
     }
 
+<<<<<<< HEAD
     const { tripId } = req.query;
     const activeTrip = tripId
       ? userTrips.find((t) => String(t._id) === String(tripId)) || userTrips[0]
       : userTrips[0];
 
+=======
+    const activeTrip = userTrips[0];
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
     const cacheKey = `${req.uid}_${activeTrip._id}`;
     const cached = commanderCache.get(cacheKey);
 

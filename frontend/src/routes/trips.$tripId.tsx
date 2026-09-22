@@ -60,7 +60,11 @@ type Trip = {
   createdBy?: string;
 };
 
+<<<<<<< HEAD
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+=======
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
 import { queryKeys } from "@/lib/queryKeys";
 
 function TripDetails() {
@@ -80,6 +84,7 @@ function TripDetails() {
     enabled: !!tripId,
   });
 
+<<<<<<< HEAD
   const regenerateMutation = useMutation({
     mutationFn: async () => {
       return await apiFetch(`/api/ai/regenerate/${tripId}`, {
@@ -100,6 +105,8 @@ function TripDetails() {
     },
   });
 
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
   const handleDeleteConfirm = async () => {
     setIsDeleting(true);
     try {

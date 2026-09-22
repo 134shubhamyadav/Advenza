@@ -3,6 +3,7 @@ import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+<<<<<<< HEAD
 import {
   Plane,
   Hotel,
@@ -23,6 +24,12 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { normalizeTimeTo24h, inr } from "@/lib/utils";
 import { toast } from "sonner";
+=======
+import { Plane, Hotel, Utensils, MapPin, Camera, Plus } from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { normalizeTimeTo24h } from "@/lib/utils";
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
 import {
   Select,
   SelectContent,
@@ -30,8 +37,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+<<<<<<< HEAD
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
 
 type ItinerarySearchSchema = {
   tripId?: string;
@@ -48,6 +58,7 @@ export const Route = createFileRoute("/itinerary")({
 
 const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
+<<<<<<< HEAD
 type Activity = { time: string; description: string; type?: string; meta?: string };
 type Day = { dayNumber: number; date?: string; title: string; activities: Activity[] };
 type Trip = {
@@ -87,14 +98,35 @@ const getActivityIcon = (desc: string) => {
   }
   return MapPin;
 };
+=======
+const icons: Record<string, typeof Plane> = {
+  transport: Plane,
+  stay: Hotel,
+  food: Utensils,
+  activity: Camera,
+};
+
+type Activity = { time: string; description: string; type?: string; meta?: string };
+type Day = { dayNumber: number; date?: string; title: string; activities: Activity[] };
+type Trip = { _id: string; title: string; destination?: string; days?: Day[] };
+
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
 
 function Itinerary() {
   const { user } = useAuth();
   const { tripId } = Route.useSearch();
+<<<<<<< HEAD
   const queryClient = useQueryClient();
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
   const { data: trips = [], isLoading: loading, isError } = useQuery({
+=======
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
+  const { data: trips = [], isLoading: loading } = useQuery({
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
     queryKey: queryKeys.trips(),
     queryFn: async () => {
       const data = await apiFetch("/api/trips");
@@ -119,6 +151,7 @@ function Itinerary() {
     window.history.pushState({}, "", url.pathname + url.search);
   };
 
+<<<<<<< HEAD
   const regenerateMutation = useMutation({
     mutationFn: async (targetTripId: string) => {
       return await apiFetch(`/api/ai/regenerate/${targetTripId}`, {
@@ -144,6 +177,8 @@ function Itinerary() {
     regenerateMutation.mutate(trip._id);
   };
 
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
   const days = trip?.days ?? [];
   const totalActivities = days.reduce((a, d) => a + (d.activities?.length ?? 0), 0);
 
@@ -163,6 +198,7 @@ function Itinerary() {
             : "No itinerary yet"
       }
       actions={
+<<<<<<< HEAD
         <div className="flex flex-wrap items-center gap-2">
           {trips.length > 0 && (
             <div className="flex items-center gap-2">
@@ -198,15 +234,38 @@ function Itinerary() {
             </Button>
           )}
         </div>
+=======
+        trips.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Select Trip:</span>
+            <Select value={trip?._id || ""} onValueChange={handleSelectTrip}>
+              <SelectTrigger className="w-[200px] bg-white/50 backdrop-blur-sm border-white/60">
+                <SelectValue placeholder="Choose a trip" />
+              </SelectTrigger>
+              <SelectContent>
+                {trips.map((t) => (
+                  <SelectItem key={t._id} value={t._id}>
+                    {t.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
       }
     >
       {loading ? (
         <div className="space-y-6">
+<<<<<<< HEAD
           <div className="h-28 rounded-2xl glass-panel animate-pulse" />
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="animate-pulse rounded-2xl glass-panel p-6 h-48" />
           ))}
         </div>
+<<<<<<< HEAD
       ) : isError ? (
         <div className="flex flex-col items-center justify-center rounded-2xl glass-panel p-16 text-center">
           <Info className="h-12 w-12 text-destructive/80" />
@@ -218,12 +277,18 @@ function Itinerary() {
             Retry
           </Button>
         </div>
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
       ) : !trip || days.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl glass-panel p-16 text-center">
           <MapPin className="h-12 w-12 text-muted-foreground/30" />
           <p className="mt-4 text-lg font-semibold">No itinerary available yet</p>
           <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+<<<<<<< HEAD
             Create a trip and let Advenza AI build your personalized, day-by-day itinerary automatically.
+=======
+            Create a trip and let Advenza AI build your day-by-day itinerary automatically.
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
           </p>
           <Button className="mt-6" asChild>
             <Link to="/trips/new">
@@ -233,6 +298,7 @@ function Itinerary() {
           </Button>
         </div>
       ) : (
+<<<<<<< HEAD
         <div className="space-y-6">
           {/* Trip Summary Card */}
           <div className="rounded-2xl glass-panel p-6">
@@ -433,6 +499,86 @@ function Itinerary() {
                   Need fresh suggestions or alternative attractions? Click <strong>Regenerate</strong> at the top right to explore new variations anytime.
                 </p>
               </div>
+=======
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="space-y-6">
+            {days.map((d) => (
+              <div key={d.dayNumber} className="rounded-2xl glass-panel p-6">
+                <div className="flex items-baseline justify-between">
+                  <div>
+                    <span className="font-display text-3xl text-primary">Day {d.dayNumber}</span>
+                    <span className="ml-3 text-sm text-muted-foreground">
+                      {d.date ? `${d.date} · ` : ""}
+                      {d.title}
+                    </span>
+                  </div>
+                  <Badge variant="secondary">{d.activities?.length ?? 0} activities</Badge>
+                </div>
+                <div className="mt-6 space-y-1">
+                  {(d.activities ?? []).map((item, idx) => {
+                    const Icon = item.type && icons[item.type] ? icons[item.type] : MapPin;
+                    return (
+                      <div key={idx} className="flex gap-4 rounded-xl px-3 py-3 hover:bg-muted/50">
+                        <div className="w-20 shrink-0 text-sm font-semibold text-primary whitespace-nowrap">
+                          {normalizeTimeTo24h(item.time)}
+                        </div>
+                        <div className="relative shrink-0">
+                          <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/8 text-primary">
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          {idx < (d.activities?.length ?? 0) - 1 && (
+                            <span className="absolute left-1/2 top-9 h-full w-px -translate-x-1/2 bg-border" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1 pb-2">
+                          <p className="font-medium">{item.description}</p>
+                          {item.meta && (
+                            <p className="text-xs text-muted-foreground">{item.meta}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-2xl glass-panel">
+              {mapUrl ? (
+                <img
+                  src={mapUrl}
+                  alt={`Map of ${trip.destination}`}
+                  className="h-56 w-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              ) : (
+                <div className="relative h-56 bg-gradient-to-br from-sky-500/20 via-primary/10 to-accent/20 flex items-center justify-center">
+                  <p className="text-xs text-muted-foreground">
+                    Add VITE_GOOGLE_MAPS_API_KEY to enable map
+                  </p>
+                </div>
+              )}
+              {trip.destination && (
+                <div className="p-4">
+                  <p className="text-sm font-medium">{trip.destination}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{days.length} days planned</p>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-primary/5 to-accent/5 p-6">
+              <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                AI-generated
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This itinerary was crafted by Advenza AI based on your trip preferences and
+                destination.
+              </p>
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
             </div>
           </div>
         </div>
@@ -440,4 +586,7 @@ function Itinerary() {
     </AppShell>
   );
 }
+<<<<<<< HEAD
 export default Itinerary;
+=======
+>>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
