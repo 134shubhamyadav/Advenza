@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/app-shell";
 import { AiBadge } from "@/components/ai/ai-badge";
@@ -31,20 +31,110 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/risk")({ component: Risk });
 
-const INDIA_EMERGENCY = [
-  { label: "Emergency (All)", value: "112" },
-  { label: "Ambulance", value: "108" },
-  { label: "Police", value: "100" },
-  { label: "Fire", value: "101" },
-  { label: "Tourist helpline", value: "1363" },
-];
+function getEmergencyHelplines(destination: string | null) {
+  const d = (destination || "").toLowerCase();
 
-const toneOf = (l: "low" | "med" | "high" | "critical" | string) =>
-  l === "critical" || l === "high"
-    ? "text-destructive bg-destructive/8 border-destructive/30"
-    : l === "med"
-      ? "text-[oklch(0.55_0.15_60)] bg-[oklch(0.78_0.16_75)]/12 border-[oklch(0.78_0.16_75)]/40"
-      : "text-accent bg-accent/8 border-accent/30";
+  // United Kingdom
+  if (
+    d.includes("london") || d.includes("uk") || d.includes("united kingdom") ||
+    d.includes("england") || d.includes("scotland") || d.includes("edinburgh") || d.includes("manchester")
+  ) {
+    return {
+      country: "United Kingdom",
+      numbers: [
+        { label: "Emergency (All)", value: "999" },
+        { label: "Universal Emergency", value: "112" },
+        { label: "Police (Non-Emergency)", value: "101" },
+        { label: "NHS Medical Advice", value: "111" },
+      ],
+    };
+  }
+
+  // USA & Canada
+  if (
+    d.includes("usa") || d.includes("united states") || d.includes("new york") ||
+    d.includes("california") || d.includes("chicago") || d.includes("san francisco") ||
+    d.includes("los angeles") || d.includes("canada") || d.includes("toronto") || d.includes("vancouver")
+  ) {
+    return {
+      country: "USA & Canada",
+      numbers: [
+        { label: "Emergency (All)", value: "911" },
+        { label: "Municipal Non-Emergency", value: "311" },
+        { label: "Poison Control Center", value: "1-800-222-1222" },
+        { label: "Traffic / Road Assistance", value: "511" },
+      ],
+    };
+  }
+
+  // European Union (France, Italy, Spain, Germany, etc.)
+  if (
+    d.includes("paris") || d.includes("france") || d.includes("rome") ||
+    d.includes("italy") || d.includes("spain") || d.includes("barcelona") ||
+    d.includes("madrid") || d.includes("germany") || d.includes("berlin") ||
+    d.includes("amsterdam") || d.includes("netherlands") || d.includes("switzerland") ||
+    d.includes("zurich") || d.includes("austria") || d.includes("vienna")
+  ) {
+    return {
+      country: "European Union",
+      numbers: [
+        { label: "EU Universal Emergency", value: "112" },
+        { label: "Medical Emergency (SAMU)", value: "15" },
+        { label: "Police Secours", value: "17" },
+        { label: "Fire & Rescue (Pompiers)", value: "18" },
+      ],
+    };
+  }
+
+  // UAE / Dubai
+  if (d.includes("dubai") || d.includes("uae") || d.includes("abu dhabi") || d.includes("sharjah")) {
+    return {
+      country: "United Arab Emirates",
+      numbers: [
+        { label: "Police Emergency", value: "999" },
+        { label: "Ambulance", value: "998" },
+        { label: "Civil Defense & Fire", value: "997" },
+        { label: "Tourist Police", value: "901" },
+      ],
+    };
+  }
+
+  // Japan
+  if (d.includes("japan") || d.includes("tokyo") || d.includes("kyoto") || d.includes("osaka")) {
+    return {
+      country: "Japan",
+      numbers: [
+        { label: "Police Emergency", value: "110" },
+        { label: "Fire & Ambulance", value: "119" },
+        { label: "Japan Visitor Helpline", value: "050-3816-2720" },
+        { label: "Emergency (Mobile GSM)", value: "112" },
+      ],
+    };
+  }
+
+  // India (Domestic Default)
+  return {
+    country: "India",
+    numbers: [
+      { label: "National Emergency (All)", value: "112" },
+      { label: "Ambulance", value: "108" },
+      { label: "Police Assistance", value: "100" },
+      { label: "Fire Service", value: "101" },
+      { label: "Tourist Helpline", value: "1363" },
+    ],
+  };
+}
+
+const toneOf = (l: string) => {
+  const norm = (l || "").toLowerCase();
+  if (norm === "critical" || norm === "high") {
+    return "text-destructive bg-destructive/10 border-destructive/30";
+  }
+  if (norm === "med" || norm === "medium") {
+    return "text-amber-600 dark:text-amber-400 bg-amber-500/15 border-amber-500/35";
+  }
+  return "text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 border-emerald-500/35";
+};
 
 type RiskItem = {
   key: string;
@@ -79,8 +169,6 @@ function Risk() {
   const [searchQuery, setSearchQuery] = useState("");
   const [forceRefresh, setForceRefresh] = useState(false);
 
-  const failedDestinations = useRef<Set<string>>(new Set());
-
   // Query trips with cache
   const { data: trips = [], isLoading: loadingTrips } = useQuery<Trip[]>({
     queryKey: queryKeys.trips(),
@@ -90,6 +178,14 @@ function Risk() {
     },
     enabled: !!user,
   });
+
+  // Keep dropdown synchronized with active trip
+  useEffect(() => {
+    if (trips.length > 0 && !selectedTripId && !customDestination) {
+      const firstWithDest = trips.find((t) => t.destination) || trips[0];
+      if (firstWithDest) setSelectedTripId(firstWithDest._id);
+    }
+  }, [trips, selectedTripId, customDestination]);
 
   const activeTrip = (selectedTripId && selectedTripId !== "custom"
     ? trips.find((t) => t._id === selectedTripId)
@@ -106,26 +202,17 @@ function Risk() {
     queryKey: queryKeys.riskRadar(targetDestination || ""),
     queryFn: async ({ signal }) => {
       if (!targetDestination) return null;
-      if (failedDestinations.current.has(targetDestination)) return null;
 
-      console.log(`[Risk Radar Frontend] Fetching risk assessment for "${targetDestination}"...`);
-      try {
-        const res = await apiFetch("/api/ai/risk", {
-          method: "POST",
-          body: JSON.stringify({
-            destination: targetDestination,
-            tripId: activeTrip?._id,
-            refresh: forceRefresh,
-          }),
-          signal,
-        });
-        console.log(`[Risk Radar Frontend] Received assessment:`, res);
-        return res;
-      } catch (err: any) {
-        console.error(`[Risk Radar Frontend] Error fetching risk data:`, err);
-        failedDestinations.current.add(targetDestination);
-        throw err;
-      }
+      const res = await apiFetch("/api/ai/risk", {
+        method: "POST",
+        body: JSON.stringify({
+          destination: targetDestination,
+          tripId: activeTrip?._id,
+          refresh: forceRefresh,
+        }),
+        signal,
+      });
+      return res;
     },
     enabled: !!user && !!targetDestination,
     staleTime: 30 * 60 * 1000, // 30 minutes
@@ -138,6 +225,7 @@ function Risk() {
   const score: number = riskData?.score ?? 15;
   const destination: string | null = riskData?.resolvedCity ?? targetDestination;
   const loading = loadingTrips || loadingRisk;
+  const emergencyInfo = getEmergencyHelplines(destination);
 
   const getCategoryIcon = (key: string) => {
     if (key.startsWith("weather")) return <CloudSun className="h-4.5 w-4.5 text-primary" />;
@@ -145,7 +233,7 @@ function Risk() {
     if (key.startsWith("crowd")) return <Users className="h-4.5 w-4.5 text-primary" />;
     if (key.startsWith("transport") || key.startsWith("logistics")) return <Compass className="h-4.5 w-4.5 text-primary" />;
     if (key.startsWith("activity") || key.startsWith("schedule")) return <Activity className="h-4.5 w-4.5 text-primary" />;
-    if (key.startsWith("personal")) return <Lock className="h-4.5 w-4.5 text-primary" />;
+    if (key.startsWith("health") || key.startsWith("personal")) return <Lock className="h-4.5 w-4.5 text-primary" />;
     return <Shield className="h-4.5 w-4.5 text-primary" />;
   };
 
@@ -154,7 +242,6 @@ function Risk() {
     if (tripId === "custom") return;
     const trip = trips.find((t) => t._id === tripId);
     if (trip && trip.destination) {
-      failedDestinations.current.clear();
       setCustomDestination(null);
     }
   };
@@ -163,7 +250,6 @@ function Risk() {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     const query = searchQuery.trim();
-    failedDestinations.current.clear();
     setCustomDestination(query);
     setSelectedTripId("custom");
   };
@@ -178,7 +264,7 @@ function Risk() {
       title="AI Risk Radar"
       subtitle={
         destination
-          ? `Real-time weather, hazards, and travel guidelines for ${destination}`
+          ? `Real-time weather telemetry, verified local hazards, and navigation safety for ${destination}`
           : "Safety guidelines & risk analysis for your trips"
       }
       actions={<AiBadge>Live Safety Radar</AiBadge>}
@@ -208,7 +294,7 @@ function Risk() {
             <Input
               id="custom-search"
               type="text"
-              placeholder="e.g. Mumbai, Goa, Paris..."
+              placeholder="e.g. Mumbai, Goa, London, Paris..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-11 w-full pl-9 pr-24 rounded-xl border border-white/40 bg-white/65 shadow-soft focus-visible:ring-primary"
@@ -225,7 +311,7 @@ function Risk() {
           <div className="space-y-6">
             <div className="animate-pulse rounded-2xl glass-panel h-36" />
             <div className="grid gap-4 sm:grid-cols-2">
-              {Array.from({ length: 6 }).map((_, i) => (
+              {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="animate-pulse rounded-2xl glass-panel p-5 h-44" />
               ))}
             </div>
@@ -249,9 +335,9 @@ function Risk() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           <div className="space-y-6">
-            {/* High-level Risk Summary Card */}
-            <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 to-accent/5 p-5 shadow-soft">
-              <div className="flex items-center justify-between">
+            {/* High-level Risk Summary Card with Calibrated Gauge */}
+            <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-background to-accent/5 p-5 shadow-soft">
+              <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <Shield className="h-6 w-6 text-primary shrink-0" />
                   <div>
@@ -263,15 +349,41 @@ function Risk() {
                 </div>
                 <span
                   className={cn(
-                    "rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider",
-                    toneOf(overallLevel.toLowerCase())
+                    "rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider shrink-0",
+                    toneOf(overallLevel)
                   )}
                 >
                   {overallLevel} RISK
                 </span>
               </div>
+
+              {/* Visual Score Gauge Bar */}
+              <div className="mt-4 space-y-1.5">
+                <div className="flex justify-between text-[10px] font-semibold text-muted-foreground">
+                  <span className="text-emerald-600 font-bold">0 Low</span>
+                  <span className="text-amber-600 font-bold">25 Moderate</span>
+                  <span className="text-orange-600 font-bold">50 Elevated</span>
+                  <span className="text-destructive font-bold">75+ Critical</span>
+                </div>
+                <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-black/5 dark:bg-white/10 p-0.5">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      score < 25
+                        ? "bg-emerald-500"
+                        : score < 50
+                          ? "bg-amber-500"
+                          : score < 75
+                            ? "bg-orange-500"
+                            : "bg-destructive"
+                    )}
+                    style={{ width: `${Math.max(6, Math.min(100, score))}%` }}
+                  />
+                </div>
+              </div>
+
               {safetyAdvisory && (
-                <p className="mt-3 text-sm font-medium text-foreground leading-relaxed">{safetyAdvisory}</p>
+                <p className="mt-3.5 text-sm font-medium text-foreground leading-relaxed">{safetyAdvisory}</p>
               )}
             </div>
 
@@ -281,7 +393,7 @@ function Risk() {
                 <div className="sm:col-span-2 rounded-2xl glass-panel p-10 text-center shadow-soft">
                   <Shield className="mx-auto h-8 w-8 text-muted-foreground/45" />
                   <p className="mt-3 text-sm text-muted-foreground font-medium">
-                    No risk assessment details available for {destination}.
+                    No active risk advisories detected for {destination}. Conditions are optimal.
                   </p>
                 </div>
               ) : (
@@ -321,8 +433,8 @@ function Risk() {
                         </p>
                       )}
                       <ul className="space-y-1 text-xs text-muted-foreground font-medium">
-                        {r.tips?.map((t) => (
-                          <li key={t} className="flex gap-2">
+                        {r.tips?.map((t, idx) => (
+                          <li key={idx} className="flex gap-2">
                             <span className="text-primary">•</span>
                             <span className="flex-1 leading-normal">{t}</span>
                           </li>
@@ -429,14 +541,19 @@ function Risk() {
               </div>
             )}
 
-            {/* Emergency Numbers */}
+            {/* Localized Emergency Numbers */}
             <div className="rounded-2xl glass-panel p-5 shadow-soft border border-white/35">
-              <div className="flex items-center gap-2">
-                <Phone className="h-4 w-4 text-primary" />
-                <h3 className="font-semibold text-sm">Emergency numbers</h3>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-primary" />
+                  <h3 className="font-semibold text-sm">Emergency numbers</h3>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  {emergencyInfo.country}
+                </span>
               </div>
               <ul className="mt-3.5 divide-y divide-border/45">
-                {INDIA_EMERGENCY.map((c) => (
+                {emergencyInfo.numbers.map((c) => (
                   <li key={c.label} className="flex items-baseline justify-between py-2 text-xs font-medium text-foreground/90">
                     <span>{c.label}</span>
                     <a
@@ -455,7 +572,7 @@ function Risk() {
                 Dynamic Risk Radar
               </p>
               <p className="mt-2 text-xs text-muted-foreground font-medium leading-relaxed">
-                Evaluates weather signals, itinerary activities, pace overpacking, and return travel logistics in real-time.
+                Evaluates real-time weather telemetry, localized street scam patterns, transit network guidelines, and itinerary pacing.
               </p>
             </div>
           </aside>

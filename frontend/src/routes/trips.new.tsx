@@ -17,9 +17,7 @@ const steps = [
   "Destination",
   "Dates & travelers",
   "Budget",
-  "Travel details",
-  "Accommodation",
-  "Preferences",
+  "Interests & pace",
   "Review",
 ];
 
@@ -41,6 +39,9 @@ function NewTrip() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [minBudget, setMinBudget] = useState<number | null>(null);
+  const [isFetchingBudget, setIsFetchingBudget] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // ── Step 0: Destination ────────────────────────────────────────────────────
   const [destination, setDestination] = useState("");
@@ -102,14 +103,35 @@ function NewTrip() {
   const canProceed = () => {
     if (step === 0) return destination.trim().length > 0;
     if (step === 1) return startDate && endDate && endDate >= startDate && parseInt(travelers) >= 1;
-    if (step === 2) return budget !== "" && parseInt(budget) >= 0;
-    if (step === 3) return travelMode !== ""; // primary mode required
-    if (step === 4) return hotelLocation.trim().length > 0; // hotel area required
-    return true;
+    if (step === 2) {
+      if (budget === "") return false;
+      const b = parseInt(budget);
+      if (isNaN(b) || b < 100) return false; // Block 2 digit numbers
+      return true;
+    }
+    return true; // Step 3 (Interests) has optional fields
+  };
+
+  const fetchBudgetEstimate = async () => {
+    if (!destination || !startDate || !endDate) return;
+    setIsFetchingBudget(true);
+    try {
+      const res = await apiFetch(`/api/ai/estimate-budget?destination=${encodeURIComponent(destination)}&startDate=${startDate}&endDate=${endDate}&travelers=${travelers}`);
+      if (res && res.minimumBudget) {
+        setMinBudget(res.minimumBudget);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsFetchingBudget(false);
+    }
   };
 
   const handleNext = () => {
     if (!canProceed()) return;
+    if (step === 1 && minBudget === null && !isFetchingBudget) {
+      fetchBudgetEstimate();
+    }
     setStep((s) => s + 1);
   };
 
@@ -314,7 +336,13 @@ function NewTrip() {
               <div className="space-y-6">
                 <div>
                   <Label className="text-xs">Total budget (₹ INR)</Label>
-                  <div className="mt-1.5 flex items-center gap-3">
+                  {isFetchingBudget ? (
+                    <p className="mt-1 text-xs text-muted-foreground animate-pulse">Calculating live minimum budget for {destination}...</p>
+                  ) : minBudget !== null && (
+                    <p className="mt-1 text-xs text-muted-foreground">Estimated minimum for {travelers} traveler(s) over {tripDays} day(s): <strong>₹{minBudget.toLocaleString("en-IN")}</strong></p>
+                  )}
+                  
+                  <div className="mt-2 flex items-center gap-3">
                     <span className="text-xl font-semibold text-muted-foreground">₹</span>
                     <Input
                       id="budget-input"
@@ -323,14 +351,11 @@ function NewTrip() {
                       value={budget}
                       onChange={(e) => {
                         const v = e.target.value;
-                        if (v === "" || parseInt(v) >= 0) setBudget(v);
-                      }}
-                      onBlur={() => {
-                        if (budget === "" || parseInt(budget) < 0) setBudget("0");
+                        setBudget(v);
                       }}
                       className="h-12 rounded-xl text-base"
-                      min={0}
-                      placeholder="e.g. 50000"
+                      min={100}
+                      placeholder={minBudget ? `e.g. ${minBudget}` : "e.g. 50000"}
                     />
                   </div>
                   {budget !== "" && budgetNum >= 0 && (
@@ -339,321 +364,18 @@ function NewTrip() {
                       over {tripDays} day{tripDays !== 1 ? "s" : ""}
                     </p>
                   )}
+                  {budget !== "" && budgetNum < 100 && (
+                     <p className="mt-1 text-xs text-destructive">Budget must be at least ₹100. Be realistic!</p>
+                  )}
+                  {budget !== "" && minBudget !== null && budgetNum < minBudget * 0.7 && budgetNum >= 100 && (
+                     <p className="mt-1 text-xs text-amber-500">Warning: Your budget is significantly lower than the estimated minimum. AI may struggle to find viable options.</p>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* ── Step 3: Travel Details ── */}
+            {/* ── Step 3: Interests & Pace (w/ Advanced Options) ── */}
             {step === 3 && (
-              <div className="space-y-6">
-                {/* Primary mode selector */}
-                <div>
-                  <Label className="text-xs">Primary travel mode to {destination || "destination"}</Label>
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    {MODES.map(({ id, icon: Icon }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setTravelMode(id)}
-                        className={cn(
-                          "flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
-                          travelMode === id
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background hover:border-primary/40",
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {id}
-                      </button>
-                    ))}
-                  </div>
-                  {!travelMode && (
-                    <p className="mt-2 text-xs text-destructive">Select your primary travel mode to continue.</p>
-                  )}
-                </div>
-
-                {/* Contextual fields */}
-                {hubs && (
-                  <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/30 p-5">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {travelMode} details <span className="normal-case font-normal">(all optional — helps the AI plan accurately)</span>
-                    </p>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <Label className="text-xs">{hubs.dep}</Label>
-                        <Input
-                          value={departureHub}
-                          onChange={(e) => setDepartureHub(e.target.value)}
-                          className="mt-1.5 h-10 rounded-xl text-sm"
-                          placeholder={
-                            travelMode === "Flight" ? "e.g. CSMIA, BOM" :
-                              travelMode === "Train" ? "e.g. Kalyan Jn, CSMT" :
-                                travelMode === "Bus" ? "e.g. Borivali Bus Stand" :
-                                  travelMode === "Ferry" ? "e.g. Gateway of India" :
-                                    "e.g. Home address"
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">{hubs.arr}</Label>
-                        <Input
-                          value={arrivalHub}
-                          onChange={(e) => setArrivalHub(e.target.value)}
-                          className="mt-1.5 h-10 rounded-xl text-sm"
-                          placeholder={
-                            travelMode === "Flight" ? "e.g. RGIA, HYD" :
-                              travelMode === "Train" ? "e.g. Hyderabad Decan" :
-                                travelMode === "Bus" ? "e.g. Majestic Bus Stand" :
-                                  travelMode === "Ferry" ? "e.g. Port Blair" :
-                                    "e.g. Hotel area"
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label className="text-xs">{hubs.ref}</Label>
-                      <Input
-                        value={transitRef}
-                        onChange={(e) => setTransitRef(e.target.value)}
-                        className="mt-1.5 h-10 rounded-xl text-sm"
-                        placeholder={
-                          travelMode === "Flight" ? "e.g. 6E-2415, AI-635" :
-                            travelMode === "Train" ? "e.g. Shatabdi Express, 12701" :
-                              travelMode === "Bus" ? "e.g. MSRTC, Orange Travels" : "optional"
-                        }
-                      />
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <Label className="text-xs">
-                          {travelMode === "Car" ? "Planned departure time" : "Departure time"}
-                        </Label>
-                        <TimePicker
-                          value={departureTime}
-                          onChange={setDepartureTime}
-                          className="mt-1.5"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">
-                          {travelMode === "Car" ? "Expected arrival time" : "Arrival time"}
-                        </Label>
-                        <TimePicker
-                          value={arrivalTime}
-                          onChange={setArrivalTime}
-                          className="mt-1.5"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Additional local transport for within-destination */}
-                <div>
-                  <Label className="text-xs">
-                    Local transport at destination <span className="text-muted-foreground">(select all you plan to use)</span>
-                  </Label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {["Metro", "Auto Rickshaw", "Cab", "Bus", "Walking", "Rental bike"].map((c) => {
-                      const on = transport.includes(c);
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => toggle(c, transport, setTransport)}
-                          className={cn(
-                            "rounded-full border px-3 py-1.5 text-sm transition",
-                            on
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border bg-background hover:border-primary/40",
-                          )}
-                        >
-                          {c}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* ── Return Journey ── */}
-                <div className="rounded-2xl border border-border/60 bg-muted/30 p-5 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <RotateCcw className="h-4 w-4 text-primary" />
-                    <p className="text-sm font-semibold">Return Journey</p>
-                  </div>
-
-                  <div>
-                    <Label className="text-xs">Do you have a return ticket?</Label>
-                    <div className="mt-2 flex gap-3">
-                      {(["Yes", "No"] as const).map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setReturnBooked(opt === "Yes")}
-                          className={cn(
-                            "rounded-xl border px-5 py-2.5 text-sm font-medium transition",
-                            returnBooked === (opt === "Yes")
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border bg-background hover:border-primary/40",
-                          )}
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {returnBooked === false && (
-                    <p className="text-xs text-muted-foreground">
-                      No problem — the itinerary will still be generated normally. You can add return details later.
-                    </p>
-                  )}
-
-                  {returnBooked === true && (
-                    <div className="space-y-4">
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <Label className="text-xs">Return date</Label>
-                          <Input
-                            type="date"
-                            value={returnDate}
-                            min={startDate}
-                            max={endDate}
-                            onChange={(e) => setReturnDate(e.target.value)}
-                            className="mt-1.5 h-10 rounded-xl text-sm"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Return departure time</Label>
-                          <TimePicker value={returnTime} onChange={setReturnTime} className="mt-1.5" />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label className="text-xs">Return departure location <span className="text-muted-foreground">(airport / station at destination)</span></Label>
-                        <Input
-                          value={returnDepartureLocation}
-                          onChange={(e) => setReturnDepartureLocation(e.target.value)}
-                          className="mt-1.5 h-10 rounded-xl text-sm"
-                          placeholder={travelMode === "Flight" ? "e.g. Goa International Airport (GOI)" : travelMode === "Train" ? "e.g. Madgaon Railway Station" : "e.g. Panaji Bus Stand"}
-                        />
-                      </div>
-
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <Label className="text-xs">Return travel type</Label>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {["Flight", "Train", "Bus", "Car", "Other"].map((t) => (
-                              <button
-                                key={t}
-                                type="button"
-                                onClick={() => setReturnTransportType(t)}
-                                className={cn(
-                                  "rounded-xl border px-3 py-1.5 text-xs font-medium transition",
-                                  returnTransportType === t
-                                    ? "border-primary bg-primary text-primary-foreground"
-                                    : "border-border bg-background hover:border-primary/40",
-                                )}
-                              >
-                                {t}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-xs">Ticket / flight / train ref <span className="text-muted-foreground">(optional)</span></Label>
-                          <Input
-                            value={returnTicketRef}
-                            onChange={(e) => setReturnTicketRef(e.target.value)}
-                            className="mt-1.5 h-10 rounded-xl text-sm"
-                            placeholder="e.g. 6E-2416, 12702, PNR…"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ── Step 4: Accommodation ── */}
-            {step === 4 && (
-              <div className="space-y-6">
-                <div>
-                  <Label className="text-xs">Accommodation type</Label>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    {[
-                      { id: "Economy", desc: "Hostels & street food" },
-                      { id: "Comfort", desc: "Boutique stays & casual dining" },
-                      { id: "Luxury", desc: "5-star & private villas" },
-                    ].map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => setAccommodation(t.id)}
-                        className={cn(
-                          "rounded-xl border p-4 text-left transition",
-                          accommodation === t.id
-                            ? "border-primary bg-primary/5"
-                            : "border-border bg-background hover:border-primary/40",
-                        )}
-                      >
-                        <p className="font-semibold">{t.id}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{t.desc}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label className="text-xs">Hotel / Stay name <span className="text-muted-foreground">(optional)</span></Label>
-                    <Input
-                      value={hotelName}
-                      onChange={(e) => setHotelName(e.target.value)}
-                      className="mt-1.5 h-10 rounded-xl text-sm"
-                      placeholder="e.g. Taj Banjara, OYO 12345, Airbnb…"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Hotel area / address <span className="text-destructive">*</span></Label>
-                    <Input
-                      value={hotelLocation}
-                      onChange={(e) => setHotelLocation(e.target.value)}
-                      className="mt-1.5 h-10 rounded-xl text-sm"
-                      placeholder="e.g. Banjara Hills, near Charminar…"
-                    />
-                    {!hotelLocation.trim() && (
-                      <p className="mt-1 text-xs text-destructive">Hotel area is required to plan nearby attractions.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label className="text-xs">Expected check-in time <span className="text-muted-foreground">(optional)</span></Label>
-                    <TimePicker
-                      value={checkInTime}
-                      onChange={setCheckInTime}
-                      className="mt-1.5"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Expected check-out time <span className="text-muted-foreground">(optional)</span></Label>
-                    <TimePicker
-                      value={checkOutTime}
-                      onChange={setCheckOutTime}
-                      className="mt-1.5"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Step 5: Preferences ── */}
-            {step === 5 && (
               <div className="space-y-6">
                 <div>
                   <Label className="text-xs">Trip pace</Label>
@@ -721,11 +443,122 @@ function NewTrip() {
                     placeholder="Celebrating an anniversary, dietary needs, must-see spots…"
                   />
                 </div>
+
+                <div className="pt-4 border-t border-border/50">
+                  <button 
+                    onClick={() => setShowAdvanced(!showAdvanced)} 
+                    className="text-sm font-semibold text-primary underline underline-offset-4"
+                  >
+                    {showAdvanced ? "Hide Advanced Options" : "Show Advanced Options (Travel & Hotel Details)"}
+                  </button>
+                  <p className="text-xs text-muted-foreground mt-1">If you leave these blank, the AI will recommend the best routes and hotel areas for you.</p>
+
+                  {showAdvanced && (
+                    <div className="mt-6 space-y-6">
+                      {/* Advanced Travel Details */}
+                      <div className="rounded-2xl border border-border/60 bg-muted/30 p-5 space-y-5">
+                         <h3 className="text-sm font-semibold">Travel Details</h3>
+                         <div>
+                          <Label className="text-xs">Primary travel mode to {destination}</Label>
+                          <div className="mt-3 flex flex-wrap gap-3">
+                            {MODES.map(({ id, icon: Icon }) => (
+                              <button
+                                key={id}
+                                type="button"
+                                onClick={() => setTravelMode(id)}
+                                className={cn(
+                                  "flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition",
+                                  travelMode === id
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-background hover:border-primary/40",
+                                )}
+                              >
+                                <Icon className="h-4 w-4" />
+                                {id}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {hubs && (
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <Label className="text-xs">{hubs.dep}</Label>
+                              <Input
+                                value={departureHub}
+                                onChange={(e) => setDepartureHub(e.target.value)}
+                                className="mt-1.5 h-10 rounded-xl text-sm"
+                                placeholder="optional"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">{hubs.arr}</Label>
+                              <Input
+                                value={arrivalHub}
+                                onChange={(e) => setArrivalHub(e.target.value)}
+                                className="mt-1.5 h-10 rounded-xl text-sm"
+                                placeholder="optional"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Advanced Accommodation Details */}
+                      <div className="rounded-2xl border border-border/60 bg-muted/30 p-5 space-y-5">
+                         <h3 className="text-sm font-semibold">Accommodation Details</h3>
+                         <div>
+                          <Label className="text-xs">Accommodation type</Label>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                            {[
+                              { id: "Economy", desc: "Hostels & street food" },
+                              { id: "Comfort", desc: "Boutique stays & casual dining" },
+                              { id: "Luxury", desc: "5-star & private villas" },
+                            ].map((t) => (
+                              <button
+                                key={t.id}
+                                onClick={() => setAccommodation(t.id)}
+                                className={cn(
+                                  "rounded-xl border p-4 text-left transition",
+                                  accommodation === t.id
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border bg-background hover:border-primary/40",
+                                )}
+                              >
+                                <p className="font-semibold">{t.id}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{t.desc}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <Label className="text-xs">Hotel / Stay name <span className="text-muted-foreground">(optional)</span></Label>
+                            <Input
+                              value={hotelName}
+                              onChange={(e) => setHotelName(e.target.value)}
+                              className="mt-1.5 h-10 rounded-xl text-sm"
+                              placeholder="e.g. Taj Banjara"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Hotel area / address <span className="text-muted-foreground">(optional)</span></Label>
+                            <Input
+                              value={hotelLocation}
+                              onChange={(e) => setHotelLocation(e.target.value)}
+                              className="mt-1.5 h-10 rounded-xl text-sm"
+                              placeholder="e.g. Banjara Hills"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* ── Step 6: Review ── */}
-            {step === 6 && (
+            {/* ── Step 4: Review ── */}
+            {step === 4 && (
               <div className="space-y-4">
                 <div className="rounded-2xl glass-tile p-5">
                   <p className="text-xs text-muted-foreground">Route</p>
@@ -739,30 +572,10 @@ function NewTrip() {
                     ["Dates", `${startDate} → ${endDate}`],
                     ["Travelers", `${travelers} ${parseInt(travelers) === 1 ? "person" : "people"}`],
                     ["Budget", budget ? `₹${parseInt(budget).toLocaleString("en-IN")}` : "Not set"],
-                    ["Travel mode", travelMode || "Not set"],
-                    ...(departureTime || arrivalTime
-                      ? [["Journey times", `${normalizeTimeTo24h(departureTime) || "?"} → ${normalizeTimeTo24h(arrivalTime) || "?"}`]]
-                      : []),
-                    ...(departureHub || arrivalHub
-                      ? [["Hubs", `${departureHub || "?"} → ${arrivalHub || "?"}`]]
-                      : []),
-                    ...(transitRef ? [["Transit ref", transitRef]] : []),
-                    ["Accommodation", accommodation || "Not set"],
-                    ...(hotelName ? [["Hotel", hotelName]] : []),
-                    ["Hotel area", hotelLocation || "Not set"],
-                    ...(checkInTime ? [["Check-in", normalizeTimeTo24h(checkInTime)]] : []),
-                    ...(checkOutTime ? [["Check-out", normalizeTimeTo24h(checkOutTime)]] : []),
-                    ...(returnBooked === true
-                      ? [
-                        ["Return ticket", "✅ Booked"],
-                        ...(returnDate ? [["Return date", returnDate]] : []),
-                        ...(returnTime ? [["Return time", normalizeTimeTo24h(returnTime)]] : []),
-                        ...(returnDepartureLocation ? [["Return from", returnDepartureLocation]] : []),
-                        ...(returnTransportType ? [["Return mode", returnTransportType]] : []),
-                      ]
-                      : returnBooked === false ? [["Return ticket", "Not booked yet"]] : []),
-                    ["Pace", style || "Not set"],
-                    ["Interests", interests.length ? interests.join(", ") : "None selected"],
+                    ...(travelMode ? [["Travel mode", travelMode]] : []),
+                    ...(accommodation ? [["Accommodation", accommodation]] : []),
+                    ["Pace", style || "Balanced"],
+                    ["Interests", interests.length ? interests.join(", ") : "General Sightseeing"],
                   ].map(([k, v]) => (
                     <div key={k} className="rounded-xl glass-tile p-4">
                       <p className="text-xs text-muted-foreground">{k}</p>
@@ -785,7 +598,7 @@ function NewTrip() {
                 )}
 
                 <p className="text-sm text-muted-foreground">
-                  The AI will use your travel details above to create a realistic, fatigue-aware itinerary.
+                  The AI will use your quick details to auto-suggest the best routes, hotel areas, and a realistic fatigue-aware itinerary.
                 </p>
               </div>
             )}

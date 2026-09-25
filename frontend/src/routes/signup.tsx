@@ -3,8 +3,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { createUserWithEmailAndPassword, updateProfile, signInWithPopup } from "firebase/auth";
 import { auth, googleProvider, db } from "../lib/firebase";
-import { saveUserProfile } from "../lib/db";
-import { doc, setDoc } from "firebase/firestore";
+import { saveUserProfile, updateUserProfile } from "../lib/db";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -112,15 +111,11 @@ function Signup() {
       }
 
       // 4. Save travel preferences
-      await setDoc(
-        doc(db, "userPreferences", user.uid),
-        {
-          travelStyles: picked,
-          homeCity,
-          currency,
-        },
-        { merge: true },
-      );
+      await updateUserProfile(user.uid, {
+        travelStyles: picked,
+        homeCity,
+        currency,
+      });
 
       nav({ to: "/dashboard" });
     } catch (err: any) {

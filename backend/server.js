@@ -1,86 +1,154 @@
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
-import dotenv from "dotenv";
-import rateLimit from "express-rate-limit";
-import path from "path";
-import { fileURLToPath } from "url";
-
 import dns from "dns";
+import { config } from "./config/env.js";
+import { logger } from "./utils/logger.js";
+import { requestId } from "./middleware/requestId.js";
+import { globalLimiter } from "./middleware/rateLimiter.js";
+import { errorHandler } from "./middleware/errorHandler.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.join(__dirname, ".env") });
+// Routes
+import healthRoutes from "./routes/health.js";
+import tripRoutes from "./routes/trips.js";
+import aiRoutes from "./routes/ai.js";
+import commanderRoutes from "./routes/commander.js";
+import memoriesRoutes from "./routes/memories.js";
+import collageRoutes from "./routes/collages.js";
+import reelRoutes from "./routes/reels.js";
+import travelRoutes from "./routes/travel.js";
+import budgetRoutes from "./routes/budget.js";
+import userRoutes from "./routes/user.js";
+import mediaRoutes from "./routes/media.js";
+import mediaUploadsRouter from "./routes/media-uploads.js";
+import path from "path";
+import { collageWorker } from "./services/collage/collage-worker.js";
+import { initReelQueue, closeReelQueue } from "./services/queue/reel-queue.js";
+import { startPriceWatchScheduler, stopPriceWatchScheduler } from "./services/price-watch/price-watch.worker.js";
 
-dns.setServers(["8.8.8.8"]); // Fix for local network/sandbox SRV lookup failures
+// Fix for local network/sandbox SRV lookup failures
+dns.setServers(["8.8.8.8"]);
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = config.PORT;
 
-// ─── Middleware ────────────────────────────────────────────────────────────────
-app.use(cors({ origin: "*" }));
-app.use(express.json({ limit: "2mb" })); // Itinerary payloads can be 15-80KB; 2MB is safe with auth in place
+// ─── Core Middleware ───────────────────────────────────────────────────────────
+app.use(requestId);
 
-// ─── Rate Limiting ─────────────────────────────────────────────────────────────
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many requests. Please try again later." },
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",").map((s) => s.trim())
+  : ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (config.NODE_ENV !== "production" || allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+        return callback(null, true);
+      }
+      return callback(new Error("CORS origin not allowed by Advenza security policy"), false);
+    },
+    credentials: true,
+  })
+);
+
+// Secure local media handler with authentication, IDOR checks, and share token support
+app.use("/uploads", mediaUploadsRouter);
+
+// Request context logger
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    logger.http(`${req.method} ${req.originalUrl} ${res.statusCode} (${duration}ms) [${req.id}]`);
+  });
+  next();
 });
 
-const aiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 20, // Max 20 AI requests per minute
-  message: { error: "AI rate limit reached. Please wait a moment." },
-});
+// Specific controlled limits for body parsing
+app.use("/api/ai", express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "1mb" }));
 
+// Tiered Global Rate Limiter
 app.use(globalLimiter);
-app.use("/api/ai", aiLimiter);
 
-// ─── MongoDB ───────────────────────────────────────────────────────────────────
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/Advenza";
+// ─── Health Checks ─────────────────────────────────────────────────────────────
+app.use("/health", healthRoutes);
 
-mongoose
-  .connect(MONGODB_URI)
-  .then(() => console.log("✅ Connected to MongoDB Atlas"))
-  .catch((err) => console.error("❌ MongoDB error:", err.message));
-
-// ─── Health check ──────────────────────────────────────────────────────────────
+// Root path compatibility check
 app.get("/", (req, res) =>
   res.json({
     status: "ok",
     service: "Advenza API",
-    version: "1.0.0",
+    version: "2.0.0",
     db: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-  }),
+  })
 );
 
-// ─── Routes ────────────────────────────────────────────────────────────────────
-import tripRoutes from "./routes/trips.js";
-import aiRoutes from "./routes/ai.js";
-import commanderRoutes from "./routes/commander.js";
-
+// ─── Application API Routes ────────────────────────────────────────────────────
+app.use("/api/trips", budgetRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/commander", commanderRoutes);
+app.use("/api/memories", memoriesRoutes);
+app.use("/api/collages", collageRoutes);
+app.use("/api/reels", reelRoutes);
+app.use("/api/travel", travelRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/media", mediaRoutes);
 
-// ─── Global Error Handler ─────────────────────────────────────────────────────
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Internal server error" });
-});
+// ─── Centralized Error Handler ─────────────────────────────────────────────────
+app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  // Sanity-check required credentials so missing keys surface immediately on startup
-  const required = {
-    GROQ_API_KEY: process.env.GROQ_API_KEY,
-    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-    CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY,
-  };
-  for (const [k, v] of Object.entries(required)) {
-    console.log(`🔑 ${k}: ${v ? "✅ loaded (" + v.slice(0, 8) + "...)" : "❌ MISSING — AI features will fail!"}`);
+import { runStartupMigrations } from "./services/database/migration.service.js";
+
+// ─── Database & Server Initialization ──────────────────────────────────────────
+mongoose
+  .connect(config.MONGODB_URI)
+  .then(async () => {
+    logger.info("✅ Connected to MongoDB Atlas");
+    try {
+      await runStartupMigrations();
+      await collageWorker.recoverStuckJobs();
+      initReelQueue();
+      startPriceWatchScheduler();
+    } catch (migErr) {
+      logger.error(`Startup initialization warning: ${migErr.message}`);
+    }
+  })
+  .catch((err) => logger.error(`❌ MongoDB connection error: ${err.message}`));
+
+const server = app.listen(PORT, () => {
+  logger.info(`🚀 Advenza Server running on http://localhost:${PORT}`);
+  // Redacted configuration sanity check
+  const providers = ["GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY", "TOGETHER_API_KEY"];
+  for (const k of providers) {
+    const isSet = Boolean(process.env[k]);
+    logger.info(`🔑 ${k}: ${isSet ? "✅ configured" : "⚠️  not set"}`);
   }
 });
+
+// ─── Graceful Shutdown ─────────────────────────────────────────────────────────
+const gracefulShutdown = (signal) => {
+  logger.info(`Received ${signal}. Starting graceful shutdown...`);
+  server.close(async () => {
+    logger.info("HTTP server closed.");
+    try {
+      stopPriceWatchScheduler();
+      await closeReelQueue();
+      await mongoose.connection.close(false);
+      logger.info("MongoDB connection closed.");
+      process.exit(0);
+    } catch (err) {
+      logger.error(`Error closing MongoDB: ${err.message}`);
+      process.exit(1);
+    }
+  });
+};
+
+
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+export default app;

@@ -12,7 +12,7 @@ const DayPlanSchema = new mongoose.Schema({
   activities: [ActivitySchema],
 });
 
-// Embedded Expense schema
+// Embedded Expense schema (preserved for backwards compatibility)
 const ExpenseSchema = new mongoose.Schema({
   name: { type: String, required: true },
   amount: { type: Number, required: true },
@@ -21,16 +21,17 @@ const ExpenseSchema = new mongoose.Schema({
   addedAt: { type: Date, default: Date.now },
 });
 
-// Embedded Group Member schema
+// Embedded Group Member schema (strictly bounded to small groups 2-10)
 const MemberSchema = new mongoose.Schema({
   name: String,
   email: String,
   role: { type: String, default: "Pending" },
   initials: String,
   color: String,
+  userId: String,
 });
 
-// Embedded Vote schema
+// Embedded Vote schema (strictly bounded 4-10 options)
 const VoteOptionSchema = new mongoose.Schema({
   name: String,
   votes: { type: Number, default: 0 },
@@ -38,10 +39,33 @@ const VoteOptionSchema = new mongoose.Schema({
 });
 
 const TripSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  destination: String,
+  title: { type: String, required: true, trim: true },
+  destination: { type: String, trim: true },
   summary: String,
   budgetEstimate: String,
+  budgetBreakdown: {
+    currency: { type: String, default: "INR" },
+    travelers: { type: Number, default: 1 },
+    nights: { type: Number, default: 1 },
+    categories: [
+      {
+        category: String,
+        label: String,
+        description: String,
+        amount: Number,
+        type: { type: String, default: "ESTIMATED" },
+      },
+    ],
+  },
+  heroImage: {
+    url: String,
+    destination: String,
+    source: { type: String, default: "wikimedia" },
+    photographer: String,
+    photographerUrl: String,
+    attributionUrl: String,
+    fetchedAt: { type: Date, default: Date.now },
+  },
   startDate: String,
   endDate: String,
   style: String,
@@ -73,7 +97,7 @@ const TripSchema = new mongoose.Schema({
   days: [DayPlanSchema],
 
   // Budget tracking embedded in trip
-  budgetTotal: { type: Number, default: 0 }, // user's original budget input
+  budgetTotal: { type: Number, default: 0 },
   expenses: [ExpenseSchema],
 
   // Plan B suggestions (AI-generated backup scenarios)
@@ -83,6 +107,15 @@ const TripSchema = new mongoose.Schema({
   members: [MemberSchema],
   voteOptions: [VoteOptionSchema],
 
+  // Commander event acceptance tracking
+  acceptedCommanderEvents: [
+    {
+      eventId: { type: String, required: true },
+      acceptedAt: { type: Date, default: Date.now },
+      actionTaken: { type: String, default: "" },
+    },
+  ],
+
   // Metadata
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
@@ -90,8 +123,11 @@ const TripSchema = new mongoose.Schema({
   healthScore: { type: Number, default: 87 },
 });
 
-// Compound index for querying user trips ordered by date
+// Compound indexes tailored for actual query patterns
 TripSchema.index({ createdBy: 1, createdAt: -1 });
+TripSchema.index({ "members.userId": 1, createdAt: -1 });
+TripSchema.index({ "members.email": 1, createdAt: -1 });
+TripSchema.index({ title: "text", destination: "text" });
 
 // Auto-update updatedAt on save
 TripSchema.pre("save", function (next) {

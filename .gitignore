@@ -7,13 +7,14 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-.output
-.vinxi
-.tanstack/**
-.nitro
+# Dependencies and Build Artifacts
+node_modules/
+dist/
+dist-ssr/
+.output/
+.vinxi/
+.tanstack/
+.nitro/
 *.local
 
 # Wrangler / Cloudflare
@@ -23,7 +24,7 @@ dist-ssr
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
@@ -31,8 +32,27 @@ dist-ssr
 *.sln
 *.sw?
 
-# Explicit ignores for this commit
+# Sensitive Environment Configurations and Credentials
 .env
+.env.*
+!.env.example
 backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+*.pem
+*.key
+*serviceAccount*.json
+*service_account*.json
+*firebase-adminsdk*.json
+
+# Ignore markdown documentation files
 *.md
-Advenza-2fd33-firebase-adminsdk-fbsvc-*.json
+docs/
+
+# User uploads and generated media
+backend/uploads/*
+!backend/uploads/**/.gitkeep
+

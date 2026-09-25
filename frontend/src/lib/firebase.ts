@@ -5,37 +5,42 @@ import { getStorage } from "firebase/storage";
 import { getAnalytics, isSupported } from "firebase/analytics";
 
 const firebaseConfig = {
-<<<<<<< HEAD
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAZslnjBBrXbMHfssH3w3YwejJxwLyak-Y",
+  // Firebase web API keys are public client identifiers (restricted via Google Cloud Console).
+  // Set VITE_FIREBASE_* variables in your .env file — see .env.example for required keys.
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "dummy-api-key-for-local-dev",
   authDomain: "advenzaa7.firebaseapp.com",
   projectId: "advenzaa7",
   storageBucket: "advenzaa7.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "702798834479",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:702798834479:web:d408d85b6ab5b8e4b88fda",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-WZM1KGKRSH",
-=======
-  // advenza-7 — matches backend service account in backend/.env
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyATv5NrcX1vICZJph9IgnQwv9vzX8Os2kQ",
-  authDomain: "advenza-7.firebaseapp.com",
-  projectId: "advenza-7",
-  storageBucket: "advenza-7.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1058178919887",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:1058178919887:web:c2711df2037e66c36276ba",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-RLQPYWKFHR",
->>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 // Initialize Firebase only once
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
+
+let auth: any = null;
+let db: any = null;
+let storage: any = null;
 const googleProvider = new GoogleAuthProvider();
+
+try {
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
+} catch (error) {
+  console.warn("Firebase initialization warning (safe to ignore if using mock data):", error);
+  // Provide mock implementations to prevent SSR and client crashes
+  db = { type: "mock-db" };
+  storage = { type: "mock-storage" };
+}
 
 // Initialize Analytics safely (only runs in browser environment)
 isSupported().then((supported) => {
   if (supported) {
-    getAnalytics(app);
+    try {
+      getAnalytics(app);
+    } catch (e) {}
   }
 });
 

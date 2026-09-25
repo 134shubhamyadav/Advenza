@@ -1,10 +1,11 @@
 import { apiFetch } from "../lib/api";
+import type { TripSummary, TripDay } from "./tripService";
 
 export const aiService = {
   /**
    * Generate an AI trip itinerary
    */
-  async generateTrip(payload: any): Promise<any> {
+  async generateTrip(payload: Record<string, unknown>): Promise<TripSummary> {
     return apiFetch("/api/ai/generate", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -14,7 +15,12 @@ export const aiService = {
   /**
    * What-If Simulator / Plan B disruption evaluation
    */
-  async evaluatePlanB(tripId: string, text: string, simulatedDay: number, chatMessages: any[]): Promise<{ reply: string; proposedDays?: any[] }> {
+  async evaluatePlanB(
+    tripId: string,
+    text: string,
+    simulatedDay: number,
+    chatMessages: Record<string, unknown>[]
+  ): Promise<{ reply: string; proposedDays?: TripDay[] }> {
     return apiFetch("/api/ai/plan-b", {
       method: "POST",
       body: JSON.stringify({ tripId, text, simulatedDay, chatMessages }),
@@ -24,7 +30,7 @@ export const aiService = {
   /**
    * AI Risk Radar & Weather analysis
    */
-  async getRiskAnalysis(destination: string, refresh?: boolean): Promise<any> {
+  async getRiskAnalysis(destination: string, refresh?: boolean): Promise<Record<string, unknown>> {
     return apiFetch("/api/ai/risk", {
       method: "POST",
       body: JSON.stringify({ destination, refresh }),
@@ -44,7 +50,7 @@ export const aiService = {
   /**
    * Smart AI Packing List generation
    */
-  async getPackingList(payload: { destination: string; startDate?: string; endDate?: string; style?: string }): Promise<any> {
+  async getPackingList(payload: { destination: string; startDate?: string; endDate?: string; style?: string }): Promise<Record<string, unknown>> {
     return apiFetch("/api/ai/packing", {
       method: "POST",
       body: JSON.stringify(payload),

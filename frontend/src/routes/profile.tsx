@@ -54,7 +54,8 @@ function Profile() {
   const [inlinePhone, setInlinePhone] = useState("");
   const [inlineBio, setInlineBio] = useState("");
 
-  const [saveLoading, setSaveLoading] = useState(false);
+  const [inlineSaveLoading, setInlineSaveLoading] = useState(false);
+  const [modalSaveLoading, setModalSaveLoading] = useState(false);
 
   const { data: trips = [], isLoading: tripsLoading } = useQuery({
     queryKey: queryKeys.trips(),
@@ -97,7 +98,7 @@ function Profile() {
   }) => {
     if (!user) return;
     try {
-      setSaveLoading(true);
+      setModalSaveLoading(true);
       let finalPhotoURL = updatedData.photoURL;
 
       if (selectedFile) {
@@ -121,7 +122,7 @@ function Profile() {
       console.error(err);
       toast.error(err.message || "Failed to update profile.");
     } finally {
-      setSaveLoading(false);
+      setModalSaveLoading(false);
     }
   };
 
@@ -295,9 +296,13 @@ function Profile() {
                     toast.error("First name and last name cannot be empty");
                     return;
                   }
+                  if (!user) {
+                    toast.error("Please log in to save preferences");
+                    return;
+                  }
                   try {
-                    setSaveLoading(true);
-                    await updateUserProfile(user!.uid, {
+                    setInlineSaveLoading(true);
+                    await updateUserProfile(user.uid, {
                       displayName: fullName,
                       homeCity: inlineHomeCity,
                       currency: inlineCurrency,
@@ -307,15 +312,16 @@ function Profile() {
                     await refreshProfile();
                     toast.success("Preferences updated successfully!");
                   } catch (err: any) {
+                    console.error("Save preferences error:", err);
                     toast.error(err.message || "Failed to update preferences.");
                   } finally {
-                    setSaveLoading(false);
+                    setInlineSaveLoading(false);
                   }
                 }}
-                disabled={saveLoading}
+                disabled={inlineSaveLoading}
                 className="mt-6 w-full"
               >
-                {saveLoading ? "Saving..." : "Save changes"}
+                {inlineSaveLoading ? "Saving..." : "Save changes"}
               </Button>
             </div>
             <div className="rounded-2xl glass-panel p-6">
@@ -501,7 +507,7 @@ function Profile() {
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={saveLoading}>
+            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={modalSaveLoading}>
               Cancel
             </Button>
             <Button
@@ -519,9 +525,9 @@ function Profile() {
                   photoURL: previewUrl === DEFAULT_AVATAR ? "" : previewUrl,
                 });
               }}
-              disabled={saveLoading}
+              disabled={modalSaveLoading}
             >
-              {saveLoading ? "Saving..." : "Save changes"}
+              {modalSaveLoading ? "Saving..." : "Save changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

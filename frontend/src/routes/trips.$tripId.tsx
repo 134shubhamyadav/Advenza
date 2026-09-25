@@ -20,29 +20,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { TripMemoriesTab } from "@/components/trips/trip-memories-tab";
+import { BudgetEstimateCard } from "@/components/budget/budget-estimate-card";
+import type { BudgetBreakdown, HeroImage } from "@/services/tripService";
 
 export const Route = createFileRoute("/trips/$tripId")({ component: TripDetails });
 
-const DESTINATION_IMAGES: Record<string, string> = {
-  default:
-    "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=1200&q=75&auto=format&fit=crop",
-  udaipur:
-    "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=1200&q=75&auto=format&fit=crop",
-  goa: "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=1200&q=75&auto=format&fit=crop",
-  manali:
-    "https://images.unsplash.com/photo-1486911278844-a81c5267e227?w=1200&q=75&auto=format&fit=crop",
-  jaipur:
-    "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=1200&q=75&auto=format&fit=crop",
-  ladakh:
-    "https://images.unsplash.com/photo-1772165075119-a427cb258651?w=1200&q=75&auto=format&fit=crop",
-  kerala:
-    "https://images.unsplash.com/photo-1602301673827-9a5e0b5e7555?w=1200&q=75&auto=format&fit=crop",
-};
+const FALLBACK_TRAVEL_IMAGE =
+  "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1600&q=80&auto=format&fit=crop";
 
-const getImage = (dest?: string) => {
-  if (!dest) return DESTINATION_IMAGES.default;
-  const key = dest.toLowerCase().split(",")[0].trim();
-  return DESTINATION_IMAGES[key] || DESTINATION_IMAGES.default;
+const getTripHeroImage = (trip: Trip | null): string => {
+  if (!trip) return FALLBACK_TRAVEL_IMAGE;
+  if (trip.heroImage?.url) return trip.heroImage.url;
+  return FALLBACK_TRAVEL_IMAGE;
 };
 
 type Expense = { category: string; amount: number; description?: string };
@@ -54,17 +44,16 @@ type Trip = {
   destination?: string;
   summary?: string;
   budgetEstimate?: string;
+  budgetBreakdown?: BudgetBreakdown;
+  heroImage?: HeroImage;
+  travelers?: number;
   days?: Day[];
   expenses?: Expense[];
   members?: { name: string }[];
   createdBy?: string;
 };
 
-<<<<<<< HEAD
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-=======
-import { useQuery, useQueryClient } from "@tanstack/react-query";
->>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
 import { queryKeys } from "@/lib/queryKeys";
 
 function TripDetails() {
@@ -84,7 +73,6 @@ function TripDetails() {
     enabled: !!tripId,
   });
 
-<<<<<<< HEAD
   const regenerateMutation = useMutation({
     mutationFn: async () => {
       return await apiFetch(`/api/ai/regenerate/${tripId}`, {
@@ -105,8 +93,6 @@ function TripDetails() {
     },
   });
 
-=======
->>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
   const handleDeleteConfirm = async () => {
     setIsDeleting(true);
     try {
@@ -169,11 +155,21 @@ function TripDetails() {
     <AppShell>
       <div className="relative h-72 overflow-hidden rounded-3xl">
         <img
-          src={getImage(trip.destination)}
+          src={getTripHeroImage(trip)}
           alt={trip.destination ?? trip.title}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover transition-opacity duration-500"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = FALLBACK_TRAVEL_IMAGE;
+          }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+        {trip.heroImage?.photographer && (
+          <div className="absolute top-4 right-4 z-10">
+            <span className="text-[10px] text-white/70 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 select-none">
+              Photo: {trip.heroImage.photographer} ({trip.heroImage.source || "Wikimedia"})
+            </span>
+          </div>
+        )}
         <div className="absolute bottom-6 left-6 right-6 text-white">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -239,6 +235,7 @@ function TripDetails() {
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="budget">Budget</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
+          <TabsTrigger value="memories">Memories</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -255,13 +252,15 @@ function TripDetails() {
                     No summary generated yet.
                   </p>
                 )}
-                {trip.budgetEstimate && (
-                  <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                    <div className="rounded-xl glass-tile p-4">
-                      <Wallet className="h-4 w-4 text-muted-foreground" />
-                      <p className="mt-2 text-xs text-muted-foreground">Budget Estimate</p>
-                      <p className="text-sm font-semibold mt-1">{trip.budgetEstimate}</p>
-                    </div>
+                {(trip.budgetBreakdown || trip.budgetEstimate) && (
+                  <div className="mt-6">
+                    <BudgetEstimateCard
+                      trip={trip}
+                      budgetBreakdown={trip.budgetBreakdown}
+                      budgetEstimate={trip.budgetEstimate}
+                      travelers={trip.travelers || trip.members?.length || 1}
+                      nights={trip.days?.length || 1}
+                    />
                   </div>
                 )}
               </div>
@@ -293,6 +292,10 @@ function TripDetails() {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="memories" className="mt-6">
+          <TripMemoriesTab tripId={trip._id} />
         </TabsContent>
 
         <TabsContent value="timeline" className="mt-6">
@@ -333,8 +336,19 @@ function TripDetails() {
           </div>
         </TabsContent>
 
-        <TabsContent value="budget" className="mt-6">
+        <TabsContent value="budget" className="mt-6 space-y-6">
+          {(trip.budgetBreakdown || trip.budgetEstimate) && (
+            <BudgetEstimateCard
+              trip={trip}
+              budgetBreakdown={trip.budgetBreakdown}
+              budgetEstimate={trip.budgetEstimate}
+              travelers={trip.travelers || trip.members?.length || 1}
+              nights={trip.days?.length || 1}
+            />
+          )}
+
           <div className="rounded-2xl glass-panel p-6">
+            <h3 className="font-semibold mb-4">Actual Recorded Expenses</h3>
             {Object.keys(expensesByCategory).length === 0 ? (
               <div className="py-10 text-center">
                 <Wallet className="mx-auto h-10 w-10 text-muted-foreground/40" />

@@ -1,16 +1,80 @@
 import { apiFetch } from "../lib/api";
 
+export interface TripActivity {
+  time: string;
+  description: string;
+  type?: string;
+  meta?: string;
+}
+
+export interface TripDay {
+  dayNumber: number;
+  date?: string;
+  title: string;
+  activities: TripActivity[];
+}
+
+export interface TripExpense {
+  name: string;
+  amount: number;
+  category?: string;
+  date?: string;
+}
+
+export interface TripMember {
+  name: string;
+  email?: string;
+  role?: string;
+  initials?: string;
+}
+
+export interface TripVoteOption {
+  name: string;
+  votes: number;
+  voters: string[];
+}
+
+export interface BudgetCategoryItem {
+  category: string;
+  label: string;
+  description?: string;
+  amount: number;
+  type?: "ESTIMATED" | "LIVE_PRICE" | "ACTUAL" | "PROJECTED" | string;
+}
+
+export interface BudgetBreakdown {
+  currency?: string;
+  travelers?: number;
+  nights?: number;
+  categories: BudgetCategoryItem[];
+}
+
+export interface HeroImage {
+  url: string;
+  destination?: string;
+  source?: string;
+  photographer?: string;
+  photographerUrl?: string;
+  attributionUrl?: string;
+  fetchedAt?: string;
+}
+
 export interface TripSummary {
   _id: string;
   title: string;
   destination?: string;
+  summary?: string;
+  budgetEstimate?: string;
+  budgetBreakdown?: BudgetBreakdown;
+  heroImage?: HeroImage;
+  budgetTotal?: number;
+  travelers?: number;
   startDate?: string;
   endDate?: string;
-  budgetTotal?: number;
-  days?: any[];
-  expenses?: any[];
-  members?: any[];
-  voteOptions?: any[];
+  days?: TripDay[];
+  expenses?: TripExpense[];
+  members?: TripMember[];
+  voteOptions?: TripVoteOption[];
   createdBy?: string;
 }
 
@@ -27,6 +91,23 @@ export const tripService = {
    */
   async getTripById(tripId: string): Promise<TripSummary> {
     return apiFetch(`/api/trips/${tripId}`);
+  },
+
+  /**
+   * Update a trip (e.g. title, destination, dates)
+   */
+  async updateTrip(tripId: string, updates: Partial<TripSummary>): Promise<TripSummary> {
+    return apiFetch(`/api/trips/${tripId}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+  },
+
+  /**
+   * Fetch destination image
+   */
+  async getDestinationImage(destination: string): Promise<HeroImage> {
+    return apiFetch(`/api/media/destination-image?destination=${encodeURIComponent(destination)}`);
   },
 
   /**
@@ -72,7 +153,7 @@ export const tripService = {
   /**
    * Smart-patch itinerary days
    */
-  async updateItineraryDays(tripId: string, days: any[]): Promise<TripSummary> {
+  async updateItineraryDays(tripId: string, days: TripDay[]): Promise<TripSummary> {
     return apiFetch(`/api/trips/${tripId}/itinerary`, {
       method: "PUT",
       body: JSON.stringify({ days }),

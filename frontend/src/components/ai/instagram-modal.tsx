@@ -8,13 +8,18 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Share2, Copy, Check, Instagram, Music } from "lucide-react";
+import { Sparkles, Share2, Copy, Check, Instagram, Music, MapPin } from "lucide-react";
 import { AiBadge } from "@/components/ai/ai-badge";
 
 interface InstagramModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  dayData: any | null;
+  dayData: {
+    place: string;
+    weather: string;
+    photo: string;
+    date: string;
+  } | null;
 }
 
 const filters = [
@@ -25,9 +30,9 @@ const filters = [
 ];
 
 const songs = [
-  { name: "Kesariya", artist: "Pritam, Arijit Singh", match: 98 },
-  { name: "Kabira", artist: "Pritam, Tochi Raina", match: 92 },
-  { name: "Chaudhary", artist: "Amit Trivedi, Mame Khan", match: 88 },
+  { name: "Acoustic Journey", artist: "Royalty Free Music", match: 98 },
+  { name: "Lo-Fi Travel Beats", artist: "Creative Commons", match: 92 },
+  { name: "Cinematic Horizons", artist: "Free Audio Library", match: 88 },
 ];
 
 export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModalProps) {
@@ -89,7 +94,7 @@ export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModal
                     className="w-1/2 h-28 object-cover rounded-lg shadow-lg border-2 border-white/20 rotate-3"
                   />
                   <div className="w-1/2 h-28 bg-white/10 backdrop-blur-md rounded-lg border border-white/30 flex flex-col justify-center items-center text-center p-2 shadow-lg -rotate-1">
-                    <MapPinIcon className="h-4 w-4 mb-1 text-white" />
+                    <MapPin className="h-4 w-4 mb-1 text-white" />
                     <span className="text-xs font-bold text-white leading-tight">
                       {dayData.place}
                     </span>
@@ -187,22 +192,4 @@ export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModal
   );
 }
 
-function MapPinIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-      <circle cx="12" cy="10" r="3" />
-    </svg>
-  );
-}
+

@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Deprecate direct client writes to memories collection.
+    // All memory operations are now securely handled via Express API + MongoDB.
+    match /memories/{memoryId} {
+      allow read, write: if false;
+    }
+
+    // User profile records: strictly locked to the authenticated user's UID
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Default deny for unmapped documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

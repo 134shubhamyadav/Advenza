@@ -21,8 +21,13 @@ import {
   Plus,
   RefreshCw,
   Loader2,
+  Bell,
+  Radar,
+  Search,
 } from "lucide-react";
+import { TravelRadarModal } from "@/components/travel/travel-radar-modal";
 import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/commander")({ component: Commander });
 
@@ -35,6 +40,9 @@ type TripEvent = {
   action?: string;
   delta?: string;
   severity: "info" | "warn" | "bad";
+  dataType?: "LIVE_VERIFIED" | "CACHED_VERIFIED" | "ESTIMATED" | "AI_GENERATED" | "UNAVAILABLE";
+  source?: string;
+  updatedAt?: string;
 };
 
 const iconOf: Record<TripEvent["kind"], typeof Plane> = {
@@ -56,15 +64,12 @@ type Trip = {
 
 function Commander() {
   const { user } = useAuth();
-<<<<<<< HEAD
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-=======
->>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [radarModalOpen, setRadarModalOpen] = useState(false);
 
-<<<<<<< HEAD
   // Fetch user trips
   const { data: trips = [], isLoading: loadingTrips } = useQuery<Trip[]>({
     queryKey: queryKeys.trips(),
@@ -89,18 +94,6 @@ function Commander() {
       console.log(`[Commander Frontend] Requesting events for trip ${activeTripId}...`);
       const url = activeTripId ? `/api/commander/events?tripId=${activeTripId}` : "/api/commander/events";
       const data = await apiFetch(url);
-=======
-  const {
-    data: rawEvents = [],
-    isLoading: loading,
-    isFetching,
-    refetch,
-  } = useQuery<TripEvent[]>({
-    queryKey: queryKeys.commanderEvents(),
-    queryFn: async () => {
-      console.log("[Commander Frontend] Requesting trip commander events...");
-      const data = await apiFetch("/api/commander/events");
->>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
       console.log("[Commander Frontend] Response received:", data);
       return Array.isArray(data) ? data : [];
     },
@@ -108,11 +101,8 @@ function Commander() {
     staleTime: 5 * 60 * 1000, // 5 minutes cache
   });
 
-<<<<<<< HEAD
   const loading = loadingTrips || (loadingEvents && rawEvents.length === 0);
 
-=======
->>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
   const accept = async (id: string) => {
     if (processingId) return;
     setProcessingId(id);
@@ -143,17 +133,22 @@ function Commander() {
   return (
     <AppShell
       title="Trip Commander"
-<<<<<<< HEAD
       subtitle={
         activeTrip
           ? `Monitoring ${activeTrip.title} · ${activeTrip.destination || "Live Insights"}`
           : "Your AI travel manager, watching the plan so you don't have to."
       }
-=======
-      subtitle="Your AI travel manager, watching the plan so you don't have to."
->>>>>>> 6cf8129f1b59a8dafea26d19fadc7d6e6c81c6f4
       actions={
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRadarModalOpen(true)}
+            className="border-primary/40 text-primary hover:bg-primary/10 shadow-sm"
+          >
+            <Bell className="mr-1.5 h-3.5 w-3.5" />
+            Travel Radar & Price Watch
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -248,7 +243,28 @@ function Commander() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-semibold leading-tight">{e.title}</h3>
+                          {e.dataType === "LIVE_VERIFIED" && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              LIVE
+                            </span>
+                          )}
+                          {e.dataType === "CACHED_VERIFIED" && (
+                            <span className="rounded-full bg-blue-500/10 border border-blue-500/25 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                              VERIFIED CACHE
+                            </span>
+                          )}
+                          {e.dataType === "UNAVAILABLE" && (
+                            <span className="rounded-full bg-muted border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              UNAVAILABLE
+                            </span>
+                          )}
                           <span className="text-xs text-muted-foreground">{e.when}</span>
+                          {e.source && (
+                            <span className="text-[10px] text-muted-foreground/80 bg-background/50 border border-border/40 px-1.5 py-0.5 rounded">
+                              {e.source}
+                            </span>
+                          )}
                           {isAccepted && (
                             <span className="ml-auto rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
                               ✓ Accepted
@@ -324,9 +340,33 @@ function Commander() {
                   : "Active alerts from your trip"}
               </p>
             </div>
+
+            <div className="rounded-2xl glass-panel p-6 border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card">
+              <div className="flex items-center gap-2 text-primary">
+                <Radar className="h-5 w-5" />
+                <h4 className="font-semibold text-sm">Live Travel Radar</h4>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                Scan verified aviation schedules, live weather conditions, and hotel rates. Track price drops with automated alerts.
+              </p>
+              <Button
+                variant="default"
+                size="sm"
+                className="mt-4 w-full gap-1.5 shadow-sm"
+                onClick={() => setRadarModalOpen(true)}
+              >
+                <Search className="h-3.5 w-3.5" /> Launch Travel Radar
+              </Button>
+            </div>
           </aside>
         </div>
       )}
+
+      <TravelRadarModal
+        isOpen={radarModalOpen}
+        onOpenChange={setRadarModalOpen}
+        activeTrip={activeTrip}
+      />
     </AppShell>
   );
 }

@@ -33,25 +33,16 @@ import {
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import type { TripSummary } from "@/services/tripService";
 
 export const Route = createFileRoute("/dashboard")({ component: Dashboard });
 
-const DESTINATION_IMAGES: Record<string, string> = {
-  default:
-    "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=600&q=75&auto=format&fit=crop",
-  udaipur:
-    "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=600&q=75&auto=format&fit=crop",
-  goa: "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=600&q=75&auto=format&fit=crop",
-  manali:
-    "https://images.unsplash.com/photo-1486911278844-a81c5267e227?w=600&q=75&auto=format&fit=crop",
-  jaipur:
-    "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=600&q=75&auto=format&fit=crop",
-};
+const FALLBACK_TRAVEL_IMAGE =
+  "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=600&q=75&auto=format&fit=crop";
 
-const getImage = (dest: string) => {
-  if (!dest) return DESTINATION_IMAGES.default;
-  const key = dest.toLowerCase().split(",")[0].trim();
-  return DESTINATION_IMAGES[key] || DESTINATION_IMAGES.default;
+const getTripCardImage = (trip: TripSummary): string => {
+  if (trip.heroImage?.url) return trip.heroImage.url;
+  return FALLBACK_TRAVEL_IMAGE;
 };
 
 function Dashboard() {
@@ -198,10 +189,13 @@ function Dashboard() {
                 <div className="grid gap-0 sm:grid-cols-[200px_1fr] md:grid-cols-[220px_1fr] min-h-[160px]">
                   <div className="relative h-44 sm:h-full w-full min-h-[140px] overflow-hidden">
                     <img
-                      src={getImage(t.destination)}
-                      alt={t.destination}
+                      src={getTripCardImage(t)}
+                      alt={t.destination || t.title}
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                       loading="lazy"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = FALLBACK_TRAVEL_IMAGE;
+                      }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 sm:from-transparent to-transparent pointer-events-none" />
                   </div>

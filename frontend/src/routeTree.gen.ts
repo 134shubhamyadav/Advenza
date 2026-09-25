@@ -17,6 +17,7 @@ import { Route as PackingRouteImport } from './routes/packing'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ItineraryRouteImport } from './routes/itinerary'
+import { Route as GroupRouteImport } from './routes/group'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConsensusRouteImport } from './routes/consensus'
 import { Route as CommanderRouteImport } from './routes/commander'
@@ -64,6 +65,11 @@ const LoginRoute = LoginRouteImport.update({
 const ItineraryRoute = ItineraryRouteImport.update({
   id: '/itinerary',
   path: '/itinerary',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GroupRoute = GroupRouteImport.update({
+  id: '/group',
+  path: '/group',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/commander': typeof CommanderRoute
   '/consensus': typeof ConsensusRoute
   '/dashboard': typeof DashboardRoute
+  '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
   '/memory': typeof MemoryRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/commander': typeof CommanderRoute
   '/consensus': typeof ConsensusRoute
   '/dashboard': typeof DashboardRoute
+  '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
   '/memory': typeof MemoryRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/commander': typeof CommanderRoute
   '/consensus': typeof ConsensusRoute
   '/dashboard': typeof DashboardRoute
+  '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
   '/memory': typeof MemoryRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/commander'
     | '/consensus'
     | '/dashboard'
+    | '/group'
     | '/itinerary'
     | '/login'
     | '/memory'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/commander'
     | '/consensus'
     | '/dashboard'
+    | '/group'
     | '/itinerary'
     | '/login'
     | '/memory'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '/commander'
     | '/consensus'
     | '/dashboard'
+    | '/group'
     | '/itinerary'
     | '/login'
     | '/memory'
@@ -226,6 +238,7 @@ export interface RootRouteChildren {
   CommanderRoute: typeof CommanderRoute
   ConsensusRoute: typeof ConsensusRoute
   DashboardRoute: typeof DashboardRoute
+  GroupRoute: typeof GroupRoute
   ItineraryRoute: typeof ItineraryRoute
   LoginRoute: typeof LoginRoute
   MemoryRoute: typeof MemoryRoute
@@ -296,6 +309,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ItineraryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/group': {
+      id: '/group'
+      path: '/group'
+      fullPath: '/group'
+      preLoaderRoute: typeof GroupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
@@ -362,6 +382,7 @@ const rootRouteChildren: RootRouteChildren = {
   CommanderRoute: CommanderRoute,
   ConsensusRoute: ConsensusRoute,
   DashboardRoute: DashboardRoute,
+  GroupRoute: GroupRoute,
   ItineraryRoute: ItineraryRoute,
   LoginRoute: LoginRoute,
   MemoryRoute: MemoryRoute,

@@ -19,7 +19,7 @@ export const apiFetch = async (
     ...((fetchOptions.headers as Record<string, string>) || {}),
   };
 
-  const user = auth.currentUser;
+  const user = auth?.currentUser;
   if (user) {
     try {
       const token = await user.getIdToken();
@@ -28,6 +28,9 @@ export const apiFetch = async (
     } catch {
       if (user.uid) headers["x-user-id"] = user.uid;
     }
+  } else if (!auth) {
+    // If auth is completely missing/mocked, simulate a logged-in dev user
+    headers["x-user-id"] = "mock-user-123";
   }
 
   const controller = new AbortController();

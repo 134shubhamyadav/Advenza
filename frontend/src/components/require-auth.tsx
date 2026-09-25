@@ -36,9 +36,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     }
   }, [user, loading, isPublic, isAuthOnly, navigate]);
 
-  // While Firebase is resolving the auth state, show a neutral full-screen spinner.
-  // This prevents any flash of protected content before the redirect fires.
-  if (loading) {
+  // While Firebase is resolving the auth state, show spinner ONLY on protected pages.
+  // Public pages (e.g. landing page "/") render instantly without blocking.
+  if (loading && !isPublic) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
