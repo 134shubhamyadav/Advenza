@@ -48,9 +48,11 @@ frontend/.env.*
 *service_account*.json
 *firebase-adminsdk*.json
 
-# Ignore markdown documentation files
-*.md
+# Documentation
 docs/
+*.md
+!README.md
+!AGENTS.md
 
 # User uploads and generated media
 backend/uploads/*
