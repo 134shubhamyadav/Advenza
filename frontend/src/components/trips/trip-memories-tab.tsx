@@ -24,6 +24,13 @@ import { ReelStudio } from "@/components/reels/reel-studio";
 
 
 
+interface SelectedMediaItem {
+  id: string;
+  file: File;
+  previewUrl: string;
+  type: "photo" | "video";
+}
+
 export interface MediaItem {
   id: string;
   type: "photo" | "video";
@@ -56,12 +63,11 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
   const [activeMemoryForReel, setActiveMemoryForReel] = useState<MemoryDocument | null>(null);
   const [reelStudioOpen, setReelStudioOpen] = useState(false);
 
-
   // Form states
   const [formPlace, setFormPlace] = useState("");
   const [formDate, setFormDate] = useState("");
   const [formHighlight, setFormHighlight] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<SelectedMediaItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -73,24 +79,35 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
       try {
         const data = await apiFetch(`/api/memories?tripId=${tripId}`);
         const rawList = Array.isArray(data) ? data : data.memories || data.items || [];
-        const list = rawList.map((doc: any) => ({
-              id: doc._id || doc.id,
-              userId: doc.userId,
-              tripId: doc.tripId,
-              n: doc.n || 1,
-              date: doc.date || "",
-              place: doc.place || "",
-              highlight: doc.highlight || "",
-              mediaItems: doc.mediaItems || [
+        const list = rawList.map((doc: any) => {
+          const mediaItems: MediaItem[] = Array.isArray(doc.media) && doc.media.length > 0
+            ? doc.media.map((m: any, idx: number) => ({
+                id: m._id || m.publicId || String(idx),
+                type: (m.resourceType === "video" || m.mediaType === "video") ? "video" : "photo",
+                storageUrl: m.url || m.storageUrl || "",
+                storagePath: m.publicId || m.storagePath || "",
+              }))
+            : doc.mediaItems || [
                 {
                   id: doc._id || "1",
                   type: doc.mediaType || "photo",
-                  storageUrl: doc.thumbnailUrl || doc.mediaUrl,
-                  storagePath: doc.storageKey,
+                  storageUrl: doc.thumbnailUrl || doc.mediaUrl || "",
+                  storagePath: doc.storageKey || "",
                 },
-              ],
-              createdAt: doc.createdAt || new Date().toISOString(),
-            }));
+              ];
+
+          return {
+            id: doc._id || doc.id,
+            userId: doc.userId,
+            tripId: doc.tripId,
+            n: doc.n || 1,
+            date: doc.date || "",
+            place: doc.place || "",
+            highlight: doc.highlight || "",
+            mediaItems,
+            createdAt: doc.createdAt || new Date().toISOString(),
+          };
+        });
         list.sort((a: any, b: any) => a.n - b.n);
         setMemories(list);
       } catch (err) {
@@ -104,99 +121,143 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
   }, [user, tripId]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      setSelectedFiles((prev) => [...prev, ...newFiles]);
+    if (e.target.files && e.target.files.length > 0) {
+      const incomingFiles = Array.from(e.target.files);
+      setSelectedFiles((prev) => {
+        const availableSlots = 10 - prev.length;
+        if (availableSlots <= 0) {
+          toast.error("Maximum 10 media files are allowed per Memory.");
+          return prev;
+        }
+
+        const newItems: SelectedMediaItem[] = [];
+        for (const file of incomingFiles) {
+          if (prev.length + newItems.length >= 10) {
+            toast.error("Maximum 10 media files reached. Extra files were not added.");
+            break;
+          }
+
+          // Safe duplicate check against existing and new items
+          const isDuplicate = prev.some(
+            (s) => s.file.name === file.name && s.file.size === file.size && s.file.lastModified === file.lastModified
+          ) || newItems.some(
+            (s) => s.file.name === file.name && s.file.size === file.size && s.file.lastModified === file.lastModified
+          );
+          if (isDuplicate) continue;
+
+          const isVideo = file.type.startsWith("video/");
+          const maxSize = isVideo ? 100 * 1024 * 1024 : 20 * 1024 * 1024;
+          if (file.size > maxSize) {
+            toast.error(`File "${file.name}" exceeds ${isVideo ? "100MB" : "20MB"} limit.`);
+            continue;
+          }
+
+          newItems.push({
+            id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            file,
+            previewUrl: URL.createObjectURL(file),
+            type: isVideo ? "video" : "photo",
+          });
+        }
+
+        return [...prev, ...newItems];
+      });
+
+      // Clear the input value so subsequent selections of the same file trigger onChange properly
+      e.target.value = "";
     }
   };
 
-  const removeSelectedFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeSelectedFile = (id: string) => {
+    setSelectedFiles((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target && target.previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((item) => item.id !== id);
+    });
+  };
+
+  const clearSelectedFiles = () => {
+    selectedFiles.forEach((item) => {
+      if (item.previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+    });
+    setSelectedFiles([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !tripId) return;
+    if (selectedFiles.length === 0) {
+      toast.error("Please select at least one photo or video.");
+      return;
+    }
 
     setSubmitting(true);
     setUploadProgress(0);
 
+    const uploadedAssets: Array<{
+      url: string;
+      publicId: string;
+      resourceType: string;
+      format?: string;
+      width?: number;
+      height?: number;
+      duration?: number;
+      originalName?: string;
+    }> = [];
+
     try {
-      const mediaItems: MediaItem[] = [];
       const totalFiles = selectedFiles.length;
 
-      // Upload each file
+      // Upload each file via direct Cloudinary binary streaming backend endpoint
       for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
-        const compressedBlob = await compressImage(file);
+        const item = selectedFiles[i];
+        let uploadBlob: Blob = item.file;
 
-        const fileExtension = file.name.split(".").pop();
-        const fileName = `${Date.now()}_${i}.${fileExtension}`;
-        const storagePath = `users/${user.uid}/trips/${tripId}/memories/originals/${fileName}`;
-
-        let uploadUrl = "";
-        let finalStoragePath = storagePath;
-
-        try {
-          const storageRef = ref(storage, storagePath);
-          const uploadTask = uploadBytesResumable(storageRef, compressedBlob);
-
-          const taskPromise = new Promise<string>((resolve, reject) => {
-            uploadTask.on(
-              "state_changed",
-              (snapshot) => {
-                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                setUploadProgress(((i * 100) + progress) / totalFiles);
-              },
-              (error) => reject(error),
-              async () => {
-                const url = await getDownloadURL(uploadTask.snapshot.ref);
-                resolve(url);
-              }
-            );
-          });
-
-          const timeoutPromise = new Promise<string>((_, reject) =>
-            setTimeout(() => reject(new Error("Firebase upload timeout")), 5000)
-          );
-
-          uploadUrl = await Promise.race([taskPromise, timeoutPromise]);
-        } catch (uploadErr) {
-          console.warn("[TripMemoriesTab] Client storage timed out or failed, streaming to backend binary endpoint:", uploadErr);
+        if (item.type === "photo") {
           try {
-            const backendRes: any = await apiFetch("/api/memories/upload-binary", {
-              method: "POST",
-              headers: {
-                "Content-Type": file.type || "image/jpeg",
-                "x-file-name": encodeURIComponent(fileName),
-                "x-trip-id": tripId,
-              },
-              body: compressedBlob,
-            });
-            if (backendRes?.mediaUrl) {
-              uploadUrl = backendRes.mediaUrl;
-              finalStoragePath = backendRes.storageKey || storagePath;
-            }
-          } catch (backendErr) {
-            console.warn("[TripMemoriesTab] Backend binary stream error:", backendErr);
-            uploadUrl = URL.createObjectURL(compressedBlob);
+            uploadBlob = await compressImage(item.file, 1920, 0.85);
+          } catch {
+            uploadBlob = item.file;
           }
         }
 
-        mediaItems.push({
-          id: fileName,
-          type: "photo",
-          storageUrl: uploadUrl || URL.createObjectURL(compressedBlob),
-          storagePath: finalStoragePath,
+        setUploadProgress(Math.round(((i) / totalFiles) * 80));
+
+        const backendRes: any = await apiFetch("/api/memories/upload-binary", {
+          method: "POST",
+          headers: {
+            "Content-Type": item.file.type || (item.type === "video" ? "video/mp4" : "image/jpeg"),
+            "x-file-name": encodeURIComponent(item.file.name),
+            "x-trip-id": tripId,
+          },
+          body: uploadBlob,
         });
+
+        if (!backendRes?.mediaUrl) {
+          throw new Error(`Failed to upload ${item.file.name} to Cloudinary.`);
+        }
+
+        uploadedAssets.push({
+          url: backendRes.mediaUrl,
+          publicId: backendRes.storageKey || "",
+          resourceType: backendRes.resourceType || (item.type === "video" ? "video" : "image"),
+          format: backendRes.format || "",
+          width: backendRes.width || 0,
+          height: backendRes.height || 0,
+          duration: backendRes.duration || 0,
+          originalName: item.file.name,
+        });
+
+        setUploadProgress(Math.round(((i + 1) / totalFiles) * 85));
       }
 
-      // Save to Express Backend / MongoDB
-      const primaryMedia = mediaItems[0] || {
-        storageUrl: "https://images.unsplash.com/photo-1695956353120-54ce5e91632b?fm=jpg&q=75&w=1400&auto=format&fit=crop",
-        storagePath: `users/${user.uid}/trips/${tripId}/memories/default_${Date.now()}`,
-      };
+      const primaryMedia = uploadedAssets[0];
 
+      // Save memory document in MongoDB with full media array
       const savedDoc = await apiFetch("/api/memories", {
         method: "POST",
         body: JSON.stringify({
@@ -205,12 +266,20 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
           place: formPlace,
           date: formDate,
           highlight: formHighlight,
-          mediaUrl: primaryMedia.storageUrl,
-          thumbnailUrl: primaryMedia.storageUrl,
-          storageKey: primaryMedia.storagePath,
-          mediaType: "image",
+          media: uploadedAssets,
+          mediaUrl: primaryMedia.url,
+          thumbnailUrl: primaryMedia.url,
+          storageKey: primaryMedia.publicId,
+          mediaType: primaryMedia.resourceType,
         }),
       });
+
+      const mediaItems: MediaItem[] = uploadedAssets.map((asset, idx) => ({
+        id: asset.publicId || String(idx),
+        type: asset.resourceType === "video" ? "video" : "photo",
+        storageUrl: asset.url,
+        storagePath: asset.publicId,
+      }));
 
       const newMemory: MemoryDocument = {
         id: savedDoc._id || savedDoc.id,
@@ -226,16 +295,30 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
 
       setMemories((prev) => [...prev, newMemory]);
 
-      // Reset form
+      // Cleanup and reset form
+      clearSelectedFiles();
       setFormPlace("");
       setFormDate("");
       setFormHighlight("");
-      setSelectedFiles([]);
       setCreateOpen(false);
-      toast.success("Memory saved successfully!");
-    } catch (err) {
+      toast.success("Memory saved successfully with all photos!");
+    } catch (err: any) {
       console.error("Error creating memory:", err);
-      toast.error("Failed to save memory.");
+      toast.error(err.message || "Failed to save memory.");
+
+      // Rollback uploaded Cloudinary assets to prevent orphans
+      if (uploadedAssets.length > 0) {
+        try {
+          await apiFetch("/api/memories/cleanup-assets", {
+            method: "POST",
+            body: JSON.stringify({
+              items: uploadedAssets.map((a) => ({ publicId: a.publicId, resourceType: a.resourceType })),
+            }),
+          });
+        } catch (cleanupErr) {
+          console.warn("Failed to cleanup orphaned Cloudinary assets:", cleanupErr);
+        }
+      }
     } finally {
       setSubmitting(false);
       setUploadProgress(0);
@@ -351,15 +434,23 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
                 )}
 
                 {mem.mediaItems && mem.mediaItems.length > 0 && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {mem.mediaItems.map((media) => (
-                      <div key={media.id} className="relative aspect-square overflow-hidden rounded-xl bg-muted/20">
-                        <img 
-                          src={media.storageUrl} 
-                          alt="Memory" 
-                          className="h-full w-full object-cover transition-transform hover:scale-105"
-                          loading="lazy"
-                        />
+                      <div key={media.id} className="relative aspect-square overflow-hidden rounded-xl bg-muted/20 border border-border/40">
+                        {media.type === "video" ? (
+                          <video
+                            src={media.storageUrl}
+                            controls
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <img 
+                            src={media.storageUrl} 
+                            alt="Memory" 
+                            className="h-full w-full object-cover transition-transform hover:scale-105"
+                            loading="lazy"
+                          />
+                        )}
                       </div>
                     ))}
                   </div>
@@ -391,8 +482,11 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+      <Dialog open={createOpen} onOpenChange={(open) => {
+        if (!open) clearSelectedFiles();
+        setCreateOpen(open);
+      }}>
+        <DialogContent className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Trip Memory</DialogTitle>
           </DialogHeader>
@@ -417,25 +511,50 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label>Photos ({selectedFiles.length} selected)</Label>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {selectedFiles.map((file, i) => (
-                  <div key={i} className="relative h-16 w-16 overflow-hidden rounded-md border border-border">
-                    <img src={URL.createObjectURL(file)} alt="preview" className="h-full w-full object-cover" />
+              <div className="flex items-center justify-between">
+                <Label>Photos & Videos</Label>
+                <span className={`text-xs font-medium ${selectedFiles.length >= 10 ? "text-amber-500 font-semibold" : "text-muted-foreground"}`}>
+                  {selectedFiles.length} / 10 selected
+                </span>
+              </div>
+              
+              <div className="mt-2 flex flex-wrap gap-2.5 p-2 rounded-xl border border-border/70 bg-background/50 min-h-[76px] items-center">
+                {selectedFiles.map((item) => (
+                  <div key={item.id} className="relative h-20 w-20 overflow-hidden rounded-lg border border-border/80 bg-black/40 group shadow-sm">
+                    {item.type === "video" ? (
+                      <video src={item.previewUrl} className="h-full w-full object-cover" />
+                    ) : (
+                      <img src={item.previewUrl} alt="preview" className="h-full w-full object-cover" />
+                    )}
                     <button 
                       type="button" 
-                      onClick={() => removeSelectedFile(i)}
-                      className="absolute right-0 top-0 bg-black/50 p-0.5 text-white"
+                      onClick={() => removeSelectedFile(item.id)}
+                      className="absolute right-1 top-1 bg-black/70 hover:bg-destructive text-white rounded-full p-1 shadow transition-all duration-200"
+                      title="Remove file"
                     >
-                      ×
+                      <Trash2 className="h-3 w-3" />
                     </button>
+                    <span className="absolute bottom-1 left-1 bg-black/70 text-[9px] px-1 py-0.5 rounded text-white font-medium">
+                      {item.type === "video" ? "Video" : "Photo"}
+                    </span>
                   </div>
                 ))}
-                <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-muted-foreground/40 hover:bg-muted/50">
-                  <Plus className="h-6 w-6 text-muted-foreground" />
-                  <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileSelect} />
-                </label>
+
+                {selectedFiles.length < 10 && (
+                  <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border/80 hover:border-primary/60 hover:bg-primary/5 transition-all text-muted-foreground hover:text-primary gap-1">
+                    <Plus className="h-5 w-5" />
+                    <span className="text-[10px] font-medium">Add more</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+                  </label>
+                )}
               </div>
+              <p className="text-[11px] text-muted-foreground">Photos ≤ 20MB · Videos ≤ 100MB · Max 10 items</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="highlight">Highlight (Story)</Label>
@@ -451,7 +570,7 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
             {submitting && (
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
-                  <span>Uploading photos...</span>
+                  <span>Uploading media to Cloudinary...</span>
                   <span>{Math.round(uploadProgress)}%</span>
                 </div>
                 <Progress value={uploadProgress} className="h-2" />
@@ -459,7 +578,10 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
             )}
 
             <DialogFooter className="pt-4">
-              <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)} disabled={submitting}>
+              <Button type="button" variant="ghost" onClick={() => {
+                clearSelectedFiles();
+                setCreateOpen(false);
+              }} disabled={submitting}>
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting || selectedFiles.length === 0}>

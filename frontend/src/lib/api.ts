@@ -25,8 +25,10 @@ export const apiFetch = async (
       const token = await user.getIdToken();
       headers["Authorization"] = `Bearer ${token}`;
       headers["x-user-id"] = user.uid;
+      if (user.email) headers["x-user-email"] = user.email.toLowerCase().trim();
     } catch {
       if (user.uid) headers["x-user-id"] = user.uid;
+      if (user.email) headers["x-user-email"] = user.email.toLowerCase().trim();
     }
   } else if (!auth) {
     // If auth is completely missing/mocked, simulate a logged-in dev user
@@ -63,7 +65,7 @@ export const apiFetch = async (
 
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(errBody.error || `Server error ${res.status}`);
+    throw new Error(errBody.error || errBody.message || `Server error ${res.status}`);
   }
 
   return res.json();

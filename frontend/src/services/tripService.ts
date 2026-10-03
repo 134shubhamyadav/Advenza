@@ -5,6 +5,7 @@ export interface TripActivity {
   description: string;
   type?: string;
   meta?: string;
+  interestTags?: string[];
 }
 
 export interface TripDay {
@@ -22,10 +23,14 @@ export interface TripExpense {
 }
 
 export interface TripMember {
+  _id?: string;
+  userId?: string;
   name: string;
   email?: string;
   role?: string;
   initials?: string;
+  color?: string;
+  joinedAt?: string;
 }
 
 export interface TripVoteOption {
@@ -59,9 +64,78 @@ export interface HeroImage {
   fetchedAt?: string;
 }
 
+export interface JourneyLeg {
+  transportType?: string;
+  departureLocation?: string;
+  arrivalLocation?: string;
+  departureDate?: string;
+  departureTime?: string;
+  arrivalDate?: string;
+  arrivalTime?: string;
+  durationMinutes?: number | null;
+  durationSource?: string;
+  transitRef?: string;
+  status?: string;
+  booked?: boolean;
+  ticketRef?: string;
+  // Legacy support fields:
+  date?: string;
+  time?: string;
+}
+
+export interface DayTimingConstraints {
+  arrivalDay?: boolean;
+  returnDay?: boolean;
+  requiresHotelCheckIn?: boolean;
+  travelDay?: boolean;
+}
+
+export interface DayTimingWindow {
+  date?: string;
+  status?: string; // "TRAVEL_OUTBOUND" | "ARRIVAL_DAY" | "FULL_DESTINATION_DAY" | "RETURN_DAY" | "TRAVEL_RETURN" | "UNAVAILABLE"
+  usableStartDateTime?: string;
+  usableEndDateTime?: string;
+  availableHours?: number;
+  reason?: string;
+  constraints?: DayTimingConstraints;
+}
+
+export interface TripTiming {
+  outbound?: {
+    durationMinutes?: number | null;
+    isOvernight?: boolean;
+    travelDaysCount?: number;
+    arrivalDateTime?: string;
+  };
+  destination?: {
+    usableStartDateTime?: string;
+    usableEndDateTime?: string;
+    totalUsableHours?: number | null;
+    days?: DayTimingWindow[];
+  };
+  return?: {
+    durationMinutes?: number | null;
+    isOvernight?: boolean;
+    travelDaysCount?: number;
+    departureDateTime?: string;
+  };
+}
+
+export interface TripWeather {
+  temp?: number;
+  condition?: string;
+  icon?: string;
+  humidity?: number;
+  rainChance?: number;
+  windSpeed?: number;
+  uv?: number;
+  note?: string;
+}
+
 export interface TripSummary {
   _id: string;
   title: string;
+  origin?: string;
   destination?: string;
   summary?: string;
   budgetEstimate?: string;
@@ -71,6 +145,22 @@ export interface TripSummary {
   travelers?: number;
   startDate?: string;
   endDate?: string;
+  style?: string;
+  interests?: string[];
+  travelMode?: string;
+  departureHub?: string;
+  arrivalHub?: string;
+  transitRef?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  outboundJourney?: JourneyLeg;
+  returnJourney?: JourneyLeg;
+  tripTiming?: TripTiming;
+  weather?: TripWeather;
+  hotelName?: string;
+  hotelLocation?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
   days?: TripDay[];
   expenses?: TripExpense[];
   members?: TripMember[];

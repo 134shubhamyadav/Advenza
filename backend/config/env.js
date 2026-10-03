@@ -23,10 +23,21 @@ const envSchema = z.object({
   REDIS_HOST: z.string().default("127.0.0.1"),
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_PASSWORD: z.string().optional(),
+  SKIP_REDIS: z.preprocess((v) => v === "true" || v === true || v === "1", z.boolean()).default(false),
+  REDIS_ENABLED: z.preprocess((v) => {
+    if (v === undefined || v === null || v === "") return undefined;
+    return v === "true" || v === true || v === "1";
+  }, z.boolean().optional()),
 
   // Firebase
   FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
   FIREBASE_STORAGE_BUCKET: z.string().optional(),
+
+  // Cloudinary
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
+  CLOUDINARY_URL: z.string().optional(),
 
   // AI Providers
   GROQ_API_KEY: z.string().optional(),
@@ -47,6 +58,11 @@ const envSchema = z.object({
   WEATHER_API_KEY: z.string().optional(),
   VITE_WEATHER_API_KEY: z.string().optional(),
   OPENWEATHER_API_KEY: z.string().optional(),
+
+  // Brevo Email Provider
+  BREVO_API_KEY: z.string().optional(),
+  BREVO_SENDER_EMAIL: z.string().email().optional().default("advenzaaa@gmail.com"),
+  BREVO_SENDER_NAME: z.string().optional().default("Advenza Travel Companion"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -64,12 +80,15 @@ export const config = parsed.data;
  */
 export function getProviderConfigStatus() {
   const isProd = env.NODE_ENV === "production";
+  const isRedisDisabled = env.SKIP_REDIS || env.REDIS_ENABLED === false;
 
   return {
     redis: {
-      configured: Boolean(env.REDIS_URL || process.env.REDIS_HOST),
+      configured: Boolean(!isRedisDisabled && (env.REDIS_URL || env.REDIS_HOST)),
       requiredInProduction: true,
-      status: env.REDIS_URL || (!isProd && env.REDIS_HOST) ? "CONFIGURED" : (isProd ? "REQUIRED_MISSING" : "NOT_CONFIGURED"),
+      status: isRedisDisabled
+        ? "NOT_CONFIGURED"
+        : (env.REDIS_URL || (!isProd && env.REDIS_HOST) ? "CONFIGURED" : (isProd ? "REQUIRED_MISSING" : "NOT_CONFIGURED")),
     },
     firebaseAuth: {
       configured: Boolean(env.FIREBASE_SERVICE_ACCOUNT_JSON),
@@ -116,6 +135,10 @@ export function getProviderConfigStatus() {
         env.CEREBRAS_API_KEY ||
         env.OPENAI_API_KEY
       ) ? "CONFIGURED" : "NOT_CONFIGURED",
+    },
+    brevo: {
+      configured: Boolean(env.BREVO_API_KEY),
+      status: env.BREVO_API_KEY ? "CONFIGURED" : "NOT_CONFIGURED",
     },
   };
 }

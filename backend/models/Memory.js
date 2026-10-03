@@ -15,6 +15,55 @@ export const MEMORY_CATEGORIES = [
   "OTHER",
 ];
 
+export const MediaItemSchema = new mongoose.Schema(
+  {
+    url: {
+      type: String,
+      required: [true, "Media URL is required"],
+      trim: true,
+      validate: {
+        validator: function (v) {
+          return !v || !v.startsWith("data:");
+        },
+        message: "media url must be a valid external/storage URL, not a base64 data URI.",
+      },
+    },
+    publicId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    resourceType: {
+      type: String,
+      enum: ["image", "video"],
+      default: "image",
+    },
+    format: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    width: {
+      type: Number,
+      default: 0,
+    },
+    height: {
+      type: Number,
+      default: 0,
+    },
+    duration: {
+      type: Number,
+      default: 0,
+    },
+    originalName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+  },
+  { _id: true }
+);
+
 const MemorySchema = new mongoose.Schema(
   {
     userId: {
@@ -52,14 +101,27 @@ const MemorySchema = new mongoose.Schema(
       default: 0,
       min: [0, "Spend cannot be negative"],
     },
-    // Media URLs and Storage References — Strictly external URLs (no base64 or raw binaries)
+    // Multi-Media Support: Up to 10 photos/videos per Memory
+    media: {
+      type: [MediaItemSchema],
+      validate: [
+        {
+          validator: function (arr) {
+            return !arr || arr.length <= 10;
+          },
+          message: "A single memory can contain at most 10 media items.",
+        },
+      ],
+      default: [],
+    },
+    // Legacy single media fields for full backwards compatibility
     mediaUrl: {
       type: String,
-      required: [true, "mediaUrl is required"],
       trim: true,
+      default: "",
       validate: {
         validator: function (v) {
-          return !v.startsWith("data:");
+          return !v || !v.startsWith("data:");
         },
         message: "mediaUrl must be a valid external/storage URL, not a base64 data URI.",
       },
@@ -77,8 +139,8 @@ const MemorySchema = new mongoose.Schema(
     },
     storageKey: {
       type: String,
-      required: [true, "storageKey is required"],
       trim: true,
+      default: "",
     },
     thumbnailKey: {
       type: String,
@@ -161,6 +223,29 @@ const MemorySchema = new mongoose.Schema(
   }
 );
 
+// Automatic sync between media array and legacy single media fields
+MemorySchema.pre("validate", function () {
+  if (this.media && this.media.length > 0) {
+    if (!this.mediaUrl && this.media[0]?.url) {
+      this.mediaUrl = this.media[0].url;
+    }
+    if (!this.storageKey && this.media[0]?.publicId) {
+      this.storageKey = this.media[0].publicId;
+    }
+    if (!this.mediaType && this.media[0]?.resourceType) {
+      this.mediaType = this.media[0].resourceType;
+    }
+  } else if (this.mediaUrl && (!this.media || this.media.length === 0)) {
+    this.media = [
+      {
+        url: this.mediaUrl,
+        publicId: this.storageKey || "",
+        resourceType: this.mediaType || "image",
+      },
+    ];
+  }
+});
+
 // Compound Indexes tailored for real query patterns
 MemorySchema.index({ tripId: 1, isDeleted: 1, createdAt: -1 });
 MemorySchema.index({ userId: 1, isDeleted: 1, createdAt: -1 });
@@ -173,4 +258,3 @@ MemorySchema.index({ caption: "text", highlight: "text", place: "text", tags: "t
 
 export const Memory = mongoose.model("Memory", MemorySchema);
 export default Memory;
-

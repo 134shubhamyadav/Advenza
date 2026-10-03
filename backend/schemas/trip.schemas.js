@@ -3,15 +3,29 @@ import { z } from "zod";
 export const createTripSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
   destination: z.string().trim().min(1, "Destination is required").max(150),
+  origin: z.string().trim().max(150).optional(),
   startDate: z.string().trim().optional(),
   endDate: z.string().trim().optional(),
   budgetTotal: z.coerce.number().min(0).default(0),
   style: z.string().trim().default("Balanced"),
+  travelMode: z.string().trim().max(100).optional(),
+  departureHub: z.string().trim().max(150).optional(),
+  arrivalHub: z.string().trim().max(150).optional(),
+  transitRef: z.string().trim().max(100).optional(),
+  departureTime: z.string().trim().max(50).optional(),
+  arrivalTime: z.string().trim().max(50).optional(),
+  outboundJourney: z.any().optional(),
+  returnJourney: z.any().optional(),
+  tripTiming: z.any().optional(),
+  hotelName: z.string().trim().max(150).optional(),
+  hotelLocation: z.string().trim().max(150).optional(),
+  checkInTime: z.string().trim().max(50).optional(),
+  checkOutTime: z.string().trim().max(50).optional(),
   days: z.array(z.any()).default([]),
   voteOptions: z.array(z.any()).optional(),
   expenses: z.array(z.any()).default([]),
   members: z.array(z.any()).default([]),
-});
+}).passthrough();
 
 export const addExpenseSchema = z.object({
   name: z.string().trim().min(1, "Expense name is required").max(150),

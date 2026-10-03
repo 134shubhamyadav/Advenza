@@ -9,6 +9,7 @@ import { normalizeDestination, fetchWeather } from "../travel/weather.service.js
 import { evaluateRiskEngine } from "../travel/risk-engine.service.js";
 import { hotelProvider } from "../travel/providers/hotel.provider.js";
 import { flightProvider } from "../travel/providers/flight.provider.js";
+import { computeJourneys } from "../travel/journey-engine.service.js";
 import { fetchDestinationImage } from "../media/destination-image.service.js";
 import { NotFoundError, ValidationError } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
@@ -209,6 +210,84 @@ export class AIService {
     const travelersNum = Number(travelers) || 1;
     const perPersonBudget = budgetNum > 0 ? Math.round(budgetNum / travelersNum) : null;
 
+    const structuredOutbound = body.outboundJourney || {
+      transportType: travelMode || (Array.isArray(transport) ? transport[0] : "") || "",
+      departureLocation: departureHub || origin || "",
+      arrivalLocation: arrivalHub || destination || "",
+      departureDate: startDate || "",
+      departureTime: departureTime || "",
+      arrivalDate: startDate || "",
+      arrivalTime: arrivalTime || "",
+      durationMinutes: null,
+      durationSource: "USER_SPECIFIED",
+      transitRef: transitRef || "",
+      status: "ESTIMATED",
+      booked: false,
+    };
+
+    const rawReturn = returnJourney || body.returnJourney || {};
+    const structuredReturn = {
+      booked: Boolean(rawReturn.booked),
+      transportType: rawReturn.transportType || rawReturn.transport || travelMode || "",
+      departureLocation: rawReturn.departureLocation || arrivalHub || destination || "",
+      arrivalLocation: rawReturn.arrivalLocation || departureHub || origin || "",
+      departureDate: rawReturn.departureDate || rawReturn.date || endDate || "",
+      departureTime: rawReturn.departureTime || rawReturn.time || "",
+      arrivalDate: rawReturn.arrivalDate || rawReturn.date || endDate || "",
+      arrivalTime: rawReturn.arrivalTime || "",
+      durationMinutes: rawReturn.durationMinutes ?? null,
+      durationSource: rawReturn.durationSource || "USER_SPECIFIED",
+      transitRef: rawReturn.transitRef || rawReturn.ticketRef || "",
+      ticketRef: rawReturn.ticketRef || "",
+      status: rawReturn.status || (rawReturn.booked ? "CONFIRMED" : "ESTIMATED"),
+    };
+
+    // ── Concurrently compute journeys, fetch weather & hero image ──
+    let computedJourneys = { outboundJourney: structuredOutbound, returnJourney: structuredReturn, tripTiming: body.tripTiming || {} };
+    let weatherResult = { weatherData: null, weatherInfo: "" };
+    let heroImage = null;
+
+    try {
+      const [journeys, weather, img] = await Promise.all([
+        computeJourneys({
+          origin,
+          destination,
+          startDate,
+          endDate,
+          travelMode,
+          departureHub,
+          arrivalHub,
+          transitRef,
+          departureTime,
+          arrivalTime,
+          accommodation: accommodation || "",
+          hotelName: hotelName || "",
+          hotelLocation: hotelLocation || "",
+          checkInTime: checkInTime || "",
+          checkOutTime: checkOutTime || "",
+          outboundJourney: structuredOutbound,
+          returnJourney: structuredReturn,
+        }).catch((err) => {
+          logger.warn(`[AIService] Journey engine failed (non-fatal): ${err.message}`);
+          return { outboundJourney: structuredOutbound, returnJourney: structuredReturn, tripTiming: body.tripTiming || {} };
+        }),
+        fetchWeather(destination).catch((err) => {
+          logger.warn(`[AIService] Weather fetch failed (non-fatal): ${err.message}`);
+          return { weatherData: null, weatherInfo: "" };
+        }),
+        fetchDestinationImage(destination).catch((err) => {
+          logger.warn(`[AIService] Image fetch failed (non-fatal): ${err.message}`);
+          return null;
+        }),
+      ]);
+
+      computedJourneys = journeys;
+      weatherResult = weather;
+      heroImage = img;
+    } catch (preErr) {
+      logger.warn(`[AIService] Pre-generation fetch error: ${preErr.message}`);
+    }
+
     const journeyLine = (() => {
       const parts = [];
       if (travelMode) parts.push(`Mode: ${travelMode}`);
@@ -247,11 +326,15 @@ export class AIService {
       travelMode: travelMode || "",
       departureTime: departureTime || "",
       arrivalTime: arrivalTime || "",
-      returnJourney: returnJourney || { booked: false },
+      outboundJourney: computedJourneys.outboundJourney,
+      returnJourney: computedJourneys.returnJourney,
+      tripTiming: computedJourneys.tripTiming,
       hotelName: hotelName || "",
       hotelLocation: hotelLocation || "",
       checkInTime: checkInTime || "",
       checkOutTime: checkOutTime || "",
+      weatherInfo: weatherResult.weatherInfo || "",
+      weatherData: weatherResult.weatherData || null,
     };
 
     const prompt = buildItineraryPrompt(promptParams, expectedDates);
@@ -274,13 +357,14 @@ export class AIService {
       hotelLocation,
       departureTime,
       arrivalTime,
+      tripTiming: computedJourneys.tripTiming,
+      style: style || "Balanced",
+      interests: interests || [],
     });
-
-    // Geographically verified destination hero image
-    const heroImage = await fetchDestinationImage(destination);
 
     const tripData = {
       ...sanitized,
+      origin: origin || "",
       heroImage,
       createdBy: userId || "guest",
       createdAt: new Date().toISOString(),
@@ -299,7 +383,9 @@ export class AIService {
       transitRef: transitRef || "",
       departureTime: departureTime || "",
       arrivalTime: arrivalTime || "",
-      returnJourney: returnJourney || { booked: false },
+      outboundJourney: computedJourneys.outboundJourney,
+      returnJourney: computedJourneys.returnJourney,
+      tripTiming: computedJourneys.tripTiming,
       hotelName: hotelName || "",
       checkInTime: checkInTime || "",
       checkOutTime: checkOutTime || "",
@@ -364,6 +450,50 @@ export class AIService {
       return parts.length ? parts.join(", ") : "not specified";
     })();
 
+    // ── Pre-regeneration: compute journeys and fetch weather ──
+    let regenJourneys = {
+      outboundJourney: body.outboundJourney || trip.outboundJourney || {},
+      returnJourney: body.returnJourney || returnJourney || trip.returnJourney || {},
+      tripTiming: body.tripTiming || trip.tripTiming || {},
+    };
+    let weatherResult = { weatherData: null, weatherInfo: "" };
+
+    try {
+      const [journeys, weather] = await Promise.all([
+        computeJourneys({
+          origin,
+          destination,
+          startDate,
+          endDate,
+          travelMode,
+          departureHub,
+          arrivalHub,
+          transitRef,
+          departureTime,
+          arrivalTime,
+          accommodation: trip.accommodation || "",
+          hotelName: hotelName || trip.hotelName || "",
+          hotelLocation: hotelLocation || trip.hotelLocation || "",
+          checkInTime: checkInTime || trip.checkInTime || "",
+          checkOutTime: checkOutTime || trip.checkOutTime || "",
+          outboundJourney: body.outboundJourney || trip.outboundJourney || {},
+          returnJourney: body.returnJourney || returnJourney || trip.returnJourney || {},
+        }).catch((err) => {
+          logger.warn(`[AIService] Journey engine failed on regen (non-fatal): ${err.message}`);
+          return regenJourneys;
+        }),
+        fetchWeather(destination).catch((err) => {
+          logger.warn(`[AIService] Weather fetch failed on regen: ${err.message}`);
+          return { weatherData: null, weatherInfo: "" };
+        }),
+      ]);
+
+      regenJourneys = journeys;
+      weatherResult = weather;
+    } catch (preErr) {
+      logger.warn(`[AIService] Pre-regeneration fetch error: ${preErr.message}`);
+    }
+
     const promptParams = {
       destination,
       origin,
@@ -382,11 +512,15 @@ export class AIService {
       travelMode,
       departureTime,
       arrivalTime,
-      returnJourney,
+      outboundJourney: regenJourneys.outboundJourney,
+      returnJourney: regenJourneys.returnJourney,
+      tripTiming: regenJourneys.tripTiming,
       hotelName,
       hotelLocation,
       checkInTime,
       checkOutTime,
+      weatherInfo: weatherResult.weatherInfo || "",
+      weatherData: weatherResult.weatherData || null,
     };
 
     const prompt = buildItineraryPrompt(promptParams, expectedDates);
@@ -409,9 +543,13 @@ export class AIService {
       hotelLocation,
       departureTime,
       arrivalTime,
+      tripTiming: regenJourneys.tripTiming,
+      style,
+      interests,
     });
 
     trip.title = sanitized.title || trip.title;
+    trip.origin = origin || trip.origin || "";
     trip.summary = sanitized.summary || trip.summary;
     trip.budgetEstimate = sanitized.budgetEstimate || trip.budgetEstimate;
     trip.budgetBreakdown = sanitized.budgetBreakdown || trip.budgetBreakdown;
@@ -423,6 +561,14 @@ export class AIService {
     trip.interests = interests;
     trip.travelers = travelersNum;
     trip.travelMode = travelMode;
+    trip.departureHub = departureHub || trip.departureHub || "";
+    trip.arrivalHub = arrivalHub || trip.arrivalHub || "";
+    trip.transitRef = transitRef || trip.transitRef || "";
+    trip.departureTime = departureTime || trip.departureTime || "";
+    trip.arrivalTime = arrivalTime || trip.arrivalTime || "";
+    trip.outboundJourney = regenJourneys.outboundJourney;
+    trip.returnJourney = regenJourneys.returnJourney;
+    trip.tripTiming = regenJourneys.tripTiming;
     trip.hotelName = hotelName;
     trip.hotelLocation = hotelLocation;
     trip.updatedAt = new Date();

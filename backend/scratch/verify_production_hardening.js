@@ -103,13 +103,13 @@ async function runTests() {
   // ── TEST 4: Reusable API Client Layer ────────────────────────────────────────
   console.log("\n[TEST 4] Reusable API Client (apiClient)");
   try {
-    // Testing timeout and non-retry on 404 client error
-    await apiClient.get("https://httpbin.org/status/404", { provider: "TestClient", timeoutMs: 3000, maxRetries: 2 });
-    assert(false, "Should have thrown for 404");
+    // Testing non-retry on client error (HTTP 400)
+    await apiClient.get("https://api.open-meteo.com/v1/forecast?latitude=999&longitude=999", { provider: "TestClient", timeoutMs: 5000, maxRetries: 2 });
+    assert(false, "Should have thrown for client error");
   } catch (apiErr) {
     assert(apiErr instanceof ExternalApiError, "Throws normalized ExternalApiError");
-    assert(apiErr.statusCode === 404, "Correct status code captured in normalized error");
-    assert(apiErr.isTransient === false, "404 correctly flagged as non-transient (not retried)");
+    assert(apiErr.statusCode === 400, "Correct status code captured in normalized error");
+    assert(apiErr.isTransient === false, "Client error correctly flagged as non-transient (not retried)");
   }
 
   // ── TEST 5: Trip Commander Anti-Hallucination & acceptEvent ──────────────────

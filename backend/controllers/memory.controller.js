@@ -1,11 +1,14 @@
 import Memory from "../models/Memory.js";
 import Trip from "../models/Trip.js";
 import { memoryAiService } from "../services/ai/memory-ai.service.js";
+import { cloudinaryService } from "../services/storage/cloudinary.service.js";
+import { memoryStorageService } from "../services/storage/memory-storage.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { NotFoundError, ForbiddenError, ValidationError } from "../utils/errors.js";
+import { logger } from "../utils/logger.js";
 
 async function verifyTripAccess(tripId, uid) {
-  if (!tripId) return { allowed: true };
+  if (!tripId || tripId === "NONE") return { allowed: true };
   const trip = await Trip.findById(tripId).lean();
   if (!trip) {
     return { allowed: false, status: 404, error: "Referenced trip not found" };
@@ -49,7 +52,7 @@ export const listMemories = asyncHandler(async (req, res) => {
     ];
   }
 
-  if (tripId) {
+  if (tripId && tripId !== "ALL") {
     const access = await verifyTripAccess(tripId, req.uid);
     if (!access.allowed) {
       if (access.status === 404) throw new NotFoundError(access.error);
@@ -69,10 +72,9 @@ export const listMemories = asyncHandler(async (req, res) => {
     }
   }
 
-  const sortOrder = tripId ? { n: 1, createdAt: -1 } : { createdAt: -1 };
+  const sortOrder = tripId && tripId !== "ALL" ? { n: 1, createdAt: -1 } : { createdAt: -1 };
 
   if (isPaginated) {
-    // Fetch one extra item to test whether a next page exists
     const items = await Memory.find(filter)
       .sort(sortOrder)
       .limit(parsedLimit + 1)
@@ -109,6 +111,7 @@ export const getMemoryById = asyncHandler(async (req, res) => {
 export const createMemory = asyncHandler(async (req, res) => {
   const {
     tripId,
+    media = [],
     mediaUrl,
     thumbnailUrl,
     storageKey,
@@ -131,16 +134,51 @@ export const createMemory = asyncHandler(async (req, res) => {
     n = 1,
   } = req.body;
 
-  if (mediaUrl.startsWith("data:")) {
-    throw new ValidationError("Base64 data URIs are not allowed. Media must be uploaded to object storage first.");
+  // Validate media count (max 10 media files per Memory)
+  if (Array.isArray(media) && media.length > 10) {
+    throw new ValidationError("Maximum 10 media files are allowed per Memory.");
   }
 
-  const expectedPrefix = `users/${req.uid}/`;
-  if (!storageKey.startsWith(expectedPrefix)) {
-    throw new ForbiddenError("Forbidden: Storage path does not belong to the authenticated user.");
+  // Normalize media items array
+  let finalMedia = [];
+  if (Array.isArray(media) && media.length > 0) {
+    finalMedia = media.map((item) => ({
+      url: String(item.url || "").trim(),
+      publicId: String(item.publicId || "").trim(),
+      resourceType: item.resourceType === "video" ? "video" : "image",
+      format: String(item.format || "").trim(),
+      width: Number(item.width) || 0,
+      height: Number(item.height) || 0,
+      duration: Number(item.duration) || 0,
+      originalName: String(item.originalName || "").trim(),
+    }));
+  } else if (mediaUrl && typeof mediaUrl === "string" && mediaUrl.trim()) {
+    finalMedia = [
+      {
+        url: mediaUrl.trim(),
+        publicId: storageKey || "",
+        resourceType: mediaType === "video" ? "video" : "image",
+        format: "",
+        width: 0,
+        height: 0,
+        duration: 0,
+        originalName: "",
+      },
+    ];
   }
 
-  if (tripId) {
+  if (finalMedia.length === 0) {
+    throw new ValidationError("At least one media file is required to create a memory.");
+  }
+
+  // Reject base64 data URIs in any media item
+  for (const item of finalMedia) {
+    if (item.url.startsWith("data:")) {
+      throw new ValidationError("Base64 data URIs are not allowed. Media must be uploaded to Cloudinary storage first.");
+    }
+  }
+
+  if (tripId && tripId !== "NONE") {
     const access = await verifyTripAccess(tripId, req.uid);
     if (!access.allowed) {
       if (access.status === 404) throw new NotFoundError(access.error);
@@ -148,22 +186,28 @@ export const createMemory = asyncHandler(async (req, res) => {
     }
   }
 
+  const primaryItem = finalMedia[0];
+  const finalMediaUrl = primaryItem.url;
+  const finalStorageKey = primaryItem.publicId || storageKey || `users/${req.uid}/memories/${Date.now()}`;
+  const finalMediaType = primaryItem.resourceType || mediaType;
+
   const memory = new Memory({
     userId: req.uid,
-    tripId: tripId || null,
+    tripId: (tripId && tripId !== "NONE") ? tripId : null,
     n: Number(n) || 1,
     place: String(place).trim(),
     date: String(date).trim(),
     weather: String(weather).trim(),
     spend: Math.max(0, Number(spend) || 0),
-    mediaUrl: String(mediaUrl).trim(),
-    thumbnailUrl: thumbnailUrl ? String(thumbnailUrl).trim() : "",
-    storageKey: String(storageKey).trim(),
+    media: finalMedia,
+    mediaUrl: finalMediaUrl,
+    thumbnailUrl: thumbnailUrl ? String(thumbnailUrl).trim() : finalMediaUrl,
+    storageKey: finalStorageKey,
     thumbnailKey: String(thumbnailKey).trim(),
-    mediaType: mediaType === "video" ? "video" : "image",
+    mediaType: finalMediaType,
     category,
     highlight: String(highlight).trim(),
-    caption: String(caption).trim(),
+    caption: String(caption).trim() || String(highlight).trim(),
     description: String(description).trim(),
     moments: Array.isArray(moments) ? moments.map(String) : [],
     tags: Array.isArray(tags) ? tags.map(String) : [],
@@ -173,12 +217,29 @@ export const createMemory = asyncHandler(async (req, res) => {
     status,
   });
 
-  const saved = await memory.save();
+  try {
+    const saved = await memory.save();
 
-  // Trigger non-blocking asynchronous AI enrichment (description, tags, category)
-  memoryAiService.enrichMemoryAsync(saved._id).catch(() => {});
+    // Trigger non-blocking asynchronous AI enrichment
+    memoryAiService.enrichMemoryAsync(saved._id).catch(() => {});
 
-  res.status(201).json(saved);
+    res.status(201).json(saved);
+  } catch (saveErr) {
+    logger.error(`[MemoryController] Failed to save memory document to MongoDB: ${saveErr.message}`);
+    // Rollback uploaded Cloudinary assets to prevent orphaned media
+    if (finalMedia.length > 0) {
+      const cleanupAssets = finalMedia
+        .filter((m) => m.publicId)
+        .map((m) => ({ publicId: m.publicId, resourceType: m.resourceType }));
+      if (cleanupAssets.length > 0) {
+        logger.info(`[MemoryController] Rolling back ${cleanupAssets.length} Cloudinary assets after DB error.`);
+        cloudinaryService.deleteMediaBatch(cleanupAssets).catch((cleanupErr) => {
+          logger.warn(`[MemoryController] Rollback failed for some assets: ${cleanupErr.message}`);
+        });
+      }
+    }
+    throw saveErr;
+  }
 });
 
 export const updateMemory = asyncHandler(async (req, res) => {
@@ -198,6 +259,7 @@ export const updateMemory = asyncHandler(async (req, res) => {
     "category",
     "moments",
     "tags",
+    "media",
     "location",
     "capturedAt",
     "aiMetadata",
@@ -206,6 +268,12 @@ export const updateMemory = asyncHandler(async (req, res) => {
     "thumbnailUrl",
     "n",
   ];
+
+  if (Array.isArray(req.body.media)) {
+    if (req.body.media.length > 10) {
+      throw new ValidationError("Maximum 10 media files are allowed per Memory.");
+    }
+  }
 
   for (const field of updatableFields) {
     if (req.body[field] !== undefined) {
@@ -220,24 +288,45 @@ export const updateMemory = asyncHandler(async (req, res) => {
 export const deleteMemory = asyncHandler(async (req, res) => {
   const isPermanent = req.query.permanent === "true";
 
-  if (isPermanent) {
-    const memory = await Memory.findOneAndDelete({ _id: req.params.id, userId: req.uid });
-    if (!memory) {
-      throw new NotFoundError("Memory not found or access denied");
-    }
-    return res.json({ message: "Memory permanently deleted", id: req.params.id });
-  }
-
-  // Default: Soft-delete for recoverable safety
-  const memory = await Memory.findOneAndUpdate(
-    { _id: req.params.id, userId: req.uid, isDeleted: false },
-    { $set: { isDeleted: true, status: "deleted", deletedAt: new Date() } },
-    { new: true }
-  );
-
+  const memory = await Memory.findOne({ _id: req.params.id, userId: req.uid });
   if (!memory) {
     throw new NotFoundError("Memory not found or access denied");
   }
+
+  // Cleanup Cloudinary and storage assets
+  const cleanupItems = [];
+  if (Array.isArray(memory.media) && memory.media.length > 0) {
+    for (const item of memory.media) {
+      if (item.publicId) {
+        cleanupItems.push({ publicId: item.publicId, resourceType: item.resourceType || "image" });
+      }
+    }
+  }
+  if (memory.storageKey && !cleanupItems.some((c) => c.publicId === memory.storageKey)) {
+    cleanupItems.push({ publicId: memory.storageKey, resourceType: memory.mediaType || "image" });
+  }
+
+  if (cleanupItems.length > 0) {
+    cloudinaryService.deleteMediaBatch(cleanupItems).catch((err) => {
+      logger.warn(`[MemoryController] Cloudinary asset deletion notice: ${err.message}`);
+    });
+  }
+
+  // Also clean up local or Firebase storage if legacy
+  if (memory.storageKey) {
+    memoryStorageService.deleteMemoryMedia(memory.storageKey, memory.thumbnailKey).catch(() => {});
+  }
+
+  if (isPermanent) {
+    await Memory.deleteOne({ _id: req.params.id, userId: req.uid });
+    return res.json({ message: "Memory permanently deleted", id: req.params.id });
+  }
+
+  // Soft-delete for safety
+  memory.isDeleted = true;
+  memory.status = "deleted";
+  memory.deletedAt = new Date();
+  await memory.save();
 
   res.json({ message: "Memory deleted successfully", id: req.params.id });
 });
@@ -266,11 +355,10 @@ export const migrateMemories = asyncHandler(async (req, res) => {
   const results = [];
 
   for (const item of memories) {
-    if (!item.photo && !item.mediaUrl) continue;
-    const mediaUrl = item.mediaUrl || item.photo;
-    if (mediaUrl.startsWith("data:")) continue;
+    if (!item.photo && !item.mediaUrl && (!item.media || item.media.length === 0)) continue;
+    const mediaUrl = item.mediaUrl || item.photo || (item.media?.[0]?.url);
+    if (!mediaUrl || mediaUrl.startsWith("data:")) continue;
 
-    // Check if already migrated by storageKey to ensure idempotence
     const storageKey = item.storageKey || `users/${req.uid}/migrated_${item.date || ""}_${item.n || Date.now()}`;
     const existing = await Memory.findOne({ userId: req.uid, storageKey });
     if (existing) {
@@ -286,6 +374,7 @@ export const migrateMemories = asyncHandler(async (req, res) => {
       date: String(item.date || "").trim(),
       weather: String(item.weather || "").trim(),
       spend: Number(item.spend) || 0,
+      media: item.media || [{ url: mediaUrl, publicId: storageKey, resourceType: item.mediaType || "image" }],
       mediaUrl,
       storageKey,
       mediaType: item.mediaType || "image",
@@ -305,11 +394,51 @@ export const uploadMemoryBinary = asyncHandler(async (req, res) => {
     throw new ValidationError("Binary body is missing or empty.");
   }
 
-  const { memoryStorageService } = await import("../services/storage/memory-storage.service.js");
-  const fileName = req.headers["x-file-name"] || "memory_upload.jpg";
+  const rawFileName = req.headers["x-file-name"];
+  let fileName = "memory_upload.jpg";
+  if (rawFileName) {
+    try {
+      fileName = decodeURIComponent(rawFileName);
+    } catch {
+      fileName = rawFileName;
+    }
+  }
+
   const mimeType = req.headers["content-type"] || "image/jpeg";
   const tripId = req.headers["x-trip-id"] || null;
 
+  // 1. Primary storage: Cloudinary
+  if (cloudinaryService.isConfigured) {
+    try {
+      const cloudinaryResult = await cloudinaryService.uploadMedia({
+        fileBuffer: req.body,
+        fileName,
+        mimeType,
+        userId: req.uid,
+        tripId,
+      });
+
+      return res.status(201).json({
+        success: true,
+        url: cloudinaryResult.url,
+        mediaUrl: cloudinaryResult.url,
+        publicId: cloudinaryResult.publicId,
+        storageKey: cloudinaryResult.publicId,
+        resourceType: cloudinaryResult.resourceType,
+        mediaType: cloudinaryResult.resourceType,
+        format: cloudinaryResult.format,
+        width: cloudinaryResult.width,
+        height: cloudinaryResult.height,
+        duration: cloudinaryResult.duration,
+        originalName: cloudinaryResult.originalName,
+        thumbnailUrl: cloudinaryResult.url,
+      });
+    } catch (cloudErr) {
+      logger.warn(`[MemoryController] Cloudinary upload notice, attempting fallback: ${cloudErr.message}`);
+    }
+  }
+
+  // 2. Fallback storage: Local / Firebase storage
   const result = await memoryStorageService.uploadMemoryMedia({
     fileBuffer: req.body,
     fileName,
@@ -320,7 +449,31 @@ export const uploadMemoryBinary = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     success: true,
-    ...result,
+    url: result.mediaUrl,
+    mediaUrl: result.mediaUrl,
+    publicId: result.storageKey,
+    storageKey: result.storageKey,
+    resourceType: result.mediaType || (mimeType.startsWith("video/") ? "video" : "image"),
+    mediaType: result.mediaType || (mimeType.startsWith("video/") ? "video" : "image"),
+    thumbnailUrl: result.thumbnailUrl || result.mediaUrl,
+    thumbnailKey: result.thumbnailKey || "",
+    width: result.width || 0,
+    height: result.height || 0,
+    duration: 0,
+    originalName: fileName,
   });
 });
 
+export const cleanupAssets = asyncHandler(async (req, res) => {
+  const { items = [] } = req.body;
+  if (Array.isArray(items) && items.length > 0) {
+    const safeItems = items
+      .map((item) => (typeof item === "string" ? { publicId: item, resourceType: "image" } : item))
+      .filter((item) => item && item.publicId);
+
+    if (safeItems.length > 0) {
+      await cloudinaryService.deleteMediaBatch(safeItems);
+    }
+  }
+  res.json({ success: true, message: "Assets cleaned up successfully." });
+});

@@ -10,6 +10,7 @@ import {
   updateItinerarySchema,
 } from "../schemas/trip.schemas.js";
 import * as tripController from "../controllers/trip.controller.js";
+import { createTripInvitation } from "../controllers/invitation.controller.js";
 
 const router = express.Router();
 
@@ -39,8 +40,9 @@ router.post("/:id/expenses", validate({ body: addExpenseSchema }), tripControlle
 router.delete("/:id/expenses/:expenseId", tripController.deleteExpense);
 
 // ─── GROUP ROUTES ───────────────────────────────────────────────────────────────
-// POST /api/trips/:id/members — invite a member
-router.post("/:id/members", validate({ body: inviteMemberSchema }), tripController.addMember);
+// POST /api/trips/:id/members — invite a member (sends Brevo group invite email)
+router.post("/:id/members", validate({ body: inviteMemberSchema }), createTripInvitation);
+router.post("/:id/invitations", validate({ body: inviteMemberSchema }), createTripInvitation);
 
 // POST /api/trips/:id/vote — cast a vote
 router.post("/:id/vote", validate({ body: voteSchema }), tripController.castVote);

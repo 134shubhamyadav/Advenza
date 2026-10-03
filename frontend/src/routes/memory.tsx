@@ -34,6 +34,9 @@ import {
   Tag,
   DollarSign,
   LayoutGrid,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { InstagramModal } from "@/components/ai/instagram-modal";
 import { CollageCreator } from "@/components/trips/collage-creator";
@@ -134,6 +137,18 @@ export const CATEGORY_DEFINITIONS: Record<
   OTHER: { label: "Other", icon: "📌", badgeClass: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30" },
 };
 
+export interface MemoryMediaItem {
+  _id?: string;
+  url: string;
+  publicId?: string;
+  resourceType?: "image" | "video";
+  format?: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+  originalName?: string;
+}
+
 interface AIMetadata {
   caption?: string;
   description?: string;
@@ -152,15 +167,16 @@ interface MemoryItem {
   n: number;
   place: string;
   date: string;
-  weather: string;
-  spend: number;
-  mediaUrl: string;
+  weather?: string;
+  spend?: number;
+  media?: MemoryMediaItem[];
+  mediaUrl?: string;
   thumbnailUrl?: string;
-  storageKey: string;
+  storageKey?: string;
   thumbnailKey?: string;
   mediaType?: "image" | "video";
-  highlight: string;
-  moments: string[];
+  highlight?: string;
+  moments?: string[];
   caption?: string;
   category?: string;
   tags?: string[];
@@ -169,6 +185,13 @@ interface MemoryItem {
   isDeleted?: boolean;
   createdAt?: string;
   photo?: string;
+}
+
+interface SelectedMediaFile {
+  id: string;
+  file: File;
+  previewUrl: string;
+  mediaType: "image" | "video";
 }
 
 interface CuratedCollageResponse {
@@ -202,6 +225,7 @@ function Memory() {
 
   // Modals & Active Items
   const [detailItem, setDetailItem] = useState<MemoryItem | null>(null);
+  const [detailMediaIndex, setDetailMediaIndex] = useState<number>(0);
   const [editItem, setEditItem] = useState<MemoryItem | null>(null);
   const [instagramItem, setInstagramItem] = useState<MemoryItem | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -212,24 +236,14 @@ function Memory() {
   const [reelStudioOpen, setReelStudioOpen] = useState(false);
   const [reelInitialIds, setReelInitialIds] = useState<string[]>([]);
 
-
   // Create Form State
   const [formTripId, setFormTripId] = useState<string>("");
-  const [formN, setFormN] = useState<number>(1);
   const [formPlace, setFormPlace] = useState("");
-  const [formDate, setFormDate] = useState("");
-  const [formWeather, setFormWeather] = useState("");
-  const [formSpend, setFormSpend] = useState("");
   const [formHighlight, setFormHighlight] = useState("");
-  const [formMoments, setFormMoments] = useState("");
-  const [formCategory, setFormCategory] = useState<string>("LANDMARK");
-  const [formTags, setFormTags] = useState("");
   const [formPhotoUrl, setFormPhotoUrl] = useState("");
 
-  // Media Upload State
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>("");
-  const [detectedMediaType, setDetectedMediaType] = useState<"image" | "video">("image");
+  // Multiple Media Upload State (up to 10 files)
+  const [selectedFiles, setSelectedFiles] = useState<SelectedMediaFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
@@ -248,6 +262,11 @@ function Memory() {
 
   // Reprocess AI State
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+
+  // Reset detail media index when opening new detail item
+  useEffect(() => {
+    setDetailMediaIndex(0);
+  }, [detailItem]);
 
   // Fetch initial memories and trips
   useEffect(() => {
@@ -268,12 +287,11 @@ function Memory() {
           const list = rawList.map((item: any) => ({
             ...item,
             id: item._id || item.id,
-            photo: item.mediaUrl || item.photo,
-            mediaType: item.mediaType || "image",
+            photo: item.media?.[0]?.url || item.mediaUrl || item.photo,
+            mediaType: item.media?.[0]?.resourceType || item.mediaType || "image",
           }));
           list.sort((a: any, b: any) => (a.n || 0) - (b.n || 0));
           setMemories(list);
-          setFormN(list.length + 1);
         }
 
         if (tripsResult.status === "fulfilled") {
@@ -308,189 +326,189 @@ function Memory() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      processSelectedFile(file);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processSelectedFiles(e.dataTransfer.files);
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processSelectedFile(file);
+    if (e.target.files && e.target.files.length > 0) {
+      processSelectedFiles(e.target.files);
     }
   };
 
-  const processSelectedFile = (file: File) => {
+  const processSelectedFiles = (files: FileList | File[]) => {
     setUploadError("");
-    const validation = validateMediaFile(file, 20, 100);
-    if (!validation.valid) {
-      setUploadError(validation.error || "Invalid file format or size.");
-      return;
-    }
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
 
-    if (previewUrl && previewUrl.startsWith("blob:")) {
-      URL.revokeObjectURL(previewUrl);
-    }
+    setSelectedFiles((prev) => {
+      const availableSlots = 10 - prev.length;
+      if (availableSlots <= 0) {
+        setUploadError("Maximum 10 media files are allowed per Memory.");
+        return prev;
+      }
 
-    setSelectedFile(file);
-    setDetectedMediaType(validation.mediaType);
-    const localUrl = URL.createObjectURL(file);
-    setPreviewUrl(localUrl);
+      const newItems: SelectedMediaFile[] = [];
+      let hadOversizeOrInvalid = false;
+
+      for (const file of fileArray) {
+        if (prev.length + newItems.length >= 10) {
+          setUploadError("Maximum 10 media files reached. Extra files were not added.");
+          break;
+        }
+
+        // Safe duplicate check against existing items AND currently processing batch
+        const isDuplicate = prev.some(
+          (s) => s.file.name === file.name && s.file.size === file.size && s.file.lastModified === file.lastModified
+        ) || newItems.some(
+          (s) => s.file.name === file.name && s.file.size === file.size && s.file.lastModified === file.lastModified
+        );
+        if (isDuplicate) continue;
+
+        const validation = validateMediaFile(file, 20, 100);
+        if (!validation.valid) {
+          setUploadError(validation.error || `File ${file.name} is invalid or exceeds file size limit.`);
+          hadOversizeOrInvalid = true;
+          continue;
+        }
+
+        const localUrl = URL.createObjectURL(file);
+        newItems.push({
+          id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+          file,
+          previewUrl: localUrl,
+          mediaType: validation.mediaType,
+        });
+      }
+
+      if (newItems.length > 0 && !hadOversizeOrInvalid) {
+        setUploadError("");
+      }
+
+      return [...prev, ...newItems];
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
-  const clearSelectedFile = () => {
-    if (previewUrl && previewUrl.startsWith("blob:")) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    setSelectedFile(null);
-    setPreviewUrl("");
+  const removeSelectedFile = (id: string) => {
+    setSelectedFiles((prev) => {
+      const target = prev.find((f) => f.id === id);
+      if (target && target.previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((f) => f.id !== id);
+    });
+  };
+
+  const clearSelectedFiles = () => {
+    selectedFiles.forEach((f) => {
+      if (f.previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(f.previewUrl);
+      }
+    });
+    setSelectedFiles([]);
     setUploadError("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
-  // Submit New Memory
+  // Submit New Memory (Uploads to Cloudinary & saves references in MongoDB)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
+    if (selectedFiles.length === 0 && !formPhotoUrl.trim()) {
+      setUploadError("Please select at least one photo or video, or provide a media URL.");
+      return;
+    }
+
+    if (selectedFiles.length > 10) {
+      setUploadError("Maximum 10 media files are allowed per Memory.");
+      return;
+    }
+
     setSubmitting(true);
     setUploadError("");
-    setUploadProgress(10);
-    setProgressStage("1/5: Preparing media & validating…");
+    setUploadProgress(5);
+    setProgressStage(`1/3: Preparing ${selectedFiles.length || 1} media file(s)…`);
+
+    const uploadedAssets: MemoryMediaItem[] = [];
 
     try {
-      let finalMediaUrl = formPhotoUrl.trim();
-      let finalThumbUrl = "";
-      const timestamp = Date.now();
-      let finalStorageKey = `users/${user.uid}/memories/external_${timestamp}`;
-      let finalThumbStorageKey = "";
+      if (selectedFiles.length > 0) {
+        const total = selectedFiles.length;
+        for (let i = 0; i < total; i++) {
+          const item = selectedFiles[i];
+          const progressStep = Math.round(10 + ((i / total) * 70));
+          setUploadProgress(progressStep);
+          setProgressStage(`2/3: Uploading media ${i + 1} of ${total} to Cloudinary…`);
 
-      if (selectedFile) {
-        setUploadProgress(30);
-        setProgressStage("2/5: Optimizing media & generating high-res thumbnail…");
-
-        let mediaUploadBlob: Blob = selectedFile;
-        let thumbBlob: Blob;
-
-        if (detectedMediaType === "image") {
-          mediaUploadBlob = await compressImage(selectedFile, 1920, 0.85);
-          thumbBlob = await generateThumbnail(selectedFile, 360, 0.75);
-        } else {
-          // Video: upload original file and generate first-frame poster
-          mediaUploadBlob = selectedFile;
-          try {
-            thumbBlob = await generateVideoThumbnail(selectedFile, 1.0);
-          } catch (err) {
-            console.warn("Video thumbnail generator error, using default frame", err);
-            thumbBlob = new Blob([], { type: "image/jpeg" });
-          }
-        }
-
-        const safeName = selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-        finalStorageKey = `users/${user.uid}/memories/${timestamp}_${safeName}`;
-        finalThumbStorageKey = `users/${user.uid}/memories/thumb_${timestamp}_${safeName}.jpg`;
-
-        setUploadProgress(60);
-        setProgressStage("3/5: Uploading media to secure storage…");
-
-        let uploadSucceeded = false;
-
-        // 1. Primary path: Direct Firebase Client SDK upload with a strict 4-second timeout
-        if (storage && (storage as any)?.type !== "mock-storage") {
-          try {
-            const fileRef = ref(storage, finalStorageKey);
-            const uploadPromise = uploadBytes(fileRef, mediaUploadBlob, {
-              contentType: selectedFile.type || "application/octet-stream",
-            });
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Firebase Storage timeout")), 4000)
-            );
-            await Promise.race([uploadPromise, timeoutPromise]);
-            finalMediaUrl = await getDownloadURL(fileRef);
-
-            if (thumbBlob && thumbBlob.size > 0) {
-              const thumbRef = ref(storage, finalThumbStorageKey);
-              await uploadBytes(thumbRef, thumbBlob, { contentType: "image/jpeg" });
-              finalThumbUrl = await getDownloadURL(thumbRef);
-            } else {
-              finalThumbUrl = finalMediaUrl;
+          let uploadBlob: Blob = item.file;
+          if (item.mediaType === "image") {
+            try {
+              uploadBlob = await compressImage(item.file, 1920, 0.85);
+            } catch {
+              uploadBlob = item.file;
             }
-            uploadSucceeded = true;
-          } catch (storageErr) {
-            console.warn("[Memory] Client storage timed out or failed, falling back to backend binary stream:", storageErr);
           }
-        }
 
-        // 2. Fallback path: Stream binary directly to backend storage endpoint
-        if (!uploadSucceeded) {
-          try {
-            const backendRes: any = await apiFetch("/api/memories/upload-binary", {
-              method: "POST",
-              headers: {
-                "Content-Type": selectedFile.type || "image/jpeg",
-                "x-file-name": encodeURIComponent(selectedFile.name),
-                ...(formTripId ? { "x-trip-id": formTripId } : {}),
-              },
-              body: mediaUploadBlob,
-            });
+          const backendRes: any = await apiFetch("/api/memories/upload-binary", {
+            method: "POST",
+            headers: {
+              "Content-Type": item.file.type || (item.mediaType === "video" ? "video/mp4" : "image/jpeg"),
+              "x-file-name": encodeURIComponent(item.file.name),
+              ...(formTripId && formTripId !== "NONE" ? { "x-trip-id": formTripId } : {}),
+            },
+            body: uploadBlob,
+          });
 
-            if (backendRes?.mediaUrl) {
-              finalMediaUrl = backendRes.mediaUrl;
-              finalThumbUrl = backendRes.thumbnailUrl || backendRes.mediaUrl;
-              finalStorageKey = backendRes.storageKey || finalStorageKey;
-              finalThumbStorageKey = backendRes.thumbnailKey || finalThumbStorageKey;
-              uploadSucceeded = true;
-              console.log("[Memory] Successfully uploaded media via backend binary stream:", finalMediaUrl);
-            }
-          } catch (backendErr) {
-            console.warn("[Memory] Backend binary upload error, using local fallback preview:", backendErr);
+          if (!backendRes?.mediaUrl) {
+            throw new Error(`Failed to upload ${item.file.name} to Cloudinary.`);
           }
-        }
 
-        // 3. Fallback: if both failed, use local blob URL to preserve user's real uploaded media
-        if (!uploadSucceeded && !finalMediaUrl) {
-          finalMediaUrl = URL.createObjectURL(mediaUploadBlob);
-          finalThumbUrl = thumbBlob && thumbBlob.size > 0 ? URL.createObjectURL(thumbBlob) : finalMediaUrl;
+          uploadedAssets.push({
+            url: backendRes.mediaUrl,
+            publicId: backendRes.publicId || backendRes.storageKey || "",
+            resourceType: backendRes.resourceType || item.mediaType,
+            format: backendRes.format || "",
+            width: backendRes.width || 0,
+            height: backendRes.height || 0,
+            duration: backendRes.duration || 0,
+            originalName: item.file.name,
+          });
         }
-      }
-
-      if (!finalMediaUrl) {
-        finalMediaUrl =
-          "https://images.unsplash.com/photo-1695956353120-54ce5e91632b?fm=jpg&q=75&w=1400&auto=format&fit=crop";
+      } else if (formPhotoUrl.trim()) {
+        uploadedAssets.push({
+          url: formPhotoUrl.trim(),
+          publicId: `external_${Date.now()}`,
+          resourceType: "image",
+          format: "jpg",
+          width: 0,
+          height: 0,
+          duration: 0,
+          originalName: "external_image",
+        });
       }
 
       setUploadProgress(85);
-      setProgressStage("4/5: Saving memory metadata & triggering AI enrichment…");
+      setProgressStage("3/3: Saving memory metadata & triggering AI enrichment…");
 
-      const momentsList = formMoments
-        .split(",")
-        .map((m) => m.trim())
-        .filter(Boolean);
-
-      const tagsList = formTags
-        .split(",")
-        .map((t) => t.trim().toLowerCase())
-        .filter(Boolean);
-
+      const primary = uploadedAssets[0];
       const memoryPayload = {
         tripId: formTripId && formTripId !== "NONE" ? formTripId : undefined,
-        n: Number(formN) || 1,
         place: formPlace.trim(),
-        date: formDate.trim() || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        weather: formWeather.trim(),
-        spend: Number(formSpend) || 0,
-        mediaUrl: finalMediaUrl,
-        thumbnailUrl: finalThumbUrl || finalMediaUrl,
-        storageKey: finalStorageKey,
-        thumbnailKey: finalThumbStorageKey || undefined,
-        mediaType: detectedMediaType,
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        media: uploadedAssets,
+        mediaUrl: primary?.url || "",
+        thumbnailUrl: primary?.url || "",
+        storageKey: primary?.publicId || `users/${user.uid}/memories/${Date.now()}`,
+        mediaType: primary?.resourceType || "image",
         highlight: formHighlight.trim(),
-        moments: momentsList,
-        category: formCategory || "OTHER",
-        tags: tagsList,
         caption: formHighlight.trim(),
       };
 
@@ -500,33 +518,37 @@ function Memory() {
       });
 
       setUploadProgress(100);
-      setProgressStage("5/5: Memory saved successfully!");
+      setProgressStage("Memory saved successfully!");
 
       const addedItem: MemoryItem = {
         ...savedMemory,
         id: savedMemory._id || savedMemory.id,
-        photo: savedMemory.mediaUrl,
-        mediaType: savedMemory.mediaType || detectedMediaType,
+        photo: savedMemory.media?.[0]?.url || savedMemory.mediaUrl,
+        mediaType: savedMemory.media?.[0]?.resourceType || savedMemory.mediaType || "image",
         aiMetadata: savedMemory.aiMetadata || { status: "PENDING" },
       };
 
       setMemories((prev) => [addedItem, ...prev.filter((m) => (m._id || m.id) !== addedItem.id)]);
 
       // Reset form
-      setFormN((prev) => prev + 1);
       setFormPlace("");
-      setFormDate("");
-      setFormWeather("");
-      setFormSpend("");
       setFormHighlight("");
-      setFormMoments("");
-      setFormTags("");
       setFormPhotoUrl("");
-      clearSelectedFile();
+      clearSelectedFiles();
       setCreateOpen(false);
     } catch (err: any) {
       console.error("Error creating memory:", err);
       setUploadError(err.message || "Failed to save memory.");
+
+      // Rollback uploaded Cloudinary assets to prevent orphaned files
+      if (uploadedAssets.length > 0) {
+        apiFetch("/api/memories/cleanup-assets", {
+          method: "POST",
+          body: JSON.stringify({
+            items: uploadedAssets.map((a) => ({ publicId: a.publicId, resourceType: a.resourceType })),
+          }),
+        }).catch(() => {});
+      }
     } finally {
       setSubmitting(false);
       setUploadProgress(0);
@@ -954,8 +976,13 @@ function Memory() {
             <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {filteredMemories.map((item, index) => {
                 const itemId = item._id || item.id || `mem_${index}`;
-                const displayPhoto = item.thumbnailUrl || item.mediaUrl || item.photo;
-                const isVideo = item.mediaType === "video";
+                const mediaList: MemoryMediaItem[] = (Array.isArray(item.media) && item.media.length > 0)
+                  ? item.media
+                  : [{ url: item.thumbnailUrl || item.mediaUrl || item.photo || "", resourceType: item.mediaType || "image" }];
+                const primaryMedia = mediaList[0];
+                const displayPhoto = primaryMedia?.url || item.thumbnailUrl || item.mediaUrl || item.photo;
+                const isVideo = primaryMedia?.resourceType === "video" || item.mediaType === "video";
+                const mediaCount = mediaList.length;
                 const catDef =
                   CATEGORY_DEFINITIONS[(item.category || item.aiMetadata?.category || "OTHER").toUpperCase()] ||
                   CATEGORY_DEFINITIONS.OTHER;
@@ -993,14 +1020,22 @@ function Memory() {
                         Day {item.n} · {item.date}
                       </span>
 
+                      {/* Multi-Media Count Badge */}
+                      {mediaCount > 1 && (
+                        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/75 backdrop-blur-md px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm border border-white/20">
+                          <Layers className="h-3 w-3" />
+                          {mediaCount} media
+                        </span>
+                      )}
+
                       {/* AI Status Badge */}
-                      {isAiPending && (
+                      {mediaCount <= 1 && isAiPending && (
                         <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-primary/90 backdrop-blur-md px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm animate-pulse">
                           <Sparkles className="h-3 w-3 animate-spin" />
                           AI Enriching…
                         </span>
                       )}
-                      {isAiReady && (
+                      {mediaCount <= 1 && isAiReady && (
                         <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-background/85 backdrop-blur-md px-2 py-0.5 text-[10px] font-semibold text-primary shadow-sm border border-primary/30">
                           <Sparkles className="h-3 w-3" />
                           AI Ready
@@ -1067,7 +1102,7 @@ function Memory() {
                       {/* Card Footer */}
                       <div className="mt-4 pt-3 border-t border-border/30 flex items-center justify-between text-xs text-muted-foreground">
                         <span className="font-medium text-foreground">
-                          {item.spend > 0 ? inr(item.spend) : "Free"}
+                          {item.spend && item.spend > 0 ? inr(item.spend) : "Free"}
                         </span>
 
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -1114,9 +1149,14 @@ function Memory() {
             /* Timeline List View */
             <div className="space-y-6">
               {filteredMemories.map((d, index) => {
-                const displayPhoto = d.thumbnailUrl || d.mediaUrl || d.photo;
+                const mediaList: MemoryMediaItem[] = (Array.isArray(d.media) && d.media.length > 0)
+                  ? d.media
+                  : [{ url: d.thumbnailUrl || d.mediaUrl || d.photo || "", resourceType: d.mediaType || "image" }];
+                const primaryMedia = mediaList[0];
+                const displayPhoto = primaryMedia?.url || d.thumbnailUrl || d.mediaUrl || d.photo;
                 const itemId = d._id || d.id || `mem_${index}`;
-                const isVideo = d.mediaType === "video";
+                const isVideo = primaryMedia?.resourceType === "video" || d.mediaType === "video";
+                const mediaCount = mediaList.length;
                 const catDef =
                   CATEGORY_DEFINITIONS[(d.category || d.aiMetadata?.category || "OTHER").toUpperCase()] ||
                   CATEGORY_DEFINITIONS.OTHER;
@@ -1145,6 +1185,12 @@ function Memory() {
                       <span className="absolute left-3 top-3 rounded-full bg-background/90 backdrop-blur-md px-2.5 py-1 text-[11px] font-semibold text-foreground shadow-sm">
                         Day {d.n} · {d.date}
                       </span>
+                      {mediaCount > 1 && (
+                        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/75 backdrop-blur-md px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm border border-white/20">
+                          <Layers className="h-3 w-3" />
+                          {mediaCount} media
+                        </span>
+                      )}
                       <span
                         className={`absolute left-3 bottom-3 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold backdrop-blur-md shadow-sm border ${catDef.badgeClass}`}
                       >
@@ -1167,7 +1213,7 @@ function Memory() {
                                 {d.weather}
                               </span>
                             )}
-                            <span>Spend {inr(d.spend)}</span>
+                            <span>Spend {d.spend ? inr(d.spend) : "Free"}</span>
                           </div>
                         </div>
                         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
@@ -1245,213 +1291,432 @@ function Memory() {
         </div>
       )}
 
-      {/* DETAIL MODAL WITH HIGH-RES MEDIA & AI INSIGHTS */}
-      {detailItem && (
-        <Dialog open={!!detailItem} onOpenChange={(open) => !open && setDetailItem(null)}>
-          <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <div className="flex items-center justify-between gap-2 pr-6">
-                <DialogTitle className="flex items-center gap-2 text-xl font-bold">
-                  <MapPin className="h-5 w-5 text-primary" />
-                  {detailItem.place}
-                </DialogTitle>
-                <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-semibold">
-                  Day {detailItem.n} · {detailItem.date}
-                </span>
-              </div>
-              <DialogDescription className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
-                {detailItem.weather && <span>Weather: {detailItem.weather}</span>}
-                <span>Spend: {inr(detailItem.spend)}</span>
-                {detailItem.category && (
-                  <span className="font-medium text-foreground">
-                    Category: {CATEGORY_DEFINITIONS[detailItem.category.toUpperCase()]?.label || detailItem.category}
+      {/* DETAIL MODAL WITH MULTI-MEDIA GALLERY & AI INSIGHTS */}
+      {detailItem && (() => {
+        const detailMediaList: MemoryMediaItem[] = (Array.isArray(detailItem.media) && detailItem.media.length > 0)
+          ? detailItem.media
+          : [{
+              url: detailItem.mediaUrl || detailItem.photo || "",
+              resourceType: detailItem.mediaType || "image",
+              publicId: detailItem.storageKey || "",
+            }];
+        const currentMedia = detailMediaList[detailMediaIndex] || detailMediaList[0];
+        const isCurrentVideo = currentMedia?.resourceType === "video" || (!currentMedia?.resourceType && detailItem.mediaType === "video");
+
+        return (
+          <Dialog open={!!detailItem} onOpenChange={(open) => !open && setDetailItem(null)}>
+            <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <div className="flex items-center justify-between gap-2 pr-6">
+                  <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                    <MapPin className="h-5 w-5 text-primary" />
+                    {detailItem.place || "Travel Memory"}
+                  </DialogTitle>
+                  <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-semibold">
+                    Day {detailItem.n} · {detailItem.date}
                   </span>
+                </div>
+                <DialogDescription className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
+                  {detailItem.weather && <span>Weather: {detailItem.weather}</span>}
+                  {detailItem.spend !== undefined && detailItem.spend > 0 && <span>Spend: {inr(detailItem.spend)}</span>}
+                  {detailItem.category && (
+                    <span className="font-medium text-foreground">
+                      Category: {CATEGORY_DEFINITIONS[detailItem.category.toUpperCase()]?.label || detailItem.category}
+                    </span>
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* Media Gallery / Presentation */}
+              <div className="space-y-3">
+                <div className="relative rounded-xl overflow-hidden bg-black/95 aspect-video flex items-center justify-center group shadow-inner">
+                  {isCurrentVideo ? (
+                    <video
+                      key={currentMedia.url}
+                      controls
+                      src={currentMedia.url}
+                      poster={currentMedia.url}
+                      className="w-full h-full max-h-[50vh] object-contain"
+                      autoPlay={false}
+                    />
+                  ) : (
+                    <img
+                      key={currentMedia.url}
+                      src={currentMedia.url}
+                      alt={detailItem.place || "Memory media"}
+                      className="w-full h-full max-h-[50vh] object-contain"
+                    />
+                  )}
+
+                  {/* Navigation Arrows for Multiple Media */}
+                  {detailMediaList.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDetailMediaIndex((prev) => (prev > 0 ? prev - 1 : detailMediaList.length - 1));
+                        }}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-sm transition-all shadow-md"
+                        title="Previous media"
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDetailMediaIndex((prev) => (prev < detailMediaList.length - 1 ? prev + 1 : 0));
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-sm transition-all shadow-md"
+                        title="Next media"
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </button>
+                      <span className="absolute top-3 right-3 rounded-full bg-black/75 backdrop-blur-md px-2.5 py-1 text-[11px] font-semibold text-white shadow">
+                        {detailMediaIndex + 1} / {detailMediaList.length}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {/* Multiple Media Thumbnails Strip */}
+                {detailMediaList.length > 1 && (
+                  <div className="flex items-center gap-2 overflow-x-auto py-1 px-1 no-scrollbar">
+                    {detailMediaList.map((m, idx) => {
+                      const isSelected = idx === detailMediaIndex;
+                      const isItemVideo = m.resourceType === "video";
+                      return (
+                        <button
+                          key={m.url || idx}
+                          type="button"
+                          onClick={() => setDetailMediaIndex(idx)}
+                          className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                            isSelected
+                              ? "border-primary ring-2 ring-primary/40 scale-105 shadow-md"
+                              : "border-border/60 opacity-60 hover:opacity-100"
+                          }`}
+                        >
+                          {isItemVideo ? (
+                            <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
+                              <Play className="h-5 w-5 fill-white text-white" />
+                            </div>
+                          ) : (
+                            <img src={m.url} alt="" className="w-full h-full object-cover" />
+                          )}
+                          {isItemVideo && (
+                            <span className="absolute bottom-1 right-1 bg-black/80 rounded px-1 py-0.2 text-[8px] text-white">
+                              <Film className="h-2.5 w-2.5" />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              </DialogDescription>
-            </DialogHeader>
-
-            {/* Media Presentation */}
-            <div className="relative rounded-xl overflow-hidden bg-black/90 aspect-video flex items-center justify-center">
-              {detailItem.mediaType === "video" ? (
-                <video
-                  controls
-                  src={detailItem.mediaUrl}
-                  poster={detailItem.thumbnailUrl}
-                  className="w-full h-full max-h-[50vh] object-contain"
-                />
-              ) : (
-                <img
-                  src={detailItem.mediaUrl}
-                  alt={detailItem.place}
-                  className="w-full h-full max-h-[50vh] object-contain"
-                />
-              )}
-            </div>
-
-            {/* Content & Story */}
-            <div className="space-y-4 pt-2">
-              <div>
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Highlight Story
-                </h4>
-                <p className="mt-1 text-sm leading-relaxed text-foreground">
-                  {detailItem.highlight}
-                </p>
               </div>
 
-              {detailItem.moments && detailItem.moments.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Moments
-                  </h4>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {detailItem.moments.map((m) => (
-                      <span
-                        key={m}
-                        className="rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 text-xs text-foreground"
-                      >
-                        {m}
-                      </span>
-                    ))}
+              {/* Content & Story */}
+              <div className="space-y-4 pt-2">
+                {detailItem.highlight && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Highlight Story
+                    </h4>
+                    <p className="mt-1 text-sm leading-relaxed text-foreground">
+                      {detailItem.highlight}
+                    </p>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* AI Photo Insights Section */}
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-semibold text-sm text-primary">
-                    <Sparkles className="h-4 w-4" />
-                    <span>AI Vision & Scene Insights</span>
+                {detailItem.moments && detailItem.moments.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Moments
+                    </h4>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {detailItem.moments.map((m) => (
+                        <span
+                          key={m}
+                          className="rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 text-xs text-foreground"
+                        >
+                          {m}
+                        </span>
+                      ))}
+                    </div>
                   </div>
+                )}
+
+                {/* AI Photo Insights Section */}
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-semibold text-sm text-primary">
+                      <Sparkles className="h-4 w-4" />
+                      <span>AI Vision & Scene Insights</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleReprocessAI(detailItem._id || detailItem.id || "")}
+                      disabled={reprocessingId === (detailItem._id || detailItem.id)}
+                      className="h-7 text-xs text-primary hover:bg-primary/10"
+                    >
+                      <RefreshCw
+                        className={`mr-1 h-3 w-3 ${
+                          reprocessingId === (detailItem._id || detailItem.id) ? "animate-spin" : ""
+                        }`}
+                      />
+                      Reprocess AI
+                    </Button>
+                  </div>
+
+                  {detailItem.aiMetadata?.status === "PENDING" ? (
+                    <p className="text-xs text-muted-foreground italic flex items-center gap-1.5">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                      AI is currently analyzing scene elements, mood, and auto-tagging…
+                    </p>
+                  ) : detailItem.aiMetadata?.description ? (
+                    <>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {detailItem.aiMetadata.description}
+                      </p>
+                      {detailItem.aiMetadata.tags && detailItem.aiMetadata.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {detailItem.aiMetadata.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-md bg-primary/15 text-primary px-2 py-0.5 text-[11px] font-medium"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Click "Reprocess AI" to generate scene analysis, auto-tags, and category classifications.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-border/40">
+                <div className="flex items-center gap-2">
                   <Button
+                    variant="outline"
                     size="sm"
-                    variant="ghost"
-                    onClick={() => handleReprocessAI(detailItem._id || detailItem.id || "")}
-                    disabled={reprocessingId === (detailItem._id || detailItem.id)}
-                    className="h-7 text-xs text-primary hover:bg-primary/10"
+                    asChild
                   >
-                    <RefreshCw
-                      className={`mr-1 h-3 w-3 ${
-                        reprocessingId === (detailItem._id || detailItem.id) ? "animate-spin" : ""
-                      }`}
-                    />
-                    Reprocess AI
+                    <a href={currentMedia.url} target="_blank" rel="noopener noreferrer" download>
+                      <Download className="mr-1.5 h-3.5 w-3.5" />
+                      Original Media
+                    </a>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const item = detailItem;
+                      setDetailItem(null);
+                      setInstagramItem(item);
+                    }}
+                    className="text-pink-500 border-pink-500/30 hover:bg-pink-500/10"
+                  >
+                    <Instagram className="mr-1.5 h-3.5 w-3.5" />
+                    Instagram Post
                   </Button>
                 </div>
 
-                {detailItem.aiMetadata?.status === "PENDING" ? (
-                  <p className="text-xs text-muted-foreground italic flex items-center gap-1.5">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                    AI is currently analyzing scene elements, mood, and auto-tagging…
-                  </p>
-                ) : detailItem.aiMetadata?.description ? (
-                  <>
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      {detailItem.aiMetadata.description}
-                    </p>
-                    {detailItem.aiMetadata.tags && detailItem.aiMetadata.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {detailItem.aiMetadata.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="rounded-md bg-primary/15 text-primary px-2 py-0.5 text-[11px] font-medium"
-                          >
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Click "Reprocess AI" to generate scene analysis, auto-tags, and category classifications.
-                  </p>
-                )}
-              </div>
-            </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const item = detailItem;
+                      setDetailItem(null);
+                      setEditItem(item);
+                    }}
+                  >
+                    <Edit3 className="mr-1.5 h-3.5 w-3.5" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      const id = detailItem._id || detailItem.id;
+                      if (id) setDeleteId(id);
+                    }}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    Delete
+                  </Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
-            <DialogFooter className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-border/40">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  asChild
-                >
-                  <a href={detailItem.mediaUrl} target="_blank" rel="noopener noreferrer" download>
-                    <Download className="mr-1.5 h-3.5 w-3.5" />
-                    Original Media
-                  </a>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const item = detailItem;
-                    setDetailItem(null);
-                    setInstagramItem(item);
-                  }}
-                  className="text-pink-500 border-pink-500/30 hover:bg-pink-500/10"
-                >
-                  <Instagram className="mr-1.5 h-3.5 w-3.5" />
-                  Instagram Post
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    const item = detailItem;
-                    setDetailItem(null);
-                    setEditItem(item);
-                  }}
-                >
-                  <Edit3 className="mr-1.5 h-3.5 w-3.5" />
-                  Edit
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => {
-                    const id = detailItem._id || detailItem.id;
-                    if (id) setDeleteId(id);
-                  }}
-                >
-                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                  Delete
-                </Button>
-              </div>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* CREATE MEMORY MODAL WITH DRAG & DROP AND MULTI-STAGE PROGRESS */}
+      {/* CREATE MEMORY MODAL WITH MULTI-FILE PREVIEWS & PROGRESS */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">
               <Sparkles className="h-5 w-5 text-primary" />
               Capture a Travel Memory
             </DialogTitle>
             <DialogDescription>
-              Upload photos or videos. Advenza AI will automatically optimize, categorize, and tag your memory.
+              Upload up to 10 photos or videos per memory. Advenza AI will automatically optimize, categorize, and tag your memories.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Trip Selector */}
+
+            {/* ── MULTI-MEDIA UPLOAD (primary action — top of form) ── */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">Photos & Videos</Label>
+                <span className={`text-[11px] font-medium ${selectedFiles.length >= 10 ? "text-amber-500 font-semibold" : "text-muted-foreground"}`}>
+                  {selectedFiles.length} / 10 selected
+                </span>
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
+                onChange={handleFileInputChange}
+                className="hidden"
+              />
+
+              {selectedFiles.length > 0 ? (
+                <div className="space-y-2">
+                  {/* Thumbnail Previews Grid */}
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 p-2.5 rounded-xl border border-border/70 bg-background/50 max-h-60 overflow-y-auto">
+                    {selectedFiles.map((item) => {
+                      const isVideo = item.mediaType === "video";
+                      return (
+                        <div
+                          key={item.id}
+                          className="group relative aspect-square rounded-lg overflow-hidden border border-border/80 bg-black/40 shadow-sm"
+                        >
+                          {isVideo ? (
+                            <div className="relative w-full h-full flex items-center justify-center bg-zinc-900">
+                              <video src={item.previewUrl} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                                <Play className="h-5 w-5 fill-white text-white" />
+                              </div>
+                            </div>
+                          ) : (
+                            <img
+                              src={item.previewUrl}
+                              alt={item.file.name}
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+
+                          {/* Remove Button on each individual media item */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeSelectedFile(item.id);
+                            }}
+                            className="absolute top-1 right-1 bg-black/70 hover:bg-destructive text-white rounded-full p-1 shadow transition-all duration-200"
+                            title="Remove file"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+
+                          {/* Media Type Badge */}
+                          <span className="absolute bottom-1 left-1 bg-black/70 backdrop-blur-sm text-white text-[9px] px-1.5 py-0.5 rounded font-medium">
+                            {isVideo ? "Video" : "Photo"}
+                          </span>
+                        </div>
+                      );
+                    })}
+
+                    {/* Add more button if less than 10 */}
+                    {selectedFiles.length < 10 && (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex flex-col items-center justify-center aspect-square rounded-lg border-2 border-dashed border-border/80 hover:border-primary/60 hover:bg-primary/5 transition-all text-muted-foreground hover:text-primary gap-1"
+                      >
+                        <Plus className="h-5 w-5" />
+                        <span className="text-[10px] font-medium">Add more</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
+                    <span>Photos ≤20MB · Videos ≤100MB</span>
+                    <button
+                      type="button"
+                      onClick={clearSelectedFiles}
+                      className="text-xs text-destructive hover:underline"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-all ${
+                    isDragging
+                      ? "border-primary bg-primary/10"
+                      : "border-border/70 hover:border-primary/50 bg-background/50"
+                  }`}
+                >
+                  <div className="flex flex-col items-center justify-center gap-1.5 py-2">
+                    <UploadCloud className="h-9 w-9 text-muted-foreground/60" />
+                    <p className="text-sm font-medium text-foreground">
+                      Click to browse or drag & drop (select up to 10 files)
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Photos: JPEG, PNG, WebP (≤20MB) · Videos: MP4, WebM, MOV (≤100MB)
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {uploadError && (
+                <p className="text-xs text-destructive font-medium flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  {uploadError}
+                </p>
+              )}
+
+              {selectedFiles.length === 0 && (
+                <div className="flex flex-col gap-1 pt-1">
+                  <span className="text-[11px] text-muted-foreground">Or paste a direct image / video URL:</span>
+                  <Input
+                    value={formPhotoUrl}
+                    onChange={(e) => setFormPhotoUrl(e.target.value)}
+                    placeholder="https://images.unsplash.com/..."
+                    className="text-xs"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* ── ASSOCIATED TRIP ── */}
             {trips.length > 0 && (
               <div className="space-y-1.5">
                 <Label htmlFor="formTripId" className="text-xs font-semibold">Associated Trip</Label>
                 <Select value={formTripId} onValueChange={setFormTripId}>
                   <SelectTrigger id="formTripId" className="text-xs">
-                    <SelectValue placeholder="Select Trip (Optional)" />
+                    <SelectValue placeholder="Select trip (optional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NONE">Standalone Memory (No specific trip)</SelectItem>
+                    <SelectItem value="NONE">Standalone Memory (no specific trip)</SelectItem>
                     {trips.map((t) => (
                       <SelectItem key={t._id} value={t._id}>
                         {t.destination || t.title || "Trip"}
@@ -1462,198 +1727,31 @@ function Memory() {
               </div>
             )}
 
-            {/* Day and Date */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="formN" className="text-xs font-semibold">Day Number</Label>
-                <Input
-                  id="formN"
-                  type="number"
-                  required
-                  min={1}
-                  value={formN}
-                  onChange={(e) => setFormN(Number(e.target.value))}
-                  placeholder="e.g. 1"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="formDate" className="text-xs font-semibold">Date</Label>
-                <Input
-                  id="formDate"
-                  required
-                  value={formDate}
-                  onChange={(e) => setFormDate(e.target.value)}
-                  placeholder="e.g. Jun 14"
-                />
-              </div>
-            </div>
-
-            {/* Place and Weather */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="formPlace" className="text-xs font-semibold">Place / Destination</Label>
-                <Input
-                  id="formPlace"
-                  required
-                  value={formPlace}
-                  onChange={(e) => setFormPlace(e.target.value)}
-                  placeholder="e.g. Udaipur, City Palace"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="formWeather" className="text-xs font-semibold">Weather</Label>
-                <Input
-                  id="formWeather"
-                  value={formWeather}
-                  onChange={(e) => setFormWeather(e.target.value)}
-                  placeholder="e.g. 32°C, Golden hour"
-                />
-              </div>
-            </div>
-
-            {/* Category and Spend */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="formCategory" className="text-xs font-semibold">Category</Label>
-                <Select value={formCategory} onValueChange={setFormCategory}>
-                  <SelectTrigger id="formCategory" className="text-xs">
-                    <SelectValue placeholder="Select Category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(CATEGORY_DEFINITIONS)
-                      .filter(([key]) => key !== "ALL")
-                      .map(([key, def]) => (
-                        <SelectItem key={key} value={key}>
-                          <span className="mr-1.5">{def.icon}</span>
-                          {def.label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="formSpend" className="text-xs font-semibold">Spend (INR)</Label>
-                <Input
-                  id="formSpend"
-                  type="number"
-                  min={0}
-                  value={formSpend}
-                  onChange={(e) => setFormSpend(e.target.value)}
-                  placeholder="e.g. 3500"
-                />
-              </div>
-            </div>
-
-            {/* Story Highlight */}
+            {/* ── PLACE (optional) ── */}
             <div className="space-y-1.5">
-              <Label htmlFor="formHighlight" className="text-xs font-semibold">Highlight Story</Label>
-              <Textarea
-                id="formHighlight"
-                required
-                value={formHighlight}
-                onChange={(e) => setFormHighlight(e.target.value)}
-                placeholder="What made this moment or spot unforgettable?"
-                rows={3}
+              <Label htmlFor="formPlace" className="text-xs font-semibold">
+                Place <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="formPlace"
+                value={formPlace}
+                onChange={(e) => setFormPlace(e.target.value)}
+                placeholder="e.g. Udaipur, City Palace"
               />
             </div>
 
-            {/* Moments and Tags */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="formMoments" className="text-xs font-semibold">Moments (comma separated)</Label>
-                <Input
-                  id="formMoments"
-                  value={formMoments}
-                  onChange={(e) => setFormMoments(e.target.value)}
-                  placeholder="Boat tour, Spicy Thali, Sunset"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="formTags" className="text-xs font-semibold">Tags (comma separated)</Label>
-                <Input
-                  id="formTags"
-                  value={formTags}
-                  onChange={(e) => setFormTags(e.target.value)}
-                  placeholder="palace, lake, photography"
-                />
-              </div>
-            </div>
-
-            {/* Media Upload Area (Drag & Drop) */}
-            <div className="space-y-2 border-t border-border/40 pt-3">
-              <Label className="text-xs font-semibold">Media File (Photo or Video)</Label>
-
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-all ${
-                  isDragging
-                    ? "border-primary bg-primary/10"
-                    : "border-border/70 hover:border-primary/50 bg-background/50"
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/webm,video/quicktime"
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                />
-
-                {previewUrl ? (
-                  <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-border">
-                    {detectedMediaType === "video" ? (
-                      <video src={previewUrl} className="w-full h-full object-cover" controls />
-                    ) : (
-                      <img src={previewUrl} alt="Upload preview" className="w-full h-full object-cover" />
-                    )}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        clearSelectedFile();
-                      }}
-                      className="absolute right-2 top-2 bg-black/70 text-white rounded-full p-1 text-xs hover:bg-black transition-colors"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                    <span className="absolute left-2 bottom-2 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded-md backdrop-blur-sm">
-                      {detectedMediaType === "video" ? "Video preview" : "Image preview"}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center gap-1.5 py-2">
-                    <UploadCloud className="h-9 w-9 text-muted-foreground/60" />
-                    <p className="text-sm font-medium text-foreground">
-                      Click to browse or drag & drop media here
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Photos: JPEG, PNG, WebP (up to 20MB) · Videos: MP4, WebM, MOV (up to 100MB)
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {uploadError && (
-                <p className="text-xs text-destructive font-medium flex items-center gap-1">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  {uploadError}
-                </p>
-              )}
-
-              {!previewUrl && (
-                <div className="flex flex-col gap-1 pt-1">
-                  <span className="text-[11px] text-muted-foreground">Or provide a direct web image/video URL:</span>
-                  <Input
-                    value={formPhotoUrl}
-                    onChange={(e) => setFormPhotoUrl(e.target.value)}
-                    placeholder="https://images.unsplash.com/..."
-                    className="text-xs"
-                  />
-                </div>
-              )}
+            {/* ── STORY (optional) ── */}
+            <div className="space-y-1.5">
+              <Label htmlFor="formHighlight" className="text-xs font-semibold">
+                Story <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              <Textarea
+                id="formHighlight"
+                value={formHighlight}
+                onChange={(e) => setFormHighlight(e.target.value)}
+                placeholder="What happened here? What made it special?"
+                rows={3}
+              />
             </div>
 
             {/* Upload Progress Bar */}
@@ -1675,7 +1773,7 @@ function Memory() {
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  clearSelectedFile();
+                  clearSelectedFiles();
                   setCreateOpen(false);
                 }}
                 disabled={submitting}
@@ -1709,60 +1807,11 @@ function Memory() {
             </DialogHeader>
 
             <form onSubmit={handleEditSave} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Place / Spot</Label>
-                  <Input
-                    value={editItem.place}
-                    onChange={(e) => setEditItem({ ...editItem, place: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Date</Label>
-                  <Input
-                    value={editItem.date}
-                    onChange={(e) => setEditItem({ ...editItem, date: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Category</Label>
-                  <Select
-                    value={editItem.category || "OTHER"}
-                    onValueChange={(val) => setEditItem({ ...editItem, category: val })}
-                  >
-                    <SelectTrigger className="text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(CATEGORY_DEFINITIONS)
-                        .filter(([k]) => k !== "ALL")
-                        .map(([k, def]) => (
-                          <SelectItem key={k} value={k}>
-                            <span className="mr-1.5">{def.icon}</span>
-                            {def.label}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Spend (INR)</Label>
-                  <Input
-                    type="number"
-                    value={editItem.spend}
-                    onChange={(e) => setEditItem({ ...editItem, spend: Number(e.target.value) })}
-                  />
-                </div>
-              </div>
-
               <div className="space-y-1">
-                <Label className="text-xs">Weather</Label>
+                <Label className="text-xs">Place / Spot</Label>
                 <Input
-                  value={editItem.weather || ""}
-                  onChange={(e) => setEditItem({ ...editItem, weather: e.target.value })}
+                  value={editItem.place}
+                  onChange={(e) => setEditItem({ ...editItem, place: e.target.value })}
                 />
               </div>
 
@@ -1772,32 +1821,6 @@ function Memory() {
                   value={editItem.highlight}
                   onChange={(e) => setEditItem({ ...editItem, highlight: e.target.value })}
                   rows={3}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Moments (comma separated)</Label>
-                <Input
-                  value={editItem.moments?.join(", ") || ""}
-                  onChange={(e) =>
-                    setEditItem({
-                      ...editItem,
-                      moments: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-                    })
-                  }
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Tags (comma separated)</Label>
-                <Input
-                  value={editItem.tags?.join(", ") || ""}
-                  onChange={(e) =>
-                    setEditItem({
-                      ...editItem,
-                      tags: e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
-                    })
-                  }
                 />
               </div>
 

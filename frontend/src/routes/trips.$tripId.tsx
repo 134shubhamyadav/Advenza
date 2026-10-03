@@ -5,56 +5,100 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { MapPin, Calendar, Users, Plane, Share2, Wallet, Plus, Trash2 } from "lucide-react";
+import { 
+  MapPin, 
+  Calendar, 
+  Users, 
+  Plane, 
+  Train,
+  Bus,
+  Car,
+  Ship,
+  Share2, 
+  Wallet, 
+  Plus, 
+  Trash2,
+  Clock,
+  RotateCcw,
+  Sparkles,
+  Compass,
+  ArrowRight
+} from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { inr, normalizeTimeTo24h } from "@/lib/utils";
+import { inr, normalizeTimeTo24h, formatDurationMinutes, getDurationStatusBadge, calculateInclusiveDays } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogCancel,
+  AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 import { TripMemoriesTab } from "@/components/trips/trip-memories-tab";
 import { BudgetEstimateCard } from "@/components/budget/budget-estimate-card";
-import type { BudgetBreakdown, HeroImage } from "@/services/tripService";
+import type { TripSummary, DayTimingWindow, HeroImage } from "@/services/tripService";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 export const Route = createFileRoute("/trips/$tripId")({ component: TripDetails });
 
 const FALLBACK_TRAVEL_IMAGE =
   "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1600&q=80&auto=format&fit=crop";
 
-const getTripHeroImage = (trip: Trip | null): string => {
+const getTripHeroImage = (trip: TripSummary | null): string => {
   if (!trip) return FALLBACK_TRAVEL_IMAGE;
   if (trip.heroImage?.url) return trip.heroImage.url;
   return FALLBACK_TRAVEL_IMAGE;
 };
 
-type Expense = { category: string; amount: number; description?: string };
-type Activity = { time: string; description: string };
-type Day = { dayNumber: number; date?: string; title: string; activities?: Activity[] };
-type Trip = {
-  _id: string;
-  title: string;
-  destination?: string;
-  summary?: string;
-  budgetEstimate?: string;
-  budgetBreakdown?: BudgetBreakdown;
-  heroImage?: HeroImage;
-  travelers?: number;
-  days?: Day[];
-  expenses?: Expense[];
-  members?: { name: string }[];
-  createdBy?: string;
+const getTransportIcon = (type?: string) => {
+  const lower = (type || "").toLowerCase();
+  if (lower.includes("train") || lower.includes("rail")) return Train;
+  if (lower.includes("bus")) return Bus;
+  if (lower.includes("car") || lower.includes("drive") || lower.includes("cab")) return Car;
+  if (lower.includes("ferry") || lower.includes("boat") || lower.includes("ship")) return Ship;
+  return Plane;
 };
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/queryKeys";
+function formatIsoTimeToHHMM(isoStr?: string): string {
+  if (!isoStr) return "";
+  try {
+    if (isoStr.includes("T")) {
+      const timePart = isoStr.split("T")[1];
+      return timePart.substring(0, 5);
+    }
+    return normalizeTimeTo24h(isoStr);
+  } catch {
+    return "";
+  }
+}
+
+function getDayTimingBadge(window?: DayTimingWindow) {
+  if (!window || !window.status) return null;
+  const status = window.status;
+  const hrs = window.availableHours != null ? `${window.availableHours}h` : "";
+  const startTime = formatIsoTimeToHHMM(window.usableStartDateTime);
+  const endTime = formatIsoTimeToHHMM(window.usableEndDateTime);
+
+  switch (status) {
+    case "TRAVEL_OUTBOUND":
+      return { label: "🚆 Outbound Travel", hrs: "0h usable", color: "bg-amber-500/10 text-amber-600 border-amber-500/20" };
+    case "ARRIVAL_DAY":
+      return { label: `🛬 Arrival Day`, hrs: hrs ? `${hrs} usable` : "", color: "bg-blue-500/10 text-blue-600 border-blue-500/20" };
+    case "FULL_DESTINATION_DAY":
+      return { label: "☀️ Full Day", hrs: hrs ? `${hrs} usable` : "", color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" };
+    case "RETURN_DAY":
+      return { label: "🛫 Return Day", hrs: hrs ? `${hrs} usable` : "", color: "bg-orange-500/10 text-orange-600 border-orange-500/20" };
+    case "TRAVEL_RETURN":
+      return { label: "🚆 Return Travel", hrs: "0h usable", color: "bg-purple-500/10 text-purple-600 border-purple-500/20" };
+    default:
+      return null;
+  }
+}
 
 function TripDetails() {
   const { tripId } = Route.useParams();
@@ -68,7 +112,7 @@ function TripDetails() {
     queryKey: queryKeys.tripDetails(tripId),
     queryFn: async () => {
       const data = await apiFetch(`/api/trips/${tripId}`);
-      return data as Trip;
+      return data as TripSummary;
     },
     enabled: !!tripId,
   });
@@ -80,10 +124,10 @@ function TripDetails() {
         body: JSON.stringify({}),
       });
     },
-    onSuccess: (updatedTrip: Trip) => {
+    onSuccess: (updatedTrip: TripSummary) => {
       toast.success("Itinerary refreshed with fresh AI suggestions!");
       queryClient.setQueryData(queryKeys.tripDetails(tripId), updatedTrip);
-      queryClient.setQueryData(queryKeys.trips(), (old: any[] = []) =>
+      queryClient.setQueryData(queryKeys.trips(), (old: TripSummary[] = []) =>
         old.map((t) => (t._id === tripId ? updatedTrip : t))
       );
     },
@@ -97,7 +141,7 @@ function TripDetails() {
     setIsDeleting(true);
     try {
       await apiFetch(`/api/trips/${tripId}`, { method: "DELETE" });
-      queryClient.setQueryData(queryKeys.trips(), (old: any[] = []) =>
+      queryClient.setQueryData(queryKeys.trips(), (old: TripSummary[] = []) =>
         old.filter((t) => t._id !== tripId),
       );
       toast.success("Trip deleted successfully");
@@ -146,10 +190,26 @@ function TripDetails() {
 
   // Budget summary from real expenses
   const expensesByCategory = (trip.expenses ?? []).reduce<Record<string, number>>((acc, e) => {
-    acc[e.category] = (acc[e.category] ?? 0) + e.amount;
+    const cat = e.category || "General";
+    acc[cat] = (acc[cat] ?? 0) + e.amount;
     return acc;
   }, {});
   const totalSpent = Object.values(expensesByCategory).reduce((a, b) => a + b, 0);
+
+  const outboundLeg = trip.outboundJourney;
+  const returnLeg = trip.returnJourney;
+  const timing = trip.tripTiming;
+  const calendarDays = calculateInclusiveDays(trip.startDate, trip.endDate);
+
+  const outboundDuration = outboundLeg?.durationMinutes ?? timing?.outbound?.durationMinutes;
+  const returnDuration = returnLeg?.durationMinutes ?? timing?.return?.durationMinutes;
+  const totalUsableHours = timing?.destination?.totalUsableHours;
+
+  const outboundStatus = getDurationStatusBadge(outboundLeg?.status, outboundLeg?.durationSource, outboundLeg?.booked);
+  const returnStatus = getDurationStatusBadge(returnLeg?.status, returnLeg?.durationSource, returnLeg?.booked);
+
+  const OutboundIcon = getTransportIcon(outboundLeg?.transportType || trip.travelMode);
+  const ReturnIcon = getTransportIcon(returnLeg?.transportType || outboundLeg?.transportType || trip.travelMode);
 
   return (
     <AppShell>
@@ -162,7 +222,7 @@ function TripDetails() {
             (e.target as HTMLImageElement).src = FALLBACK_TRAVEL_IMAGE;
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent" />
         {trip.heroImage?.photographer && (
           <div className="absolute top-4 right-4 z-10">
             <span className="text-[10px] text-white/70 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 select-none">
@@ -173,25 +233,33 @@ function TripDetails() {
         <div className="absolute bottom-6 left-6 right-6 text-white">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <Badge className="bg-white/20 text-white hover:bg-white/25">AI Generated</Badge>
-              <h1 className="mt-3 font-display text-4xl md:text-5xl">{trip.title}</h1>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-white/20 text-white hover:bg-white/25">AI Generated</Badge>
+                {trip.style && <Badge className="bg-white/15 text-white">{trip.style} Pace</Badge>}
+              </div>
+              <h1 className="mt-2.5 font-display text-3xl md:text-5xl">{trip.title}</h1>
               <p className="mt-2 flex flex-wrap items-center gap-4 text-sm opacity-90">
-                {trip.destination && (
-                  <span className="flex items-center gap-1.5">
+                {trip.origin && trip.destination ? (
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Compass className="h-4 w-4" />
+                    {trip.origin} → {trip.destination}
+                  </span>
+                ) : trip.destination ? (
+                  <span className="flex items-center gap-1.5 font-medium">
                     <MapPin className="h-4 w-4" />
                     {trip.destination}
                   </span>
-                )}
+                ) : null}
                 {trip.days?.length ? (
                   <span className="flex items-center gap-1.5">
                     <Calendar className="h-4 w-4" />
                     {trip.days.length} day{trip.days.length !== 1 ? "s" : ""}
                   </span>
                 ) : null}
-                {trip.members?.length ? (
+                {trip.travelers || trip.members?.length ? (
                   <span className="flex items-center gap-1.5">
                     <Users className="h-4 w-4" />
-                    {trip.members.length} traveler{trip.members.length !== 1 ? "s" : ""}
+                    {trip.travelers || trip.members?.length} traveler{((trip.travelers || trip.members?.length) !== 1) ? "s" : ""}
                   </span>
                 ) : null}
               </p>
@@ -252,6 +320,27 @@ function TripDetails() {
                     No summary generated yet.
                   </p>
                 )}
+
+                {/* Usable Destination Time Highlights */}
+                {totalUsableHours != null && (
+                  <div className="mt-5 rounded-xl border border-primary/20 bg-primary/5 p-4 flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Clock className="h-5 w-5 text-primary shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">
+                          {totalUsableHours} Usable Sightseeing Hours ({calendarDays} calendar days)
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Travel times automatically accounted for in exploration windows.
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs font-mono text-primary border-primary/30">
+                      Protected Usable Window
+                    </Badge>
+                  </div>
+                )}
+
                 {(trip.budgetBreakdown || trip.budgetEstimate) && (
                   <div className="mt-6">
                     <BudgetEstimateCard
@@ -266,29 +355,87 @@ function TripDetails() {
               </div>
             </div>
 
+            {/* Sidebar Details */}
             <div className="space-y-6">
-              <div className="rounded-2xl glass-panel p-6">
+              <div className="rounded-2xl glass-panel p-6 space-y-4">
                 <h3 className="font-semibold">Trip details</h3>
-                <ul className="mt-4 space-y-3 text-sm">
-                  {trip.destination && (
-                    <li className="flex items-center gap-2 text-muted-foreground">
-                      <MapPin className="h-4 w-4 shrink-0 text-primary" />
-                      {trip.destination}
+                <ul className="space-y-3.5 text-sm">
+                  {trip.origin && trip.destination && (
+                    <li className="flex items-start gap-2.5 text-muted-foreground">
+                      <Compass className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Route</p>
+                        <p className="font-medium text-foreground">{trip.origin} → {trip.destination}</p>
+                      </div>
                     </li>
                   )}
                   {trip.days?.length ? (
-                    <li className="flex items-center gap-2 text-muted-foreground">
-                      <Calendar className="h-4 w-4 shrink-0 text-primary" />
-                      {trip.days.length} day{trip.days.length !== 1 ? "s" : ""} planned
+                    <li className="flex items-start gap-2.5 text-muted-foreground">
+                      <Calendar className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Timeline</p>
+                        <p className="font-medium text-foreground">{trip.days.length} days planned ({trip.startDate} → {trip.endDate})</p>
+                      </div>
                     </li>
                   ) : null}
-                  {trip.members?.length ? (
-                    <li className="flex items-center gap-2 text-muted-foreground">
-                      <Users className="h-4 w-4 shrink-0 text-primary" />
-                      {trip.members.length} traveler{trip.members.length !== 1 ? "s" : ""}
+                  {(outboundLeg?.transportType || trip.travelMode) && (
+                    <li className="flex items-start gap-2.5 text-muted-foreground">
+                      <OutboundIcon className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Outbound Transit</p>
+                        <p className="font-medium text-foreground">
+                          {outboundLeg?.transportType || trip.travelMode}
+                          {outboundDuration ? ` · ${formatDurationMinutes(outboundDuration)}` : ""}
+                          <span className="ml-1.5 text-[10px] text-muted-foreground">({outboundStatus.label})</span>
+                        </p>
+                      </div>
+                    </li>
+                  )}
+                  {returnLeg && (returnLeg.transportType || returnLeg.booked) && (
+                    <li className="flex items-start gap-2.5 text-muted-foreground">
+                      <ReturnIcon className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Return Transit</p>
+                        <p className="font-medium text-foreground">
+                          {returnLeg.transportType || "Return Transit"}
+                          {returnDuration ? ` · ${formatDurationMinutes(returnDuration)}` : ""}
+                          <span className="ml-1.5 text-[10px] text-muted-foreground">({returnStatus.label})</span>
+                        </p>
+                      </div>
+                    </li>
+                  )}
+                  {trip.hotelName && (
+                    <li className="flex items-start gap-2.5 text-muted-foreground">
+                      <MapPin className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Hotel / Stay</p>
+                        <p className="font-medium text-foreground">{trip.hotelName} {trip.hotelLocation ? `(${trip.hotelLocation})` : ""}</p>
+                      </div>
+                    </li>
+                  )}
+                  {trip.travelers ? (
+                    <li className="flex items-start gap-2.5 text-muted-foreground">
+                      <Users className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Travelers</p>
+                        <p className="font-medium text-foreground">{trip.travelers} {trip.travelers === 1 ? "traveler" : "travelers"}</p>
+                      </div>
                     </li>
                   ) : null}
                 </ul>
+
+                {trip.interests && trip.interests.length > 0 && (
+                  <div className="border-t border-border/50 pt-3">
+                    <p className="text-xs text-muted-foreground mb-2">Selected Interests</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {trip.interests.map((i) => (
+                        <Badge key={i} variant="outline" className="text-xs bg-muted/30">
+                          {i}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -306,32 +453,59 @@ function TripDetails() {
                 <p className="mt-3 text-muted-foreground">No timeline available for this trip.</p>
               </div>
             ) : (
-              trip.days.map((d) => (
-                <div
-                  key={d.dayNumber}
-                  className="border-b border-border/60 py-6 first:pt-0 last:border-0 last:pb-0"
-                >
-                  <div className="flex items-baseline gap-3">
-                    <span className="font-display text-3xl text-primary">Day {d.dayNumber}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {d.date ? `${d.date} · ` : ""}
-                      {d.title}
-                    </span>
-                  </div>
-                  <ul className="mt-4 space-y-3">
-                    {(d.activities ?? []).map((item, idx) => (
-                      <li key={idx} className="flex gap-4 rounded-xl glass-tile p-4">
-                        <span className="w-20 shrink-0 text-sm font-semibold text-primary whitespace-nowrap">
-                          {normalizeTimeTo24h(item.time)}
+              trip.days.map((d, dayIndex) => {
+                const dayWindow: DayTimingWindow | undefined = 
+                  timing?.destination?.days?.find((w) => w.date === d.date) ??
+                  timing?.destination?.days?.[dayIndex];
+
+                const timingBadge = getDayTimingBadge(dayWindow);
+
+                return (
+                  <div
+                    key={d.dayNumber}
+                    className="border-b border-border/60 py-6 first:pt-0 last:border-0 last:pb-0"
+                  >
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-baseline gap-3 flex-wrap">
+                        <span className="font-display text-3xl text-primary">Day {d.dayNumber}</span>
+                        <span className="text-sm font-semibold text-foreground/90">
+                          {d.date ? `${d.date} · ` : ""}
+                          {d.title}
                         </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium">{item.description}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))
+                      </div>
+                      {timingBadge && (
+                        <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${timingBadge.color}`}>
+                          {timingBadge.label} {timingBadge.hrs ? `· ${timingBadge.hrs}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <ul className="mt-4 space-y-3">
+                      {(d.activities ?? []).map((item, idx) => (
+                        <li key={idx} className="flex gap-4 rounded-xl glass-tile p-4">
+                          <span className="w-20 shrink-0 text-sm font-semibold text-primary whitespace-nowrap">
+                            {normalizeTimeTo24h(item.time)}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm leading-relaxed">{item.description}</p>
+                            {item.interestTags && item.interestTags.length > 0 && (
+                              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                {item.interestTags.map((tag, tIdx) => (
+                                  <span
+                                    key={tIdx}
+                                    className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })
             )}
           </div>
         </TabsContent>
@@ -423,3 +597,5 @@ function TripDetails() {
     </AppShell>
   );
 }
+
+export default TripDetails;

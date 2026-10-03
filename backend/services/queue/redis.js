@@ -7,6 +7,7 @@ const REDIS_HOST = env.REDIS_HOST || "127.0.0.1";
 const REDIS_PORT = env.REDIS_PORT || 6379;
 const REDIS_PASSWORD = env.REDIS_PASSWORD;
 const isProd = env.NODE_ENV === "production";
+const isRedisDisabled = env.SKIP_REDIS || env.REDIS_ENABLED === false;
 
 let redisClient = null;
 let connectionStatus = "NOT_ATTEMPTED"; // 'HEALTHY', 'DEGRADED', 'NOT_CONFIGURED', 'UNAVAILABLE', 'CONNECTING'
@@ -14,6 +15,15 @@ let lastError = null;
 
 export function getRedisClient() {
   if (redisClient) return redisClient;
+
+  // If Redis is explicitly skipped or disabled (e.g. in development via SKIP_REDIS=true)
+  if (isRedisDisabled) {
+    if (connectionStatus !== "NOT_CONFIGURED") {
+      connectionStatus = "NOT_CONFIGURED";
+      logger.info("[Redis] Redis is disabled via SKIP_REDIS/REDIS_ENABLED. Operating with local in-memory fallbacks.");
+    }
+    return null;
+  }
 
   // In production, REDIS_URL is strictly required
   if (isProd && !REDIS_URL) {
@@ -32,10 +42,14 @@ export function getRedisClient() {
       connectTimeout: 5000,
       lazyConnect: false,
       retryStrategy(times) {
-        if (times > 5) {
+        if (times > (isProd ? 5 : 1)) {
           connectionStatus = isProd ? "UNAVAILABLE" : "DEGRADED";
-          logger.warn(`[Redis] Max reconnect attempts reached (${times}). Pausing retries.`);
-          return null; // Stop retrying after 5 attempts
+          if (isProd) {
+            logger.warn(`[Redis] Max reconnect attempts reached (${times}). Pausing retries.`);
+          } else {
+            logger.info(`[Redis] Local Redis not detected on ${REDIS_HOST}:${REDIS_PORT}. Operating in development with in-memory fallback.`);
+          }
+          return null; // Stop retrying
         }
         const delay = Math.min(times * 1000, 5000);
         logger.info(`[Redis] Reconnecting in ${delay}ms (attempt ${times})...`);
@@ -71,7 +85,11 @@ export function getRedisClient() {
       lastError = err.message;
       if (connectionStatus !== "UNAVAILABLE" && connectionStatus !== "DEGRADED") {
         connectionStatus = isProd ? "UNAVAILABLE" : "DEGRADED";
-        logger.warn(`[Redis] Connection warning: ${err.message}.`);
+        if (isProd) {
+          logger.warn(`[Redis] Connection warning: ${err.message}.`);
+        } else {
+          logger.info(`[Redis] Connection notice: ${err.message}. Using in-memory fallback.`);
+        }
       }
     });
 
@@ -104,6 +122,14 @@ export function isRedisAvailable() {
  * Health check reporter distinguishing HEALTHY, DEGRADED, NOT_CONFIGURED, and UNAVAILABLE.
  */
 export async function checkRedisHealth() {
+  if (isRedisDisabled) {
+    return {
+      status: "NOT_CONFIGURED",
+      message: "Redis is disabled via SKIP_REDIS/REDIS_ENABLED. In-memory fallbacks active.",
+      isLive: false,
+    };
+  }
+
   if (isProd && !REDIS_URL) {
     return {
       status: "NOT_CONFIGURED",
@@ -114,8 +140,8 @@ export async function checkRedisHealth() {
 
   if (!redisClient) {
     return {
-      status: connectionStatus === "NOT_CONFIGURED" ? "NOT_CONFIGURED" : "UNAVAILABLE",
-      message: lastError || "Redis client has not been initialized.",
+      status: connectionStatus === "NOT_CONFIGURED" ? "NOT_CONFIGURED" : (isProd ? "UNAVAILABLE" : "DEGRADED"),
+      message: lastError || "Redis client has not been initialized. In-memory fallbacks active in development.",
       isLive: false,
     };
   }

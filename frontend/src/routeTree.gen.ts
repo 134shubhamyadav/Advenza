@@ -26,6 +26,7 @@ import { Route as BudgetRouteImport } from './routes/budget'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TripsNewRouteImport } from './routes/trips.new'
 import { Route as TripsTripIdRouteImport } from './routes/trips.$tripId'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 
 const SimulatorRoute = SimulatorRouteImport.update({
   id: '/simulator',
@@ -112,6 +113,11 @@ const TripsTripIdRoute = TripsTripIdRouteImport.update({
   path: '/trips/$tripId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
   '/simulator': typeof SimulatorRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/trips/$tripId': typeof TripsTripIdRoute
   '/trips/new': typeof TripsNewRoute
 }
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
   '/simulator': typeof SimulatorRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/trips/$tripId': typeof TripsTripIdRoute
   '/trips/new': typeof TripsNewRoute
 }
@@ -168,6 +176,7 @@ export interface FileRoutesById {
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
   '/simulator': typeof SimulatorRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/trips/$tripId': typeof TripsTripIdRoute
   '/trips/new': typeof TripsNewRoute
 }
@@ -189,6 +198,7 @@ export interface FileRouteTypes {
     | '/risk'
     | '/signup'
     | '/simulator'
+    | '/invite/$token'
     | '/trips/$tripId'
     | '/trips/new'
   fileRoutesByTo: FileRoutesByTo
@@ -208,6 +218,7 @@ export interface FileRouteTypes {
     | '/risk'
     | '/signup'
     | '/simulator'
+    | '/invite/$token'
     | '/trips/$tripId'
     | '/trips/new'
   id:
@@ -227,6 +238,7 @@ export interface FileRouteTypes {
     | '/risk'
     | '/signup'
     | '/simulator'
+    | '/invite/$token'
     | '/trips/$tripId'
     | '/trips/new'
   fileRoutesById: FileRoutesById
@@ -247,6 +259,7 @@ export interface RootRouteChildren {
   RiskRoute: typeof RiskRoute
   SignupRoute: typeof SignupRoute
   SimulatorRoute: typeof SimulatorRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   TripsTripIdRoute: typeof TripsTripIdRoute
   TripsNewRoute: typeof TripsNewRoute
 }
@@ -372,6 +385,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TripsTripIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -391,6 +411,7 @@ const rootRouteChildren: RootRouteChildren = {
   RiskRoute: RiskRoute,
   SignupRoute: SignupRoute,
   SimulatorRoute: SimulatorRoute,
+  InviteTokenRoute: InviteTokenRoute,
   TripsTripIdRoute: TripsTripIdRoute,
   TripsNewRoute: TripsNewRoute,
 }

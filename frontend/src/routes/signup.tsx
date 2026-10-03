@@ -117,7 +117,12 @@ function Signup() {
         currency,
       });
 
-      nav({ to: "/dashboard" });
+      const pendingToken = typeof window !== "undefined" ? sessionStorage.getItem("pending_invite_token") : null;
+      if (pendingToken) {
+        window.location.href = `/invite/${pendingToken}`;
+      } else {
+        nav({ to: "/dashboard" });
+      }
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Failed to create account.");
