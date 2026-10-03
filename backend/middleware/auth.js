@@ -35,6 +35,7 @@ export const verifyToken = async (req, res, next) => {
   // If Firebase Admin isn't configured, allow requests through (dev mode)
   if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     req.uid = req.headers["x-user-id"] || "guest";
+    req.userEmail = req.headers["x-user-email"] ? req.headers["x-user-email"].toLowerCase().trim() : "";
     return next();
   }
 
@@ -44,6 +45,7 @@ export const verifyToken = async (req, res, next) => {
   if (!header || !header.startsWith("Bearer ")) {
     if (req.headers["x-user-id"]) {
       req.uid = req.headers["x-user-id"];
+      req.userEmail = req.headers["x-user-email"] ? req.headers["x-user-email"].toLowerCase().trim() : "";
       return next();
     }
     return res.status(401).json({ error: "Unauthorized: No token provided." });
@@ -53,12 +55,15 @@ export const verifyToken = async (req, res, next) => {
   try {
     const decoded = await admin.auth().verifyIdToken(token);
     req.uid = decoded.uid;
+    req.user = decoded;
+    req.userEmail = (decoded.email || req.headers["x-user-email"] || "").toLowerCase().trim();
     next();
   } catch (err) {
     // Log the exact Firebase error for easier debugging
     console.error("Token verification failed:", err.code, err.message);
     if (req.headers["x-user-id"]) {
       req.uid = req.headers["x-user-id"];
+      req.userEmail = req.headers["x-user-email"] ? req.headers["x-user-email"].toLowerCase().trim() : "";
       return next();
     }
     return res.status(403).json({ error: "Forbidden: Invalid or expired token." });

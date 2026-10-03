@@ -72,3 +72,88 @@ export function normalizeTimeTo24h(timeStr: string): string {
 
   return timeStr;
 }
+
+/**
+ * Calculates inclusive calendar days between two ISO date strings (YYYY-MM-DD).
+ * Examples:
+ *   "2026-10-10" to "2026-10-10" -> 1 day
+ *   "2026-10-10" to "2026-10-11" -> 2 days
+ *   "2026-10-10" to "2026-10-14" -> 5 days
+ */
+export function calculateInclusiveDays(startDateStr?: string, endDateStr?: string): number {
+  if (!startDateStr || !endDateStr) return 1;
+  const [sYear, sMonth, sDay] = startDateStr.split("-").map(Number);
+  const [eYear, eMonth, eDay] = endDateStr.split("-").map(Number);
+  if (!sYear || !sMonth || !sDay || !eYear || !eMonth || !eDay) return 1;
+  const startUtc = Date.UTC(sYear, sMonth - 1, sDay);
+  const endUtc = Date.UTC(eYear, eMonth - 1, eDay);
+  if (endUtc < startUtc) return 1;
+  const msPerDay = 86400000;
+  const diffDays = Math.round((endUtc - startUtc) / msPerDay) + 1;
+  return Math.max(diffDays, 1);
+}
+
+/**
+ * Formats duration in minutes to user-friendly "Xh Ym" or "Xh"
+ * Examples: 740 -> "12h 20m", 120 -> "2h", 45 -> "45m"
+ */
+export function formatDurationMinutes(minutes?: number | null): string {
+  if (minutes == null || isNaN(minutes) || minutes <= 0) return "";
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+/**
+ * Returns formatted status badge config for a duration source or status
+ */
+export function getDurationStatusBadge(status?: string, source?: string, booked?: boolean): { label: string; variant: "confirmed" | "estimated" | "unavailable" } {
+  if (booked || status === "CONFIRMED" || source === "USER_SPECIFIED") {
+    return { label: "✓ Confirmed", variant: "confirmed" };
+  }
+  if (status === "ESTIMATED" || source === "CALCULATED_MAPS" || source === "SCHEDULED" || source === "ESTIMATED_HAVERSINE") {
+    return { label: "≈ Estimated", variant: "estimated" };
+  }
+  return { label: "— Timing unavailable", variant: "unavailable" };
+}
+
+/**
+ * Strips accidental Markdown formatting (bold, italic, backticks, headings, list markers)
+ * from user-facing text while preserving legitimate punctuation (e.g. ₹, ≈, –, —, ( ), etc.).
+ */
+export function stripMarkdownFormatting(text?: string | null): string {
+  if (text == null) return "";
+  let s = String(text);
+
+  // 1. Remove triple bold+italic: ***text*** or ___text___
+  s = s.replace(/\*\*\*(.*?)\*\*\*/g, "$1");
+  s = s.replace(/___(.*?)___/g, "$1");
+
+  // 2. Remove double bold: **text** or __text__
+  s = s.replace(/\*\*(.*?)\*\*/g, "$1");
+  s = s.replace(/__(.*?)__/g, "$1");
+
+  // 3. Remove single italic: *text* (bounded) or _text_
+  s = s.replace(/(^|[^\w*])\*([^*\n]+)\*([^\w*]|$)/g, "$1$2$3");
+  s = s.replace(/(^|[^\w_])_([^_\n]+)_([^\w_]|$)/g, "$1$2$3");
+
+  // 4. Remove inline code / backticks: `code` or ```code```
+  s = s.replace(/```([\s\S]*?)```/g, "$1");
+  s = s.replace(/`([^`]+)`/g, "$1");
+
+  // 5. Remove leading Markdown headings (e.g. "### Title" -> "Title")
+  s = s.replace(/^#+\s*/gm, "");
+
+  // 6. Remove leading list bullets (e.g. "- Activity" -> "Activity", "* Activity" -> "Activity")
+  s = s.replace(/^[-*•]\s+/gm, "");
+
+  // 7. Normalize multiple spaces / tabs within lines
+  s = s.replace(/[ \t]+/g, " ");
+
+  return s.trim();
+}
+
+
+

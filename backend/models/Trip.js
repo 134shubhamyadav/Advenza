@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const ActivitySchema = new mongoose.Schema({
   time: String,
   description: String,
+  interestTags: { type: [String], default: [] },
 });
 
 const DayPlanSchema = new mongoose.Schema({
@@ -38,8 +39,73 @@ const VoteOptionSchema = new mongoose.Schema({
   voters: [String], // array of UIDs
 });
 
+// Structured Journey schema for multi-day, overnight, and same-day travel
+const JourneyLegSchema = new mongoose.Schema(
+  {
+    transportType: { type: String, default: "" }, // Flight, Train, Bus, Car, Ferry, etc.
+    departureLocation: { type: String, default: "" }, // e.g. "Mumbai", "CSMT", "BOM"
+    arrivalLocation: { type: String, default: "" }, // e.g. "Goa", "Madgaon", "GOI"
+    departureDate: { type: String, default: "" }, // YYYY-MM-DD
+    departureTime: { type: String, default: "" }, // HH:mm
+    arrivalDate: { type: String, default: "" }, // YYYY-MM-DD
+    arrivalTime: { type: String, default: "" }, // HH:mm
+    durationMinutes: { type: Number, default: null },
+    durationSource: { type: String, default: "" }, // "USER_SPECIFIED", "CALCULATED_MAPS", "ESTIMATED_HAVERSINE", "SCHEDULED"
+    transitRef: { type: String, default: "" }, // flight number, train name/number, bus operator
+    status: { type: String, default: "ESTIMATED" }, // "ESTIMATED", "CONFIRMED", "NOT_CONFIGURED"
+    booked: { type: Boolean, default: false },
+    ticketRef: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
+// Structured Day Timing Window schema for per-day exploration windows
+const DayTimingWindowSchema = new mongoose.Schema(
+  {
+    date: { type: String, default: "" }, // YYYY-MM-DD
+    status: { type: String, default: "FULL_DESTINATION_DAY" }, // "TRAVEL_OUTBOUND", "ARRIVAL_DAY", "FULL_DESTINATION_DAY", "RETURN_DAY", "TRAVEL_RETURN", "UNAVAILABLE"
+    usableStartDateTime: { type: String, default: "" }, // ISO string
+    usableEndDateTime: { type: String, default: "" },   // ISO string
+    availableHours: { type: Number, default: 0 },
+    reason: { type: String, default: "" },
+    constraints: {
+      arrivalDay: { type: Boolean, default: false },
+      returnDay: { type: Boolean, default: false },
+      requiresHotelCheckIn: { type: Boolean, default: false },
+      travelDay: { type: Boolean, default: false },
+    },
+  },
+  { _id: false }
+);
+
+// Structured Trip Timing Metadata for computed travel & destination exploration windows
+const TripTimingSchema = new mongoose.Schema(
+  {
+    outbound: {
+      durationMinutes: { type: Number, default: null },
+      isOvernight: { type: Boolean, default: false },
+      travelDaysCount: { type: Number, default: 0 },
+      arrivalDateTime: { type: String, default: "" }, // ISO string or "YYYY-MM-DDTHH:mm"
+    },
+    destination: {
+      usableStartDateTime: { type: String, default: "" },
+      usableEndDateTime: { type: String, default: "" },
+      totalUsableHours: { type: Number, default: null },
+      days: { type: [DayTimingWindowSchema], default: [] },
+    },
+    return: {
+      durationMinutes: { type: Number, default: null },
+      isOvernight: { type: Boolean, default: false },
+      travelDaysCount: { type: Number, default: 0 },
+      departureDateTime: { type: String, default: "" },
+    },
+  },
+  { _id: false }
+);
+
 const TripSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
+  origin: { type: String, trim: true, default: "" },
   destination: { type: String, trim: true },
   summary: String,
   budgetEstimate: String,
@@ -73,26 +139,22 @@ const TripSchema = new mongoose.Schema({
   transport: [String],          // user-selected transport modes
   accommodation: String,        // user-selected accommodation type
   hotelLocation: String,        // user's hotel location or area
-  // Specific travel detail fields
+  // Specific travel detail fields (preserved for backwards compatibility)
   travelMode: String,           // primary intercity mode: Flight/Train/Bus/Car/Ferry
   departureHub: String,         // airport / station / terminal at origin
   arrivalHub: String,           // airport / station / terminal at destination
   transitRef: String,           // flight number, train name, etc.
   departureTime: String,        // user-provided departure time (HH:MM)
   arrivalTime: String,          // user-provided arrival time (HH:MM)
+  // Structured Outbound & Return Journey details
+  outboundJourney: { type: JourneyLegSchema, default: () => ({}) },
+  returnJourney: { type: JourneyLegSchema, default: () => ({ booked: false }) },
+  // Timing metadata for destination window calculations
+  tripTiming: { type: TripTimingSchema, default: () => ({}) },
   // Accommodation detail fields
   hotelName: String,            // hotel / stay name
   checkInTime: String,          // expected check-in time (HH:MM)
   checkOutTime: String,         // expected check-out time (HH:MM)
-  // Return journey details
-  returnJourney: {
-    booked: { type: Boolean, default: false },
-    date: String,               // YYYY-MM-DD
-    time: String,               // HH:MM departure time for return
-    departureLocation: String,  // airport / station at destination
-    transportType: String,      // Flight / Train / Bus / Car / Ferry / Other
-    ticketRef: String,          // optional ticket / flight number
-  },
   travelers: { type: Number, default: 1 },
   days: [DayPlanSchema],
 

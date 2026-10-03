@@ -26,6 +26,10 @@ import {
   ShieldCheck,
   Clock,
   HeartHandshake,
+  Send,
+  CheckCircle2,
+  Mail,
+  Share2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/consensus")({ component: Consensus });
@@ -43,6 +47,7 @@ const AVATAR_COLORS = [
 
 type Member = {
   _id?: string;
+  userId?: string;
   name?: string;
   email?: string;
   initials?: string;
@@ -56,15 +61,44 @@ type VoteOption = {
   voters: string[];
 };
 
+type Activity = {
+  time?: string;
+  title?: string;
+  description?: string;
+  location?: string;
+};
+
+type DayPlan = {
+  dayNumber: number;
+  date?: string;
+  title?: string;
+  theme?: string;
+  activities?: Activity[];
+};
+
 type Trip = {
   _id: string;
   title: string;
   destination?: string;
+  origin?: string;
+  startDate?: string;
+  endDate?: string;
   members?: Member[];
   voteOptions?: VoteOption[];
   interests?: string[];
   style?: string;
+  travelMode?: string;
+  travelers?: number;
+  summary?: string;
+  days?: DayPlan[];
+  createdBy?: string;
+  isOrganizer?: boolean;
+  userRole?: string;
 };
+
+// ────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────────────────────
 
 const RadarChart = memo(function RadarChart({ values, size = 220 }: { values: number[]; size?: number }) {
   const cx = size / 2,
@@ -132,10 +166,34 @@ function getInitials(name?: string, fallback = "U") {
     .slice(0, 2);
 }
 
+type DisplayMember = {
+  key: string;
+  name: string;
+  email?: string;
+  role: string;
+  initials: string;
+  color: string;
+  isOrganizer: boolean;
+  isMe: boolean;
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// Main Consensus Component
+// ────────────────────────────────────────────────────────────────────────────
+
 function Consensus() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const lastJoined = sessionStorage.getItem("last_joined_trip_id");
+      if (lastJoined) {
+        sessionStorage.removeItem("last_joined_trip_id");
+        return lastJoined;
+      }
+    }
+    return null;
+  });
 
   // Voting state
   const [voting, setVoting] = useState(false);
@@ -144,7 +202,9 @@ function Consensus() {
   // Invite state
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
-  const [inviteSent, setInviteSent] = useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [lastInviteLink, setLastInviteLink] = useState<string | null>(null);
 
   // New proposal/option state
   const [newOptionName, setNewOptionName] = useState("");
@@ -163,12 +223,101 @@ function Consensus() {
   const activeTrip = (selectedTripId ? trips.find((t) => t._id === selectedTripId) : trips[0]) ?? null;
   const activeTripId = activeTrip?._id ?? null;
 
-  const members: Member[] = activeTrip?.members ?? [];
-  const voteOptions: VoteOption[] = activeTrip?.voteOptions ?? [];
+  // Authoritative Organizer Detection from backend trip data
+  const isOrganizer = Boolean(
+    activeTrip?.isOrganizer ??
+      (activeTrip?.createdBy && user?.uid && String(activeTrip.createdBy) === String(user.uid))
+  );
 
-  const confirmedMembers = members.filter((m) => m.role !== "Pending");
-  const pendingMembers = members.filter((m) => m.role === "Pending");
-  const totalTravelers = Math.max(1, members.length + (members.length > 0 ? 0 : 1));
+  const rawMembers: Member[] = activeTrip?.members ?? [];
+  const confirmedMembers = rawMembers.filter((m) => m.role !== "Pending");
+  const pendingMembers = rawMembers.filter((m) => m.role === "Pending");
+
+  // Build unified confirmed member list identifying Organizer & (You)
+  const displayConfirmedMembers: DisplayMember[] = [];
+  const organizerInMembers = confirmedMembers.find(
+    (m) =>
+      (activeTrip?.createdBy && m.userId && String(m.userId) === String(activeTrip.createdBy)) ||
+      m.role === "Organizer"
+  );
+
+  if (organizerInMembers) {
+    const isMe = Boolean(user?.uid && organizerInMembers.userId && String(organizerInMembers.userId) === String(user.uid));
+    displayConfirmedMembers.push({
+      key: organizerInMembers._id || organizerInMembers.userId || "organizer",
+      name: isMe
+        ? (user?.displayName || user?.email || organizerInMembers.name || "Organizer")
+        : (organizerInMembers.name || organizerInMembers.email || "Trip Organizer"),
+      email: organizerInMembers.email,
+      role: "Organizer",
+      initials: organizerInMembers.initials || getInitials(organizerInMembers.name || organizerInMembers.email || "OR"),
+      color: AVATAR_COLORS[0],
+      isOrganizer: true,
+      isMe,
+    });
+
+    confirmedMembers.forEach((m, idx) => {
+      if (m === organizerInMembers) return;
+      const isMe = Boolean(
+        (user?.uid && m.userId && String(m.userId) === String(user.uid)) ||
+        (user?.email && m.email && m.email.toLowerCase() === (user.email || "").toLowerCase())
+      );
+      displayConfirmedMembers.push({
+        key: m._id || m.userId || m.email || String(idx),
+        name: isMe ? (user?.displayName || m.name || user?.email || "Traveler") : (m.name || m.email || "Traveler"),
+        email: m.email,
+        role: "Member",
+        initials: m.initials || getInitials(m.name || m.email || "TR"),
+        color: AVATAR_COLORS[displayConfirmedMembers.length % AVATAR_COLORS.length],
+        isOrganizer: false,
+        isMe,
+      });
+    });
+  } else {
+    // Organizer not in members subdocument: create top organizer card
+    if (isOrganizer) {
+      displayConfirmedMembers.push({
+        key: "me-organizer",
+        name: user?.displayName || user?.email || "Organizer",
+        email: user?.email || undefined,
+        role: "Organizer",
+        initials: getInitials(user?.displayName || user?.email || "OR"),
+        color: AVATAR_COLORS[0],
+        isOrganizer: true,
+        isMe: true,
+      });
+    } else {
+      displayConfirmedMembers.push({
+        key: "trip-organizer",
+        name: "Trip Organizer",
+        role: "Organizer",
+        initials: "OR",
+        color: AVATAR_COLORS[0],
+        isOrganizer: true,
+        isMe: false,
+      });
+    }
+
+    confirmedMembers.forEach((m, idx) => {
+      const isMe = Boolean(
+        (user?.uid && m.userId && String(m.userId) === String(user.uid)) ||
+        (user?.email && m.email && m.email.toLowerCase() === (user.email || "").toLowerCase())
+      );
+      displayConfirmedMembers.push({
+        key: m._id || m.userId || m.email || String(idx),
+        name: isMe ? (user?.displayName || m.name || user?.email || "Traveler") : (m.name || m.email || "Traveler"),
+        email: m.email,
+        role: "Member",
+        initials: m.initials || getInitials(m.name || m.email || "TR"),
+        color: AVATAR_COLORS[displayConfirmedMembers.length % AVATAR_COLORS.length],
+        isOrganizer: false,
+        isMe,
+      });
+    });
+  }
+
+  const voteOptions: VoteOption[] = activeTrip?.voteOptions ?? [];
+  const totalTravelers = Math.max(1, displayConfirmedMembers.length);
 
   const totalVotes = voteOptions.reduce((a, o) => a + (o.votes || 0), 0);
   const myVote = voteOptions.find((o) => o.voters?.map(String).includes(String(user?.uid)))?.name || null;
@@ -202,27 +351,35 @@ function Consensus() {
     }
   };
 
-  // Handle inviting a companion
-  const handleInvite = async () => {
-    if (!inviteEmail.trim() || !activeTripId) return;
+  // Handle inviting a companion via Brevo email
+  const handleInvite = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!inviteEmail.trim() || !activeTripId || inviting) return;
     setInviting(true);
-    setError(null);
+    setInviteError(null);
+    setInviteSuccess(null);
     try {
-      const updatedTrip = await apiFetch(`/api/trips/${activeTripId}/members`, {
+      const result = await apiFetch(`/api/trips/${activeTripId}/members`, {
         method: "POST",
-        body: JSON.stringify({ email: inviteEmail.trim() }),
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          inviterName: user?.displayName || user?.email?.split("@")[0] || "Travel Companion",
+        }),
       });
 
       queryClient.setQueryData(queryKeys.trips(), (old: Trip[] = []) =>
-        old.map((t) => (t._id === updatedTrip._id ? updatedTrip : t)),
+        old.map((t) => (t._id === (result.trip?._id || activeTripId) ? (result.trip || t) : t)),
       );
-      queryClient.setQueryData(queryKeys.tripDetails(activeTripId), updatedTrip);
+      queryClient.invalidateQueries({ queryKey: queryKeys.trips() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tripDetails(activeTripId) });
+
       setInviteEmail("");
-      setInviteSent(true);
-      setTimeout(() => setInviteSent(false), 3000);
+      setInviteSuccess(result.message || `Invitation sent to ${inviteEmail.trim()} via Brevo!`);
+      if (result.inviteLink) setLastInviteLink(result.inviteLink);
+      setTimeout(() => setInviteSuccess(null), 5000);
     } catch (err: any) {
       console.error("Invite failed:", err);
-      setError(err.message || "Failed to invite member. Please try again.");
+      setInviteError(err.message || "Failed to invite member. Please try again.");
     } finally {
       setInviting(false);
     }
@@ -274,6 +431,8 @@ function Consensus() {
               onClick={() => {
                 setSelectedTripId(t._id);
                 setError(null);
+                setInviteError(null);
+                setInviteSuccess(null);
               }}
               className={cn(
                 "rounded-xl border px-3 py-1.5 text-sm transition font-medium",
@@ -336,11 +495,13 @@ function Consensus() {
                 </p>
               </div>
               <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                <span>{confirmedMembers.length + 1} confirmed</span>
-                {pendingMembers.length > 0 && (
+                <span>{displayConfirmedMembers.length} confirmed</span>
+                {isOrganizer && pendingMembers.length > 0 && (
                   <>
                     <span>·</span>
-                    <span className="text-amber-500 font-medium">{pendingMembers.length} pending</span>
+                    <span className="text-amber-500 font-medium">
+                      {pendingMembers.length} pending invite{pendingMembers.length !== 1 ? "s" : ""}
+                    </span>
                   </>
                 )}
               </div>
@@ -400,7 +561,7 @@ function Consensus() {
             </div>
           </div>
 
-          {/* Main Content Grid: Voting & Options on Left, Companions & Analysis on Right */}
+          {/* Main Content Grid: Voting & Options on Left, Companions & Invite on Right */}
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Left Column: Decision Voting & Option Proposals (2 cols on desktop) */}
             <div className="space-y-6 lg:col-span-2">
@@ -606,9 +767,9 @@ function Consensus() {
               </div>
             </div>
 
-            {/* Right Column: Travel Companions & Consensus Analysis (1 col) */}
+            {/* Right Column: Travel Companions & Invite People (1 col) */}
             <div className="space-y-6">
-              {/* Members & Invite Section */}
+              {/* Members Section */}
               <div className="rounded-3xl glass-panel p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
@@ -616,85 +777,193 @@ function Consensus() {
                     <h3 className="font-bold text-base">Travel Companions</h3>
                   </div>
                   <span className="text-xs text-muted-foreground font-medium">
-                    {confirmedMembers.length + 1} Confirmed
+                    {displayConfirmedMembers.length} Confirmed
                   </span>
                 </div>
 
-                {/* Member List */}
+                {/* Confirmed Member List */}
                 <div className="space-y-2.5">
-                  {/* Trip Organizer (Current User) */}
-                  <div className="flex items-center gap-3 rounded-2xl glass-tile p-3 border border-primary/20">
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback className={AVATAR_COLORS[0]}>
-                        {getInitials(user?.displayName || user?.email || "Organizer")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-sm">
-                        {user?.displayName || user?.email || "Organizer"}
-                      </p>
-                      <div className="flex items-center gap-1.5 text-[11px] text-primary font-medium">
-                        <ShieldCheck className="h-3 w-3" /> Organizer
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Other Members */}
-                  {members.map((m, idx) => {
-                    const isPending = m.role === "Pending";
-                    return (
-                      <div
-                        key={m._id || m.email || idx}
-                        className="flex items-center gap-3 rounded-2xl glass-tile p-3"
-                      >
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback className={AVATAR_COLORS[(idx + 1) % AVATAR_COLORS.length]}>
-                            {m.initials || getInitials(m.name || m.email)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium text-sm">{m.name || m.email}</p>
-                          <div className="flex items-center gap-1.5 text-[11px]">
-                            {isPending ? (
-                              <span className="flex items-center gap-1 text-amber-500 font-medium">
-                                <Clock className="h-3 w-3" /> Pending Invite
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">{m.role || "Member"}</span>
-                            )}
-                          </div>
+                  {displayConfirmedMembers.map((m) => (
+                    <div
+                      key={m.key}
+                      className={cn(
+                        "flex items-center gap-3 rounded-2xl glass-tile p-3 transition-all",
+                        m.isOrganizer && "border border-primary/20",
+                        m.isMe && !m.isOrganizer && "border border-accent/20",
+                      )}
+                    >
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback className={m.color}>
+                          {m.initials}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="truncate font-semibold text-sm">
+                            {m.name}
+                          </p>
+                          {m.isMe && (
+                            <span className="text-[10px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded-md shrink-0">
+                              You
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium">
+                          {m.isOrganizer ? (
+                            <span className="flex items-center gap-1 text-primary">
+                              <ShieldCheck className="h-3 w-3" /> Organizer
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">{m.role}</span>
+                          )}
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
 
-                {/* Invite Companion Form */}
-                <div className="mt-5 pt-4 border-t border-border/60">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">Invite a Companion</p>
-                  <div className="flex flex-col gap-2">
-                    <Input
-                      placeholder="companion@email.com"
-                      className="h-10 rounded-xl text-sm"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleInvite()}
-                      disabled={inviting}
-                    />
-                    <Button
-                      className="h-10 rounded-xl text-xs font-semibold"
-                      onClick={handleInvite}
-                      disabled={inviting || !inviteEmail.trim()}
-                    >
-                      {inviting ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                      ) : (
-                        <UserPlus className="mr-1.5 h-4 w-4" />
-                      )}
-                      {inviteSent ? "Invite Sent! ✓" : "Send Invite"}
-                    </Button>
+                {/* Organizer-Only: Pending Invites Section */}
+                {isOrganizer && pendingMembers.length > 0 && (
+                  <div className="mt-5 pt-4 border-t border-border/60">
+                    <div className="flex items-center justify-between mb-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-amber-500" />
+                        <p className="text-xs font-semibold text-foreground">Pending Invites</p>
+                      </div>
+                      <span className="text-[10px] font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                        {pendingMembers.length} pending
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {pendingMembers.map((p, idx) => (
+                        <div
+                          key={p._id || p.email || idx}
+                          className="flex items-center justify-between gap-2 rounded-xl bg-amber-500/5 border border-amber-500/20 p-2.5 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium text-foreground text-xs">
+                              {p.email || p.name}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              Invited · Waiting for acceptance
+                            </p>
+                          </div>
+                          <span className="text-[10px] text-amber-500 font-semibold px-2 py-0.5 rounded-md bg-amber-500/10 shrink-0">
+                            Pending
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
+                )}
+
+                {/* Organizer-Only: Invite People Section */}
+                {isOrganizer && (
+                  <div className="mt-5 pt-4 border-t border-border/60">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <Mail className="h-3.5 w-3.5 text-primary" />
+                      <p className="text-xs font-semibold text-foreground">Invite People</p>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">
+                      Send an email invitation. They will receive a link to join this trip and vote in Consensus.
+                    </p>
+
+                    {/* Status Messages */}
+                    {inviteSuccess && (
+                      <div className="mb-3 flex items-start gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-600">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>{inviteSuccess}</span>
+                      </div>
+                    )}
+                    {inviteError && (
+                      <div className="mb-3 flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 p-2.5 text-xs text-destructive">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>{inviteError}</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleInvite} className="flex flex-col gap-2">
+                      <Input
+                        type="email"
+                        placeholder="companion@email.com"
+                        className="h-10 rounded-xl text-sm"
+                        value={inviteEmail}
+                        onChange={(e) => {
+                          setInviteEmail(e.target.value);
+                          if (inviteError) setInviteError(null);
+                        }}
+                        disabled={inviting}
+                        required
+                      />
+                      <Button
+                        type="submit"
+                        className="h-10 rounded-xl text-xs font-semibold bg-gradient-to-r from-primary to-accent shadow-xs"
+                        disabled={inviting || !inviteEmail.trim()}
+                      >
+                        {inviting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                            Sending Invite via Brevo…
+                          </>
+                        ) : (
+                          <>
+                            <Send className="mr-1.5 h-3.5 w-3.5" />
+                            Send Invite
+                          </>
+                        )}
+                      </Button>
+                    </form>
+
+                    {/* WhatsApp Share Button — shares the last generated invite link */}
+                    {lastInviteLink && (
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const msg = encodeURIComponent(
+                              `You've been invited to join "${activeTrip?.title || "a trip"}" on Advenza! Join here: ${lastInviteLink}`
+                            );
+                            window.open(`https://wa.me/?text=${msg}`, "_blank", "noopener,noreferrer");
+                          }}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#25D366]/40 bg-[#25D366]/10 px-4 py-2.5 text-xs font-semibold text-[#25D366] transition hover:bg-[#25D366]/20 active:scale-[0.98]"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                          </svg>
+                          Share via WhatsApp
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Share Trip via WhatsApp — visible to ALL members */}
+              <div className="rounded-3xl glass-panel p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Share2 className="h-4 w-4 text-primary" />
+                  <h3 className="font-bold text-sm">Share Trip</h3>
                 </div>
+                <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">
+                  Invite friends to join this trip directly via WhatsApp.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tripUrl = `${window.location.origin}/consensus`;
+                    const msg = encodeURIComponent(
+                      `Hey! Join me on "${activeTrip?.title || "our trip"}"${activeTrip?.destination ? ` to ${activeTrip.destination}` : ""} on Advenza — a smart AI travel companion. Check it out: ${tripUrl}`
+                    );
+                    window.open(`https://wa.me/?text=${msg}`, "_blank", "noopener,noreferrer");
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#25D366]/40 bg-[#25D366]/10 px-4 py-2.5 text-xs font-semibold text-[#25D366] transition hover:bg-[#25D366]/20 active:scale-[0.98]"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  Share on WhatsApp
+                </button>
               </div>
 
               {/* Explainable AI & Consensus Analysis */}
@@ -749,7 +1018,6 @@ function Consensus() {
               </div>
             </div>
           </div>
-
         </div>
       )}
     </AppShell>

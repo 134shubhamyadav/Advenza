@@ -2,53 +2,82 @@ import { z } from "zod";
 
 // ── INPUT SCHEMAS ─────────────────────────────────────────────────────────────
 
-export const generateTripInputSchema = z.object({
-  destination: z.string().trim().min(1, "Destination is required").max(150, "Destination too long"),
-  startDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be in YYYY-MM-DD format"),
-  endDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "End date must be in YYYY-MM-DD format"),
-  budget: z.coerce.number().min(0, "Budget cannot be negative").optional(),
-  origin: z.string().trim().max(150).optional(),
-  style: z.string().trim().max(100).optional(),
-  interests: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
-  accommodation: z.string().trim().max(150).optional(),
-  hotelLocation: z.string().trim().max(150).optional(),
-  transport: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
-  travelers: z.coerce.number().min(1).max(50).optional(),
-  special: z.string().trim().max(500).optional(),
-  travelMode: z.string().trim().max(100).optional(),
-  departureHub: z.string().trim().max(150).optional(),
-  arrivalHub: z.string().trim().max(150).optional(),
-  transitRef: z.string().trim().max(100).optional(),
-  departureTime: z.string().trim().max(50).optional(),
-  arrivalTime: z.string().trim().max(50).optional(),
-  returnJourney: z.any().optional(),
-  hotelName: z.string().trim().max(150).optional(),
-  checkInTime: z.string().trim().max(50).optional(),
-  checkOutTime: z.string().trim().max(50).optional(),
-});
+export const JourneyLegInputSchema = z
+  .object({
+    transportType: z.string().trim().max(100).optional(),
+    departureLocation: z.string().trim().max(150).optional(),
+    arrivalLocation: z.string().trim().max(150).optional(),
+    departureDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+    departureTime: z.string().trim().max(50).optional(),
+    arrivalDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+    arrivalTime: z.string().trim().max(50).optional(),
+    durationMinutes: z.coerce.number().nullable().optional(),
+    durationSource: z.string().trim().max(100).optional(),
+    transitRef: z.string().trim().max(100).optional(),
+    status: z.string().trim().max(50).optional(),
+    booked: z.boolean().optional(),
+    ticketRef: z.string().trim().max(100).optional(),
+    // Legacy support fields:
+    date: z.string().trim().optional(),
+    time: z.string().trim().optional(),
+  })
+  .passthrough();
 
-export const regenerateTripInputSchema = z.object({
-  destination: z.string().trim().max(150).optional(),
-  origin: z.string().trim().max(150).optional(),
-  startDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  endDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  budget: z.coerce.number().min(0).optional(),
-  style: z.string().trim().max(100).optional(),
-  interests: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
-  travelers: z.coerce.number().min(1).max(50).optional(),
-  travelMode: z.string().trim().max(100).optional(),
-  departureHub: z.string().trim().max(150).optional(),
-  arrivalHub: z.string().trim().max(150).optional(),
-  transitRef: z.string().trim().max(100).optional(),
-  departureTime: z.string().trim().max(50).optional(),
-  arrivalTime: z.string().trim().max(50).optional(),
-  returnJourney: z.any().optional(),
-  hotelName: z.string().trim().max(150).optional(),
-  hotelLocation: z.string().trim().max(150).optional(),
-  checkInTime: z.string().trim().max(50).optional(),
-  checkOutTime: z.string().trim().max(50).optional(),
-  special: z.string().trim().max(500).optional(),
-});
+export const generateTripInputSchema = z
+  .object({
+    destination: z.string().trim().min(1, "Destination is required").max(150, "Destination too long"),
+    startDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be in YYYY-MM-DD format"),
+    endDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "End date must be in YYYY-MM-DD format"),
+    budget: z.coerce.number().min(0, "Budget cannot be negative").optional(),
+    origin: z.string().trim().max(150).optional(),
+    style: z.string().trim().max(100).optional(),
+    interests: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
+    accommodation: z.string().trim().max(150).optional(),
+    hotelLocation: z.string().trim().max(150).optional(),
+    transport: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
+    travelers: z.coerce.number().min(1).max(50).optional(),
+    special: z.string().trim().max(500).optional(),
+    travelMode: z.string().trim().max(100).optional(),
+    departureHub: z.string().trim().max(150).optional(),
+    arrivalHub: z.string().trim().max(150).optional(),
+    transitRef: z.string().trim().max(100).optional(),
+    departureTime: z.string().trim().max(50).optional(),
+    arrivalTime: z.string().trim().max(50).optional(),
+    outboundJourney: JourneyLegInputSchema.optional(),
+    returnJourney: JourneyLegInputSchema.optional(),
+    tripTiming: z.any().optional(),
+    hotelName: z.string().trim().max(150).optional(),
+    checkInTime: z.string().trim().max(50).optional(),
+    checkOutTime: z.string().trim().max(50).optional(),
+  })
+  .passthrough();
+
+export const regenerateTripInputSchema = z
+  .object({
+    destination: z.string().trim().max(150).optional(),
+    origin: z.string().trim().max(150).optional(),
+    startDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    endDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    budget: z.coerce.number().min(0).optional(),
+    style: z.string().trim().max(100).optional(),
+    interests: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
+    travelers: z.coerce.number().min(1).max(50).optional(),
+    travelMode: z.string().trim().max(100).optional(),
+    departureHub: z.string().trim().max(150).optional(),
+    arrivalHub: z.string().trim().max(150).optional(),
+    transitRef: z.string().trim().max(100).optional(),
+    departureTime: z.string().trim().max(50).optional(),
+    arrivalTime: z.string().trim().max(50).optional(),
+    outboundJourney: JourneyLegInputSchema.optional(),
+    returnJourney: JourneyLegInputSchema.optional(),
+    tripTiming: z.any().optional(),
+    hotelName: z.string().trim().max(150).optional(),
+    hotelLocation: z.string().trim().max(150).optional(),
+    checkInTime: z.string().trim().max(50).optional(),
+    checkOutTime: z.string().trim().max(50).optional(),
+    special: z.string().trim().max(500).optional(),
+  })
+  .passthrough();
 
 export const planBInputSchema = z.object({
   tripId: z.string().trim().min(1, "tripId is required"),
@@ -101,6 +130,7 @@ export const estimateBudgetInputSchema = z.object({
 export const ActivityOutputSchema = z.object({
   time: z.string().default("09:00"),
   description: z.string().default("Sightseeing"),
+  interestTags: z.array(z.string().trim()).optional().default([]),
 });
 
 export const DayOutputSchema = z.object({

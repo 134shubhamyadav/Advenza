@@ -15,14 +15,31 @@ export const MEMORY_CATEGORIES = [
   "OTHER",
 ];
 
+export const mediaItemSchema = z.object({
+  url: z.string().trim().min(1, "Media url is required").refine(
+    (url) => !url.startsWith("data:"),
+    { message: "Media url must be an external/Cloudinary URL, not base64 data" }
+  ),
+  publicId: z.string().trim().optional().default(""),
+  resourceType: z.enum(["image", "video"]).default("image"),
+  format: z.string().trim().optional().default(""),
+  width: z.coerce.number().optional().default(0),
+  height: z.coerce.number().optional().default(0),
+  duration: z.coerce.number().optional().default(0),
+  originalName: z.string().trim().optional().default(""),
+});
+
 export const createMemorySchema = z.object({
   tripId: z.string().trim().optional(),
-  mediaUrl: z.string().trim().min(1, "mediaUrl is required").refine(
-    (url) => !url.startsWith("data:"),
+  // Multi-media array (max 10 files)
+  media: z.array(mediaItemSchema).max(10, "A memory can contain at most 10 media files").optional(),
+  // Legacy single-media fields (supported for backward compatibility)
+  mediaUrl: z.string().trim().refine(
+    (url) => !url || !url.startsWith("data:"),
     { message: "mediaUrl must be a stored object URL, not base64 data" }
-  ),
+  ).optional(),
   thumbnailUrl: z.string().trim().optional(),
-  storageKey: z.string().trim().min(1, "storageKey is required"),
+  storageKey: z.string().trim().optional(),
   thumbnailKey: z.string().trim().optional(),
   mediaType: z.enum(["image", "video"]).default("image"),
   category: z.enum(MEMORY_CATEGORIES).default("OTHER"),
@@ -44,7 +61,14 @@ export const createMemorySchema = z.object({
   capturedAt: z.string().optional(),
   aiMetadata: z.record(z.any()).optional(),
   status: z.enum(["uploaded", "processing", "ready", "failed", "deleted"]).default("ready"),
-});
+}).refine(
+  (data) => {
+    if (data.media && data.media.length > 0) return true;
+    if (data.mediaUrl && data.storageKey) return true;
+    return false;
+  },
+  { message: "Either a media array or both mediaUrl and storageKey are required to create a memory." }
+);
 
 export const updateMemorySchema = z.object({
   place: z.string().trim().optional(),
@@ -57,6 +81,7 @@ export const updateMemorySchema = z.object({
   category: z.enum(MEMORY_CATEGORIES).optional(),
   moments: z.array(z.string().trim()).optional(),
   tags: z.array(z.string().trim()).optional(),
+  media: z.array(mediaItemSchema).max(10, "A memory can contain at most 10 media files").optional(),
   location: z.object({
     name: z.string().optional(),
     latitude: z.number().optional(),
@@ -96,6 +121,7 @@ export const migrateMemoriesSchema = z.object({
       spend: z.coerce.number().optional(),
       photo: z.string().optional(),
       mediaUrl: z.string().optional(),
+      media: z.array(mediaItemSchema).optional(),
       highlight: z.string().optional(),
       moments: z.array(z.string()).optional(),
       category: z.string().optional(),

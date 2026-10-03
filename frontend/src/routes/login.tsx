@@ -18,6 +18,14 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const getPostLoginDestination = () => {
+    const pendingToken = typeof window !== "undefined" ? sessionStorage.getItem("pending_invite_token") : null;
+    if (pendingToken) {
+      return `/invite/${pendingToken}`;
+    }
+    return "/dashboard";
+  };
+
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
@@ -35,7 +43,12 @@ function Login() {
       if (details?.isNewUser) {
         nav({ to: "/signup" });
       } else {
-        nav({ to: "/dashboard" });
+        const dest = getPostLoginDestination();
+        if (dest.startsWith("/invite/")) {
+          window.location.href = dest;
+        } else {
+          nav({ to: "/dashboard" });
+        }
       }
     } catch (err: any) {
       console.error(err);
@@ -61,7 +74,12 @@ function Login() {
         displayName: result.user.displayName,
         photoURL: result.user.photoURL,
       });
-      nav({ to: "/dashboard" });
+      const dest = getPostLoginDestination();
+      if (dest.startsWith("/invite/")) {
+        window.location.href = dest;
+      } else {
+        nav({ to: "/dashboard" });
+      }
     } catch (err: any) {
       console.error(err);
       setError("Invalid email or password.");
@@ -85,7 +103,12 @@ function Login() {
         displayName: "Demo User",
         photoURL: null,
       });
-      nav({ to: "/dashboard" });
+      const dest = getPostLoginDestination();
+      if (dest.startsWith("/invite/")) {
+        window.location.href = dest;
+      } else {
+        nav({ to: "/dashboard" });
+      }
     } catch (err: any) {
       console.error(err);
       setError("Demo account is not set up on this Firebase instance yet.");

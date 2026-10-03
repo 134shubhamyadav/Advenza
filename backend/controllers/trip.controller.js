@@ -20,18 +20,33 @@ const ensureVoteOptions = (trip) => {
   }
 };
 
-const userHasTripAccess = (trip, uid) => {
+const userHasTripAccess = (trip, uid, userEmail = "") => {
   if (!trip || !uid) return false;
   if (String(trip.createdBy) === String(uid)) return true;
-  if (Array.isArray(trip.members) && trip.members.some((m) => m.userId === uid || m.email === uid)) {
+  const normEmail = userEmail ? userEmail.trim().toLowerCase() : "";
+  if (
+    Array.isArray(trip.members) &&
+    trip.members.some(
+      (m) =>
+        (m.userId && String(m.userId) === String(uid)) ||
+        (m.email && m.email.trim().toLowerCase() === String(uid).toLowerCase()) ||
+        (normEmail && m.email && m.email.trim().toLowerCase() === normEmail)
+    )
+  ) {
     return true;
   }
   return false;
 };
 
 export const listTrips = asyncHandler(async (req, res) => {
+  const normEmail = req.userEmail ? req.userEmail.trim().toLowerCase() : null;
+  const orConditions = [{ createdBy: req.uid }, { "members.userId": req.uid }];
+  if (normEmail) {
+    orConditions.push({ "members.email": normEmail });
+  }
+
   const trips = await Trip.find({
-    $or: [{ createdBy: req.uid }, { "members.userId": req.uid }, { "members.email": req.uid }],
+    $or: orConditions,
   })
     .sort({ createdAt: -1 })
     .lean();
@@ -50,11 +65,18 @@ export const listTrips = asyncHandler(async (req, res) => {
       }
 
       if (!trip.voteOptions || trip.voteOptions.length === 0) {
-        return {
-          ...trip,
-          voteOptions: DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] })),
-        };
+        trip.voteOptions = DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] }));
       }
+
+      const isOrganizer = String(trip.createdBy) === String(req.uid);
+      trip.isOrganizer = isOrganizer;
+      trip.userRole = isOrganizer ? "organizer" : "member";
+
+      // If user is not the organizer, sanitize members so pending invites are not leaked
+      if (!isOrganizer && Array.isArray(trip.members)) {
+        trip.members = trip.members.filter((m) => m.role !== "Pending");
+      }
+
       return trip;
     })
   );
@@ -66,7 +88,7 @@ export const getTripById = asyncHandler(async (req, res) => {
   const trip = await Trip.findById(req.params.id).lean();
   if (!trip) throw new NotFoundError("Trip not found");
 
-  if (!userHasTripAccess(trip, req.uid)) {
+  if (!userHasTripAccess(trip, req.uid, req.userEmail)) {
     throw new ForbiddenError("Forbidden: You do not have access to this trip");
   }
 
@@ -83,6 +105,15 @@ export const getTripById = asyncHandler(async (req, res) => {
 
   if (!trip.voteOptions || trip.voteOptions.length === 0) {
     trip.voteOptions = DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] }));
+  }
+
+  const isOrganizer = String(trip.createdBy) === String(req.uid);
+  trip.isOrganizer = isOrganizer;
+  trip.userRole = isOrganizer ? "organizer" : "member";
+
+  // If user is not the organizer, sanitize members so pending invites are not leaked
+  if (!isOrganizer && Array.isArray(trip.members)) {
+    trip.members = trip.members.filter((m) => m.role !== "Pending");
   }
 
   res.json(trip);
@@ -115,7 +146,31 @@ export const updateTrip = asyncHandler(async (req, res) => {
   const prevDest = trip.destination;
   const newDest = req.body.destination;
 
-  const allowedFields = ["title", "destination", "startDate", "endDate", "style", "travelers", "summary", "budgetTotal"];
+  const allowedFields = [
+    "title",
+    "origin",
+    "destination",
+    "startDate",
+    "endDate",
+    "style",
+    "interests",
+    "travelers",
+    "summary",
+    "budgetTotal",
+    "travelMode",
+    "departureHub",
+    "arrivalHub",
+    "transitRef",
+    "departureTime",
+    "arrivalTime",
+    "outboundJourney",
+    "returnJourney",
+    "tripTiming",
+    "hotelName",
+    "hotelLocation",
+    "checkInTime",
+    "checkOutTime",
+  ];
   allowedFields.forEach((field) => {
     if (req.body[field] !== undefined) {
       trip[field] = req.body[field];
@@ -161,7 +216,7 @@ export const addExpense = asyncHandler(async (req, res) => {
   const trip = await Trip.findById(req.params.id);
   if (!trip) throw new NotFoundError("Trip not found");
 
-  if (!userHasTripAccess(trip, req.uid)) {
+  if (!userHasTripAccess(trip, req.uid, req.userEmail)) {
     throw new ForbiddenError("Forbidden: You do not have access to this trip");
   }
 
@@ -185,7 +240,7 @@ export const deleteExpense = asyncHandler(async (req, res) => {
   const trip = await Trip.findById(req.params.id);
   if (!trip) throw new NotFoundError("Trip not found");
 
-  if (!userHasTripAccess(trip, req.uid)) {
+  if (!userHasTripAccess(trip, req.uid, req.userEmail)) {
     throw new ForbiddenError("Forbidden: You do not have access to this trip");
   }
 
@@ -196,27 +251,6 @@ export const deleteExpense = asyncHandler(async (req, res) => {
   res.json(updatedTrip);
 });
 
-export const addMember = asyncHandler(async (req, res) => {
-  const { name, email } = req.body;
-  const trip = await Trip.findById(req.params.id);
-  if (!trip) throw new NotFoundError("Trip not found");
-
-  if (String(trip.createdBy) !== String(req.uid)) {
-    throw new ForbiddenError("Only the trip owner can invite members");
-  }
-
-  const initials = email.split("@")[0].slice(0, 2).toUpperCase();
-  trip.members.push({
-    name: name || email,
-    email,
-    role: "Pending",
-    initials,
-    color: "bg-muted text-foreground",
-  });
-
-  await trip.save();
-  res.json(trip);
-});
 
 export const castVote = asyncHandler(async (req, res) => {
   const { optionName } = req.body;
@@ -225,7 +259,7 @@ export const castVote = asyncHandler(async (req, res) => {
   const trip = await Trip.findById(req.params.id);
   if (!trip) throw new NotFoundError("Trip not found");
 
-  if (!userHasTripAccess(trip, req.uid)) {
+  if (!userHasTripAccess(trip, req.uid, req.userEmail)) {
     throw new ForbiddenError("Forbidden: You do not have access to this trip");
   }
 
@@ -259,7 +293,7 @@ export const addVoteOption = asyncHandler(async (req, res) => {
   const trip = await Trip.findById(req.params.id);
   if (!trip) throw new NotFoundError("Trip not found");
 
-  if (!userHasTripAccess(trip, req.uid)) {
+  if (!userHasTripAccess(trip, req.uid, req.userEmail)) {
     throw new ForbiddenError("Forbidden: You do not have access to this trip");
   }
 

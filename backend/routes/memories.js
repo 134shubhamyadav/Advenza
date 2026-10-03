@@ -51,4 +51,7 @@ router.post("/:id/reprocess", memoryController.reprocessMemory);
 // POST /api/memories/migrate — Migrate legacy client memories
 router.post("/migrate", validate({ body: migrateMemoriesSchema }), memoryController.migrateMemories);
 
+// POST /api/memories/cleanup-assets — Clean up orphaned/cancelled media assets
+router.post("/cleanup-assets", memoryController.cleanupAssets);
+
 export default router;

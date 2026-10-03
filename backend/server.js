@@ -21,10 +21,12 @@ import budgetRoutes from "./routes/budget.js";
 import userRoutes from "./routes/user.js";
 import mediaRoutes from "./routes/media.js";
 import mediaUploadsRouter from "./routes/media-uploads.js";
-import path from "path";
+import mailRoutes from "./routes/mail.js";
+import invitationRoutes from "./routes/invitations.js";
 import { collageWorker } from "./services/collage/collage-worker.js";
 import { initReelQueue, closeReelQueue } from "./services/queue/reel-queue.js";
 import { startPriceWatchScheduler, stopPriceWatchScheduler } from "./services/price-watch/price-watch.worker.js";
+import { runStartupMigrations } from "./services/database/migration.service.js";
 
 // Fix for local network/sandbox SRV lookup failures
 dns.setServers(["8.8.8.8"]);
@@ -96,11 +98,11 @@ app.use("/api/reels", reelRoutes);
 app.use("/api/travel", travelRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/media", mediaRoutes);
+app.use("/api/mail", mailRoutes);
+app.use("/api/invitations", invitationRoutes);
 
 // ─── Centralized Error Handler ─────────────────────────────────────────────────
 app.use(errorHandler);
-
-import { runStartupMigrations } from "./services/database/migration.service.js";
 
 // ─── Database & Server Initialization ──────────────────────────────────────────
 mongoose
