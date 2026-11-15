@@ -1,14 +1,19 @@
 import OpenAI from "openai";
 import { BaseAIProvider } from "./base.provider.js";
 import { env } from "../../../config/env.js";
+import { logger } from "../../../utils/logger.js";
 
 export class GroqProvider extends BaseAIProvider {
   constructor() {
     super("Groq");
+    // Verified active Groq models (tested live)
+    // 1. openai/gpt-oss-20b: ultra-fast (~600ms), reliable structured JSON
+    // 2. qwen/qwen3.8-27b: blazing fast (~100ms)
+    // 3. openai/gpt-oss-120b: deep reasoning (~1.8s)
     this.models = [
-      "openai/gpt-oss-120b",
-      "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
+      "qwen/qwen3.8-27b",
+      "openai/gpt-oss-120b",
     ];
     this.client = null;
   }
@@ -27,31 +32,52 @@ export class GroqProvider extends BaseAIProvider {
     return this.client;
   }
 
-  async createCompletion({ messages, temperature = 0.7, maxTokens = 8192, signal, preferredModel }) {
+  async createCompletion({ messages, temperature = 0.7, maxTokens = 4096, signal, preferredModel, jsonMode = false }) {
     const client = this.getClient();
     if (!client) {
       throw new Error("Groq API key is not configured");
     }
 
     const modelsToTry = preferredModel ? [preferredModel, ...this.models.filter((m) => m !== preferredModel)] : this.models;
+    // Cap max_tokens to 4096 to prevent hitting Groq's 6,000 TPM limit on free tier
+    const effectiveMaxTokens = Math.min(Number(maxTokens) || 4096, 4096);
+    const PER_MODEL_TIMEOUT_MS = 25_000;
     let lastError = null;
 
     for (const model of modelsToTry) {
+      if (signal?.aborted) throw new Error("Aborted");
+
+      const modelController = new AbortController();
+      const perModelTimer = setTimeout(() => modelController.abort(), PER_MODEL_TIMEOUT_MS);
+      if (signal) {
+        signal.addEventListener("abort", () => modelController.abort(), { once: true });
+      }
+
       try {
-        const completion = await client.chat.completions.create(
-          {
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens,
-          },
-          { signal }
-        );
+        const params = {
+          model,
+          messages,
+          temperature,
+          max_tokens: effectiveMaxTokens,
+        };
+
+        if (jsonMode) {
+          params.response_format = { type: "json_object" };
+        }
+
+        const completion = await client.chat.completions.create(params, { signal: modelController.signal });
+        clearTimeout(perModelTimer);
         return { completion, provider: this.name, model };
       } catch (err) {
+        clearTimeout(perModelTimer);
         lastError = err;
-        // If aborted or rate limit, break or throw to let router decide
-        if (err.name === "AbortError" || signal?.aborted) {
+        logger.warn(`[Groq] Model ${model} failed: ${err.message}`, {
+          model,
+          status: err.status || err.statusCode,
+          isTimeout: modelController.signal.aborted,
+        });
+
+        if (signal?.aborted) {
           throw err;
         }
       }

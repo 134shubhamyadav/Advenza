@@ -10,7 +10,9 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 const envSchema = z.object({
   PORT: z.coerce.number().default(5000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  CLIENT_URL: z.string().optional().default("http://localhost:3000"),
+  CLIENT_URL: z.string().optional().default(process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:3000"),
+  FRONTEND_URL: z.string().optional(),
+  APP_URL: z.string().optional(),
   ALLOWED_ORIGINS: z.string().optional(),
   MONGODB_URI: z.string().default("mongodb://localhost:27017/Advenza"),
 
@@ -110,6 +112,11 @@ export function getProviderConfigStatus() {
       configured: Boolean(env.GOOGLE_MAPS_API_KEY || env.MAPS_API_KEY),
       status: (env.GOOGLE_MAPS_API_KEY || env.MAPS_API_KEY) ? "CONFIGURED" : "NOT_CONFIGURED",
     },
+    googlePlaces: {
+      configured: Boolean(env.GOOGLE_MAPS_API_KEY || env.MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY),
+      fallbackAvailable: true,
+      status: (env.GOOGLE_MAPS_API_KEY || env.MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY) ? "CONFIGURED" : "CURATED_FALLBACK_ACTIVE",
+    },
     weather: {
       configured: Boolean(env.WEATHER_API_KEY || env.OPENWEATHER_API_KEY || env.VITE_WEATHER_API_KEY),
       fallbackAvailable: true, // Open-Meteo works without keys
@@ -141,6 +148,50 @@ export function getProviderConfigStatus() {
       status: env.BREVO_API_KEY ? "CONFIGURED" : "NOT_CONFIGURED",
     },
   };
+}
+
+/**
+ * Resolves the client base URL for public links (invitations, email callbacks).
+ * Enforces production domain usage and avoids accidental localhost links.
+ *
+ * @param {Object} [req] Optional Express request to extract Origin / Host if valid
+ * @returns {string} Fully-qualified base URL without trailing slash
+ */
+export function getClientBaseUrl(req) {
+  // 1. Explicit environment configuration
+  const configured = (env.CLIENT_URL || env.FRONTEND_URL || env.APP_URL || "").trim().replace(/\/$/, "");
+
+  // If a valid production URL (non-localhost) is configured in env, strictly prefer it
+  if (configured && !configured.includes("localhost") && !configured.includes("127.0.0.1")) {
+    return configured;
+  }
+
+  // 2. Inspect request origin header from client request (e.g. browser on mobile/LAN or reverse proxy)
+  if (req) {
+    const originHeader = (typeof req.get === "function" ? (req.get("origin") || req.get("x-forwarded-host")) : null)
+      || (req.headers && (req.headers.origin || req.headers["x-forwarded-host"]));
+
+    if (originHeader && typeof originHeader === "string") {
+      let candidate = originHeader.trim().replace(/\/$/, "");
+      if (!candidate.startsWith("http://") && !candidate.startsWith("https://")) {
+        const proto = (typeof req.get === "function" && req.get("x-forwarded-proto")) || "https";
+        candidate = `${proto}://${candidate}`;
+      }
+      try {
+        const parsed = new URL(candidate);
+        if (parsed.hostname && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+          return candidate;
+        }
+      } catch (_) {}
+    }
+  }
+
+  // 3. Fallback: configured URL or localhost in development
+  if (env.NODE_ENV === "production" && (!configured || configured.includes("localhost"))) {
+    console.warn("[Config] ⚠️ WARNING: Neither CLIENT_URL nor FRONTEND_URL is set to a production domain. Defaulting to localhost:3000.");
+  }
+
+  return configured || "http://localhost:3000";
 }
 
 export default env;

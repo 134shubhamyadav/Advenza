@@ -1,6 +1,8 @@
 import Trip from "../models/Trip.js";
 import Expense from "../models/Expense.js";
 import Memory from "../models/Memory.js";
+import Invitation from "../models/Invitation.js";
+import { logger } from "../utils/logger.js";
 import { budgetService } from "../services/budget/budget.service.js";
 import { normalizeTime } from "../services/itinerary/itinerary-sanitizer.js";
 import { fetchDestinationImage } from "../services/media/destination-image.service.js";
@@ -350,4 +352,123 @@ export const patchItinerary = asyncHandler(async (req, res) => {
   trip.markModified("days");
   const savedTrip = await trip.save();
   res.json(savedTrip);
+});
+
+/**
+ * Removes a member from a trip.
+ * STRICTLY authorized: Only the trip organizer can remove members.
+ * DELETE /api/trips/:id/members/:memberId
+ */
+export const removeTripMember = asyncHandler(async (req, res) => {
+  const { id: tripId, memberId } = req.params;
+  const organizerUid = req.uid;
+
+  const trip = await Trip.findById(tripId);
+  if (!trip) throw new NotFoundError("Trip not found");
+
+  const isOrganizer = String(trip.createdBy) === String(organizerUid);
+  if (!isOrganizer) {
+    throw new ForbiddenError("Only the trip organizer can remove members");
+  }
+
+  if (!Array.isArray(trip.members) || trip.members.length === 0) {
+    throw new NotFoundError("No members found on this trip");
+  }
+
+  // Locate the member to remove by subdocument _id, userId, or email
+  const memberIndex = trip.members.findIndex(
+    (m) =>
+      String(m._id) === String(memberId) ||
+      (m.userId && String(m.userId) === String(memberId)) ||
+      (m.email && m.email.toLowerCase().trim() === String(memberId).toLowerCase().trim())
+  );
+
+  if (memberIndex === -1) {
+    throw new NotFoundError("Member not found on this trip");
+  }
+
+  const memberToRemove = trip.members[memberIndex];
+
+  // Prevent organizer from removing themselves
+  if (
+    memberToRemove.role === "Organizer" ||
+    (memberToRemove.userId && String(memberToRemove.userId) === String(organizerUid))
+  ) {
+    throw new ValidationError("Trip organizer cannot be removed from the trip");
+  }
+
+  const removedEmail = memberToRemove.email?.toLowerCase().trim();
+  const removedUserId = memberToRemove.userId;
+
+  // Remove member from trip.members
+  trip.members.splice(memberIndex, 1);
+
+  // Synchronize travelers count to match confirmed members count
+  const confirmedCount = 1 + trip.members.filter((m) => m.role === "Member").length;
+  trip.travelers = Math.max(1, confirmedCount);
+
+  trip.markModified("members");
+  await trip.save();
+
+  // Revoke any active invitations for this member
+  if (removedEmail || removedUserId) {
+    const inviteQuery = { tripId: trip._id, status: "PENDING" };
+    if (removedEmail) inviteQuery.invitedEmail = removedEmail;
+    await Invitation.updateMany(inviteQuery, { $set: { status: "REVOKED" } });
+  }
+
+  logger.info(`[Trip Controller] Member ${memberId} removed from trip ${tripId} by organizer ${organizerUid}`);
+
+  res.status(200).json({
+    success: true,
+    message: "Member removed from trip successfully",
+    trip,
+  });
+});
+
+/**
+ * Allows an authenticated member to leave a trip.
+ * POST /api/trips/:id/leave
+ */
+export const leaveTrip = asyncHandler(async (req, res) => {
+  const { id: tripId } = req.params;
+  const userUid = req.uid;
+  const userEmail = (req.userEmail || req.user?.email || "").toLowerCase().trim();
+
+  const trip = await Trip.findById(tripId);
+  if (!trip) throw new NotFoundError("Trip not found");
+
+  if (String(trip.createdBy) === String(userUid)) {
+    throw new ValidationError("The organizer cannot leave the trip. You can delete the trip or transfer ownership.");
+  }
+
+  if (!Array.isArray(trip.members) || trip.members.length === 0) {
+    throw new NotFoundError("You are not a member of this trip");
+  }
+
+  const memberIndex = trip.members.findIndex(
+    (m) =>
+      (m.userId && String(m.userId) === String(userUid)) ||
+      (userEmail && m.email && m.email.toLowerCase().trim() === userEmail)
+  );
+
+  if (memberIndex === -1) {
+    throw new NotFoundError("You are not a member of this trip");
+  }
+
+  trip.members.splice(memberIndex, 1);
+
+  const confirmedCount = 1 + trip.members.filter((m) => m.role === "Member").length;
+  trip.travelers = Math.max(1, confirmedCount);
+
+  trip.markModified("members");
+  await trip.save();
+
+  logger.info(`[Trip Controller] User ${userUid} left trip ${tripId}`);
+
+  res.status(200).json({
+    success: true,
+    message: "You have left the trip",
+    trip,
+  });
 });

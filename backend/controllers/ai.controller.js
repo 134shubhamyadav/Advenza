@@ -19,8 +19,15 @@ export const planB = asyncHandler(async (req, res) => {
 });
 
 export const chat = asyncHandler(async (req, res) => {
-  const { messages } = req.body;
-  const result = await aiService.chatWithTravelAI(messages);
+  const { messages, tripId, destination, hotelLocation, context } = req.body;
+  const result = await aiService.chatWithTravelAI({
+    messages,
+    tripId,
+    destination,
+    hotelLocation,
+    context,
+    userId: req.uid,
+  });
   res.json(result);
 });
 
@@ -39,5 +46,14 @@ export const risk = asyncHandler(async (req, res) => {
 export const estimateBudget = asyncHandler(async (req, res) => {
   const { destination, startDate, endDate, travelers } = req.query;
   const result = await aiService.estimateBudget({ destination, startDate, endDate, travelers });
+  res.json(result);
+});
+
+export const getDestinationOverview = asyncHandler(async (req, res) => {
+  const destination = req.query.destination || req.body?.destination;
+  const rawInterests = req.query.interests || req.body?.interests || [];
+  const interests = typeof rawInterests === "string" ? rawInterests.split(",") : rawInterests;
+
+  const result = await aiService.getDestinationOverview({ destination, interests });
   res.json(result);
 });

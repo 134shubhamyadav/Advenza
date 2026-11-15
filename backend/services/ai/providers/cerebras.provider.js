@@ -1,11 +1,12 @@
 import OpenAI from "openai";
 import { BaseAIProvider } from "./base.provider.js";
 import { env } from "../../../config/env.js";
+import { logger } from "../../../utils/logger.js";
 
 export class CerebrasProvider extends BaseAIProvider {
   constructor() {
     super("Cerebras");
-    this.models = ["llama3.1-70b", "llama3.1-8b"];
+    this.models = ["qwen-3.8-27b", "gpt-oss-120b"];
     this.client = null;
   }
 
@@ -23,30 +24,51 @@ export class CerebrasProvider extends BaseAIProvider {
     return this.client;
   }
 
-  async createCompletion({ messages, temperature = 0.7, maxTokens = 8192, signal, preferredModel }) {
+  async createCompletion({ messages, temperature = 0.7, maxTokens = 4096, signal, preferredModel, jsonMode = false }) {
     const client = this.getClient();
     if (!client) {
       throw new Error("Cerebras API key is not configured");
     }
 
     const modelsToTry = preferredModel ? [preferredModel, ...this.models.filter((m) => m !== preferredModel)] : this.models;
+    const effectiveMaxTokens = Math.min(Number(maxTokens) || 4096, 4096);
+    const PER_MODEL_TIMEOUT_MS = 25_000;
     let lastError = null;
 
     for (const model of modelsToTry) {
+      if (signal?.aborted) throw new Error("Aborted");
+
+      const modelController = new AbortController();
+      const perModelTimer = setTimeout(() => modelController.abort(), PER_MODEL_TIMEOUT_MS);
+      if (signal) {
+        signal.addEventListener("abort", () => modelController.abort(), { once: true });
+      }
+
       try {
-        const completion = await client.chat.completions.create(
-          {
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens,
-          },
-          { signal }
-        );
+        const params = {
+          model,
+          messages,
+          temperature,
+          max_tokens: effectiveMaxTokens,
+        };
+
+        if (jsonMode) {
+          params.response_format = { type: "json_object" };
+        }
+
+        const completion = await client.chat.completions.create(params, { signal: modelController.signal });
+        clearTimeout(perModelTimer);
         return { completion, provider: this.name, model };
       } catch (err) {
+        clearTimeout(perModelTimer);
         lastError = err;
-        if (err.name === "AbortError" || signal?.aborted) {
+        logger.warn(`[Cerebras] Model ${model} failed: ${err.message}`, {
+          model,
+          status: err.status || err.statusCode,
+          isTimeout: modelController.signal.aborted,
+        });
+
+        if (signal?.aborted) {
           throw err;
         }
       }

@@ -6,6 +6,8 @@ export const createTripSchema = z.object({
   origin: z.string().trim().max(150).optional(),
   startDate: z.string().trim().optional(),
   endDate: z.string().trim().optional(),
+  duration: z.coerce.number().optional(),
+  durationMode: z.enum(["RECOMMENDED", "CUSTOM"]).optional().default("RECOMMENDED"),
   budgetTotal: z.coerce.number().min(0).default(0),
   style: z.string().trim().default("Balanced"),
   travelMode: z.string().trim().max(100).optional(),

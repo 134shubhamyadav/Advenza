@@ -28,8 +28,12 @@ import { initReelQueue, closeReelQueue } from "./services/queue/reel-queue.js";
 import { startPriceWatchScheduler, stopPriceWatchScheduler } from "./services/price-watch/price-watch.worker.js";
 import { runStartupMigrations } from "./services/database/migration.service.js";
 
-// Fix for local network/sandbox SRV lookup failures
-dns.setServers(["8.8.8.8"]);
+// Optional DNS override if explicitly specified in environment
+if (process.env.CUSTOM_DNS) {
+  try {
+    dns.setServers([process.env.CUSTOM_DNS]);
+  } catch (_) {}
+}
 
 const app = express();
 const PORT = config.PORT;

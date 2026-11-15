@@ -52,8 +52,28 @@ export class TransportProvider extends BaseTransportProvider {
    * Clearly distinguishes LIVE vs ESTIMATED vs UNAVAILABLE.
    */
   async getRouteStatus({ origin, destination, mode = "driving" }) {
-    const origClean = (origin || "Mumbai").trim();
-    const destClean = (destination || "Goa").trim();
+    const origClean = (origin || "").trim();
+    const destClean = (destination || "").trim();
+
+    if (!origClean || !destClean) {
+      return {
+        provider: "Transit Service",
+        status: "UNAVAILABLE",
+        isLive: false,
+        source: "UNAVAILABLE",
+        origin: origClean || "Unspecified",
+        destination: destClean || "Unspecified",
+        mode,
+        distanceKm: null,
+        estimatedDurationMins: null,
+        normalDurationMins: null,
+        trafficLevel: "unknown",
+        trafficStatus: "UNAVAILABLE",
+        delayMinutes: 0,
+        reason: "Both origin and destination are required to calculate route status.",
+        lastUpdated: new Date().toISOString(),
+      };
+    }
 
     try {
       // 1. If Google Maps Platform Directions API key is configured
@@ -108,10 +128,53 @@ export class TransportProvider extends BaseTransportProvider {
       }
 
       // 2. Geodesic routing calculation (ESTIMATED - Never claims live traffic)
-      const [origGeo, destGeo] = await Promise.all([
-        weatherProvider.geocode(origClean).catch(() => ({ latitude: 19.076, longitude: 72.8777, name: origClean })),
-        weatherProvider.geocode(destClean).catch(() => ({ latitude: 15.4909, longitude: 73.8278, name: destClean })),
-      ]);
+      let origGeo = null;
+      let destGeo = null;
+      try {
+        [origGeo, destGeo] = await Promise.all([
+          weatherProvider.geocode(origClean),
+          weatherProvider.geocode(destClean),
+        ]);
+      } catch (geoErr) {
+        logger.warn(`[TransportProvider] Geocoding failed for route "${origClean}" → "${destClean}": ${geoErr.message}`);
+        return {
+          provider: "Transit Service",
+          status: "UNAVAILABLE",
+          isLive: false,
+          source: "UNAVAILABLE",
+          origin: origClean,
+          destination: destClean,
+          mode,
+          distanceKm: null,
+          estimatedDurationMins: null,
+          normalDurationMins: null,
+          trafficLevel: "unknown",
+          trafficStatus: "UNAVAILABLE",
+          delayMinutes: 0,
+          reason: `Could not geocode route endpoints: ${geoErr.message}`,
+          lastUpdated: new Date().toISOString(),
+        };
+      }
+
+      if (!origGeo?.latitude || !destGeo?.latitude) {
+        return {
+          provider: "Transit Service",
+          status: "UNAVAILABLE",
+          isLive: false,
+          source: "UNAVAILABLE",
+          origin: origClean,
+          destination: destClean,
+          mode,
+          distanceKm: null,
+          estimatedDurationMins: null,
+          normalDurationMins: null,
+          trafficLevel: "unknown",
+          trafficStatus: "UNAVAILABLE",
+          delayMinutes: 0,
+          reason: `Could not resolve geographic coordinates for "${!origGeo?.latitude ? origClean : destClean}".`,
+          lastUpdated: new Date().toISOString(),
+        };
+      }
 
       const directDistance = calculateHaversineDistance(
         origGeo.latitude,
@@ -151,9 +214,9 @@ export class TransportProvider extends BaseTransportProvider {
         origin: origClean,
         destination: destClean,
         mode,
-        distanceKm: 0,
-        estimatedDurationMins: 0,
-        normalDurationMins: 0,
+        distanceKm: null,
+        estimatedDurationMins: null,
+        normalDurationMins: null,
         trafficLevel: "unknown",
         trafficStatus: "UNAVAILABLE",
         delayMinutes: 0,

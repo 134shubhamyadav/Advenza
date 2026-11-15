@@ -13,7 +13,7 @@ export const apiFetch = async (
   path: string,
   options: RequestInit & { timeoutMs?: number } = {}
 ) => {
-  const { timeoutMs = 90000, signal, ...fetchOptions } = options;
+  const { timeoutMs = 150000, signal, ...fetchOptions } = options;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((fetchOptions.headers as Record<string, string>) || {}),

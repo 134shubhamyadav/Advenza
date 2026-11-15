@@ -112,6 +112,58 @@ function getEmergencyHelplines(destination: string | null) {
     };
   }
 
+  // Singapore
+  if (d.includes("singapore")) {
+    return {
+      country: "Singapore",
+      numbers: [
+        { label: "Police Emergency", value: "999" },
+        { label: "Ambulance & Fire", value: "995" },
+        { label: "Non-Emergency Ambulance", value: "1777" },
+        { label: "Police Hotline", value: "1800-255-0000" },
+      ],
+    };
+  }
+
+  // Thailand
+  if (d.includes("thailand") || d.includes("bangkok") || d.includes("phuket") || d.includes("chiang mai") || d.includes("pattaya")) {
+    return {
+      country: "Thailand",
+      numbers: [
+        { label: "Tourist Police (English)", value: "1155" },
+        { label: "Police Emergency", value: "191" },
+        { label: "Medical Emergency / Ambulance", value: "1669" },
+        { label: "Fire Service", value: "199" },
+      ],
+    };
+  }
+
+  // Indonesia / Bali
+  if (d.includes("indonesia") || d.includes("bali") || d.includes("jakarta") || d.includes("ubud") || d.includes("kuta")) {
+    return {
+      country: "Indonesia",
+      numbers: [
+        { label: "National Emergency", value: "112" },
+        { label: "Police Assistance", value: "110" },
+        { label: "Ambulance", value: "118" },
+        { label: "Search & Rescue (BASARNAS)", value: "115" },
+      ],
+    };
+  }
+
+  // Australia
+  if (d.includes("australia") || d.includes("sydney") || d.includes("melbourne") || d.includes("brisbane") || d.includes("perth")) {
+    return {
+      country: "Australia",
+      numbers: [
+        { label: "Emergency (All Services)", value: "000" },
+        { label: "Mobile Emergency (GSM)", value: "112" },
+        { label: "Police Non-Emergency", value: "131 444" },
+        { label: "State Emergency Service (SES)", value: "132 500" },
+      ],
+    };
+  }
+
   // India (Domestic Default)
   return {
     country: "India",
@@ -147,17 +199,23 @@ type RiskItem = {
   source?: string;
 };
 
-type Trip = { _id: string; title: string; destination?: string };
+type Trip = { _id: string; title: string; destination?: string; updatedAt?: string };
 
 type WeatherData = {
-  temp: number;
+  temp: number | null;
   condition: string;
-  icon: string;
-  humidity: number;
-  windSpeed: number;
-  uv: number;
-  rainChance: number;
-  alerts: Array<{ event: string; headline: string; desc: string }>;
+  icon?: string;
+  humidity?: number | null;
+  windSpeed?: number | null;
+  uv?: number | null;
+  rainChance?: number | null;
+  forecastDate?: string | null;
+  forecastType?: string;
+  forecastStatus?: string;
+  isForecastAvailable?: boolean;
+  isTargetDateForecast?: boolean;
+  destinationTimezone?: string;
+  alerts?: Array<{ event: string; headline: string; desc: string }>;
 };
 
 function Risk() {
@@ -187,9 +245,10 @@ function Risk() {
     }
   }, [trips, selectedTripId, customDestination]);
 
-  const activeTrip = (selectedTripId && selectedTripId !== "custom"
-    ? trips.find((t) => t._id === selectedTripId)
-    : (trips.find((t) => t.destination) ?? trips[0])) ?? null;
+  // When custom search is chosen, activeTrip is strictly null (avoids evaluating old trip itinerary for custom cities)
+  const activeTrip = selectedTripId === "custom"
+    ? null
+    : (selectedTripId ? trips.find((t) => t._id === selectedTripId) : (trips.find((t) => t.destination) ?? trips[0])) ?? null;
 
   const targetDestination = customDestination ?? activeTrip?.destination ?? null;
 
@@ -199,7 +258,11 @@ function Risk() {
     isLoading: loadingRisk,
     refetch: refetchRisk,
   } = useQuery({
-    queryKey: queryKeys.riskRadar(targetDestination || ""),
+    queryKey: queryKeys.riskRadar(
+      targetDestination || "",
+      activeTrip?._id || "",
+      activeTrip?.updatedAt || ""
+    ),
     queryFn: async ({ signal }) => {
       if (!targetDestination) return null;
 
@@ -207,7 +270,7 @@ function Risk() {
         method: "POST",
         body: JSON.stringify({
           destination: targetDestination,
-          tripId: activeTrip?._id,
+          tripId: activeTrip?._id || undefined,
           refresh: forceRefresh,
         }),
         signal,
@@ -215,7 +278,7 @@ function Risk() {
       return res;
     },
     enabled: !!user && !!targetDestination,
-    staleTime: 30 * 60 * 1000, // 30 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   const risks: RiskItem[] = riskData?.risks ?? [];
@@ -239,7 +302,11 @@ function Risk() {
 
   const handleTripChange = (tripId: string) => {
     setSelectedTripId(tripId);
-    if (tripId === "custom") return;
+    if (tripId === "custom") {
+      setCustomDestination(null);
+      setSearchQuery("");
+      return;
+    }
     const trip = trips.find((t) => t._id === tripId);
     if (trip && trip.destination) {
       setCustomDestination(null);
@@ -472,9 +539,16 @@ function Risk() {
                       <CloudSun className="h-10 w-10 text-primary" />
                     )}
                     <div>
-                      <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Live Weather</h4>
-                      <p className="text-xl font-display font-bold text-foreground leading-tight">{weather.temp}°C</p>
+                      <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                        {weather.forecastType || (weather.isTargetDateForecast ? "Trip Forecast" : "Live Weather")}
+                      </h4>
+                      <p className="text-xl font-display font-bold text-foreground leading-tight">
+                        {weather.temp !== null && weather.temp !== undefined ? `${weather.temp}°C` : "—"}
+                      </p>
                       <p className="text-[11px] text-muted-foreground capitalize font-semibold">{weather.condition}</p>
+                      {weather.forecastDate && (
+                        <p className="text-[10px] text-muted-foreground/75 mt-0.5 font-medium">{weather.forecastDate}</p>
+                      )}
                     </div>
                   </div>
                   <Button
@@ -488,36 +562,55 @@ function Risk() {
                   </Button>
                 </div>
 
-                <div className="mt-3.5 grid grid-cols-2 gap-3.5">
-                  <div className="rounded-xl bg-white/25 p-2.5 flex items-center gap-2">
-                    <Droplets className="h-4.5 w-4.5 text-sky-500 shrink-0" />
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-muted-foreground">Humidity</p>
-                      <p className="text-xs font-bold text-foreground">{weather.humidity}%</p>
+                {weather.isForecastAvailable === false ? (
+                  <div className="mt-3.5 rounded-xl bg-white/20 p-3 text-center border border-white/25">
+                    <p className="text-xs font-semibold text-foreground">Weather forecast not yet available</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Live 5-day precipitation & temperature radar activates within 5 days of departure.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-3.5 grid grid-cols-2 gap-3.5">
+                    <div className="rounded-xl bg-white/25 p-2.5 flex items-center gap-2">
+                      <Droplets className="h-4.5 w-4.5 text-sky-500 shrink-0" />
+                      <div>
+                        <p className="text-[9px] uppercase font-bold text-muted-foreground">Humidity</p>
+                        <p className="text-xs font-bold text-foreground">
+                          {weather.humidity !== null && weather.humidity !== undefined ? `${weather.humidity}%` : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-white/25 p-2.5 flex items-center gap-2">
+                      <CloudSun className="h-4.5 w-4.5 text-indigo-500 shrink-0" />
+                      <div>
+                        <p className="text-[9px] uppercase font-bold text-muted-foreground">
+                          {weather.isTargetDateForecast ? "Daily Max Rain" : "Rain Chance"}
+                        </p>
+                        <p className="text-xs font-bold text-foreground">
+                          {weather.rainChance !== null && weather.rainChance !== undefined ? `${weather.rainChance}%` : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-white/25 p-2.5 flex items-center gap-2">
+                      <Wind className="h-4.5 w-4.5 text-teal-500 shrink-0" />
+                      <div>
+                        <p className="text-[9px] uppercase font-bold text-muted-foreground">Wind Speed</p>
+                        <p className="text-xs font-bold text-foreground">
+                          {weather.windSpeed !== null && weather.windSpeed !== undefined ? `${weather.windSpeed} km/h` : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-white/25 p-2.5 flex items-center gap-2">
+                      <Sun className="h-4.5 w-4.5 text-amber-500 shrink-0" />
+                      <div>
+                        <p className="text-[9px] uppercase font-bold text-muted-foreground">UV Index</p>
+                        <p className="text-xs font-bold text-foreground">
+                          {weather.uv !== null && weather.uv !== undefined ? weather.uv : "—"}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="rounded-xl bg-white/25 p-2.5 flex items-center gap-2">
-                    <CloudSun className="h-4.5 w-4.5 text-indigo-500 shrink-0" />
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-muted-foreground">Rain Chance</p>
-                      <p className="text-xs font-bold text-foreground">{weather.rainChance}%</p>
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-white/25 p-2.5 flex items-center gap-2">
-                    <Wind className="h-4.5 w-4.5 text-teal-500 shrink-0" />
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-muted-foreground">Wind Speed</p>
-                      <p className="text-xs font-bold text-foreground">{weather.windSpeed} km/h</p>
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-white/25 p-2.5 flex items-center gap-2">
-                    <Sun className="h-4.5 w-4.5 text-amber-500 shrink-0" />
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-muted-foreground">UV Index</p>
-                      <p className="text-xs font-bold text-foreground">{weather.uv}</p>
-                    </div>
-                  </div>
-                </div>
+                )}
 
                 {/* Weather Alerts */}
                 {weather.alerts && weather.alerts.length > 0 && (

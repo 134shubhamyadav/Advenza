@@ -3,6 +3,7 @@ export const queryKeys = {
   tripDetails: (id: string) => ["trips", id] as const,
   packingList: (dest: string, start?: string, end?: string, style?: string) =>
     ["packing", dest, start || "", end || "", style || ""] as const,
-  riskRadar: (dest: string) => ["risk", dest] as const,
+  riskRadar: (dest: string, tripId?: string, updatedAt?: string) =>
+    ["risk", dest, tripId || "", updatedAt || ""] as const,
   commanderEvents: () => ["commander", "events"] as const,
 };

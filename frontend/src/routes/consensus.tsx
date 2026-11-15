@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, memo } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/app-shell";
@@ -30,11 +30,11 @@ import {
   CheckCircle2,
   Mail,
   Share2,
+  Copy,
+  UserMinus,
 } from "lucide-react";
 
 export const Route = createFileRoute("/consensus")({ component: Consensus });
-
-const CATS = ["food", "nature", "history", "nightlife", "adventure", "luxury", "walking"] as const;
 
 const AVATAR_COLORS = [
   "bg-primary text-primary-foreground",
@@ -100,62 +100,6 @@ type Trip = {
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-const RadarChart = memo(function RadarChart({ values, size = 220 }: { values: number[]; size?: number }) {
-  const cx = size / 2,
-    cy = size / 2,
-    r = size / 2 - 22;
-  const angle = (i: number) => (Math.PI * 2 * i) / CATS.length - Math.PI / 2;
-  const point = (v: number, i: number) => {
-    const rr = (v / 100) * r;
-    return [cx + Math.cos(angle(i)) * rr, cy + Math.sin(angle(i)) * rr] as const;
-  };
-  const pts = values.map((v, i) => point(v, i).join(",")).join(" ");
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mx-auto select-none">
-      {[0.25, 0.5, 0.75, 1].map((s) => (
-        <polygon
-          key={s}
-          points={CATS.map((_, i) => {
-            const [x, y] = point(100 * s, i);
-            return `${x},${y}`;
-          }).join(" ")}
-          className="fill-none stroke-border/70"
-          strokeDasharray="2 3"
-        />
-      ))}
-      {CATS.map((_, i) => {
-        const [x, y] = point(100, i);
-        return (
-          <line
-            key={i}
-            x1={cx}
-            y1={cy}
-            x2={x}
-            y2={y}
-            className="stroke-border/70"
-            strokeDasharray="2 3"
-          />
-        );
-      })}
-      <polygon points={pts} className="fill-primary/20 stroke-primary transition-all duration-700" strokeWidth={2} />
-      {CATS.map((c, i) => {
-        const [x, y] = point(118, i);
-        return (
-          <text
-            key={c}
-            x={x}
-            y={y}
-            textAnchor="middle"
-            className="fill-muted-foreground text-[10px] font-medium capitalize"
-          >
-            {c}
-          </text>
-        );
-      })}
-    </svg>
-  );
-});
-
 function getInitials(name?: string, fallback = "U") {
   if (!name) return fallback;
   return name
@@ -205,11 +149,22 @@ function Consensus() {
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const handleCopyLink = () => {
+    if (!lastInviteLink) return;
+    navigator.clipboard.writeText(lastInviteLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 3000);
+  };
 
   // New proposal/option state
   const [newOptionName, setNewOptionName] = useState("");
   const [addingOption, setAddingOption] = useState(false);
   const [showAddOption, setShowAddOption] = useState(false);
+
+  // Remove member state (organizer only)
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
 
   const { data: trips = [], isLoading: loading } = useQuery<Trip[]>({
     queryKey: queryKeys.trips(),
@@ -374,14 +329,40 @@ function Consensus() {
       queryClient.invalidateQueries({ queryKey: queryKeys.tripDetails(activeTripId) });
 
       setInviteEmail("");
-      setInviteSuccess(result.message || `Invitation sent to ${inviteEmail.trim()} via Brevo!`);
+      if (result.emailSent === false) {
+        setInviteError(result.message || "Invitation link generated, but email delivery via Brevo failed.");
+      } else {
+        setInviteSuccess(result.message || `Invitation sent to ${inviteEmail.trim()} via Brevo!`);
+        setTimeout(() => setInviteSuccess(null), 5000);
+      }
       if (result.inviteLink) setLastInviteLink(result.inviteLink);
-      setTimeout(() => setInviteSuccess(null), 5000);
     } catch (err: any) {
       console.error("Invite failed:", err);
       setInviteError(err.message || "Failed to invite member. Please try again.");
     } finally {
       setInviting(false);
+    }
+  };
+
+  // Handle removing a confirmed member (organizer only)
+  const handleRemoveMember = async (memberId: string) => {
+    if (!activeTripId || !isOrganizer) return;
+    if (!window.confirm("Remove this member from the group? They will no longer appear in future invitation emails.")) return;
+    setRemovingMemberId(memberId);
+    try {
+      const result = await apiFetch(`/api/trips/${activeTripId}/members/${memberId}`, {
+        method: "DELETE",
+      });
+      queryClient.setQueryData(queryKeys.trips(), (old: Trip[] = []) =>
+        old.map((t) => (t._id === (result.trip?._id || activeTripId) ? (result.trip || t) : t)),
+      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.trips() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tripDetails(activeTripId) });
+    } catch (err: any) {
+      console.error("Remove member failed:", err);
+      setError(err.message || "Failed to remove member. Please try again.");
+    } finally {
+      setRemovingMemberId(null);
     }
   };
 
@@ -818,6 +799,21 @@ function Consensus() {
                           )}
                         </div>
                       </div>
+                      {/* Organizer can remove non-organizer members who aren't themselves */}
+                      {isOrganizer && !m.isOrganizer && (
+                        <button
+                          onClick={() => handleRemoveMember(m.key)}
+                          disabled={removingMemberId === m.key}
+                          className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40"
+                          title="Remove member"
+                        >
+                          {removingMemberId === m.key ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <UserMinus className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -915,9 +911,26 @@ function Consensus() {
                       </Button>
                     </form>
 
-                    {/* WhatsApp Share Button — shares the last generated invite link */}
+                    {/* Direct Invite Link & WhatsApp Share */}
                     {lastInviteLink && (
-                      <div className="mt-3">
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            readOnly
+                            value={lastInviteLink}
+                            className="h-8 text-[11px] bg-background/50 font-mono text-muted-foreground select-all"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={handleCopyLink}
+                            className="h-8 text-xs shrink-0 px-2.5"
+                          >
+                            {copiedLink ? <Check className="h-3.5 w-3.5 text-emerald-500 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+                            <span>{copiedLink ? "Copied" : "Copy"}</span>
+                          </Button>
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
@@ -926,7 +939,7 @@ function Consensus() {
                             );
                             window.open(`https://wa.me/?text=${msg}`, "_blank", "noopener,noreferrer");
                           }}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#25D366]/40 bg-[#25D366]/10 px-4 py-2.5 text-xs font-semibold text-[#25D366] transition hover:bg-[#25D366]/20 active:scale-[0.98]"
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#25D366]/40 bg-[#25D366]/10 px-4 py-2 text-xs font-semibold text-[#25D366] transition hover:bg-[#25D366]/20 active:scale-[0.98]"
                         >
                           <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg">
                             <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
@@ -964,57 +977,6 @@ function Consensus() {
                   </svg>
                   Share on WhatsApp
                 </button>
-              </div>
-
-              {/* Explainable AI & Consensus Analysis */}
-              <div className="rounded-3xl glass-panel p-6 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-bold text-base">Consensus Analysis</h3>
-                    <AiBadge>Explainable AI</AiBadge>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Advenza uses multi-factor preference scoring rather than simple majority rule,
-                    ensuring balanced satisfaction across every companion.
-                  </p>
-
-                  {winningOption ? (
-                    <div className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 p-3 text-xs">
-                      <p className="font-medium text-foreground">
-                        <span className="text-primary font-bold">{winningOption.name}</span> leads with{" "}
-                        <span className="text-primary font-bold">{consensusPercentage}%</span> group agreement.
-                      </p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        High alignment detected across cultural and leisure preferences.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-2xl border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
-                      Awaiting votes to synthesize group satisfaction and radar alignment.
-                    </div>
-                  )}
-                </div>
-
-                {/* Radar Chart */}
-                <div className="mt-5 pt-4 border-t border-border/60">
-                  <p className="text-[11px] font-semibold text-center text-muted-foreground mb-2">
-                    Category Alignment Radar
-                  </p>
-                  <RadarChart
-                    values={CATS.map((cat, i) => {
-                      if (!winningOption) return 45;
-                      const text = `${winningOption.name} ${(activeTrip.interests || []).join(" ")} ${activeTrip.style || ""}`.toLowerCase();
-                      const match = text.includes(cat) ||
-                        (cat === "food" && (text.includes("food") || text.includes("beach") || text.includes("tour"))) ||
-                        (cat === "adventure" && (text.includes("hike") || text.includes("outdoor") || text.includes("adventure") || text.includes("trek"))) ||
-                        (cat === "history" && (text.includes("culture") || text.includes("landmark") || text.includes("sightseeing") || text.includes("heritage"))) ||
-                        (cat === "nature" && (text.includes("nature") || text.includes("outdoor") || text.includes("beach"))) ||
-                        (cat === "nightlife" && (text.includes("night") || text.includes("evening") || text.includes("vibrant")));
-                      return match ? 85 + (i % 3) * 4 : 60 + (i % 2) * 8;
-                    })}
-                    size={190}
-                  />
-                </div>
               </div>
             </div>
           </div>

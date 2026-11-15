@@ -11,6 +11,9 @@ import { hotelProvider } from "../travel/providers/hotel.provider.js";
 import { flightProvider } from "../travel/providers/flight.provider.js";
 import { computeJourneys } from "../travel/journey-engine.service.js";
 import { fetchDestinationImage } from "../media/destination-image.service.js";
+import { placeDiscoveryService } from "../places/place-discovery.service.js";
+import { destinationDurationService } from "../places/destination-duration.service.js";
+import { conversationalAIService } from "./conversational-ai.service.js";
 import { NotFoundError, ValidationError } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
 import { config } from "../../config/env.js";
@@ -23,7 +26,7 @@ const PACKING_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 const riskResultCache = new Map();
 const RISK_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
-function getRegionalSafetyFallback(city) {
+export function getRegionalSafetyFallback(city) {
   const c = (city || "").toLowerCase();
 
   // Himalayan & Hill Stations
@@ -180,6 +183,8 @@ export class AIService {
       origin,
       startDate,
       endDate,
+      duration,
+      durationMode = "RECOMMENDED",
       budget,
       style,
       interests,
@@ -242,13 +247,15 @@ export class AIService {
       status: rawReturn.status || (rawReturn.booked ? "CONFIRMED" : "ESTIMATED"),
     };
 
-    // ── Concurrently compute journeys, fetch weather & hero image ──
+    // ── Concurrently compute journeys, fetch weather, hero image & verified places ──
     let computedJourneys = { outboundJourney: structuredOutbound, returnJourney: structuredReturn, tripTiming: body.tripTiming || {} };
     let weatherResult = { weatherData: null, weatherInfo: "" };
     let heroImage = null;
+    let verifiedPlaces = [];
+    let durationRecommendation = null;
 
     try {
-      const [journeys, weather, img] = await Promise.all([
+      const [journeys, weather, img, places, destOverview] = await Promise.all([
         computeJourneys({
           origin,
           destination,
@@ -271,7 +278,10 @@ export class AIService {
           logger.warn(`[AIService] Journey engine failed (non-fatal): ${err.message}`);
           return { outboundJourney: structuredOutbound, returnJourney: structuredReturn, tripTiming: body.tripTiming || {} };
         }),
-        fetchWeather(destination).catch((err) => {
+        fetchWeather(destination, config.WEATHER_API_KEY || config.OPENWEATHER_API_KEY || config.VITE_WEATHER_API_KEY, false, {
+          startDate,
+          endDate,
+        }).catch((err) => {
           logger.warn(`[AIService] Weather fetch failed (non-fatal): ${err.message}`);
           return { weatherData: null, weatherInfo: "" };
         }),
@@ -279,11 +289,32 @@ export class AIService {
           logger.warn(`[AIService] Image fetch failed (non-fatal): ${err.message}`);
           return null;
         }),
+        placeDiscoveryService
+          .discoverPlacesForInterests({
+            destination,
+            interests: interests || [],
+            dates: expectedDates,
+          })
+          .catch((err) => {
+            logger.warn(`[AIService] Place discovery failed (non-fatal): ${err.message}`);
+            return [];
+          }),
+        destinationDurationService
+          .getDestinationOverview({
+            destination,
+            interests: interests || [],
+          })
+          .catch((err) => {
+            logger.warn(`[AIService] Destination duration overview failed (non-fatal): ${err.message}`);
+            return null;
+          }),
       ]);
 
       computedJourneys = journeys;
       weatherResult = weather;
-      heroImage = img;
+      heroImage = img || destOverview?.heroImage || null;
+      verifiedPlaces = places || [];
+      durationRecommendation = destOverview?.durationRecommendation || null;
     } catch (preErr) {
       logger.warn(`[AIService] Pre-generation fetch error: ${preErr.message}`);
     }
@@ -335,6 +366,9 @@ export class AIService {
       checkOutTime: checkOutTime || "",
       weatherInfo: weatherResult.weatherInfo || "",
       weatherData: weatherResult.weatherData || null,
+      verifiedPlaces,
+      durationMode: body.durationMode === "CUSTOM" ? "CUSTOM" : "RECOMMENDED",
+      durationRecommendation,
     };
 
     const prompt = buildItineraryPrompt(promptParams, expectedDates);
@@ -344,7 +378,7 @@ export class AIService {
       {
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 8192,
+        maxTokens: 4096,
       },
       { maxAttempts: 2 }
     );
@@ -360,6 +394,7 @@ export class AIService {
       tripTiming: computedJourneys.tripTiming,
       style: style || "Balanced",
       interests: interests || [],
+      verifiedPlaces,
     });
 
     const tripData = {
@@ -376,6 +411,8 @@ export class AIService {
       style: style || "Balanced",
       startDate,
       endDate,
+      duration: body.duration ? Number(body.duration) : numDays,
+      durationMode: body.durationMode === "CUSTOM" ? "CUSTOM" : "RECOMMENDED",
       interests: Array.isArray(interests) ? interests : interests ? [String(interests)] : [],
       travelMode: travelMode || "",
       departureHub: departureHub || "",
@@ -450,16 +487,18 @@ export class AIService {
       return parts.length ? parts.join(", ") : "not specified";
     })();
 
-    // ── Pre-regeneration: compute journeys and fetch weather ──
+    // ── Pre-regeneration: compute journeys, fetch weather & verified places ──
     let regenJourneys = {
       outboundJourney: body.outboundJourney || trip.outboundJourney || {},
       returnJourney: body.returnJourney || returnJourney || trip.returnJourney || {},
       tripTiming: body.tripTiming || trip.tripTiming || {},
     };
     let weatherResult = { weatherData: null, weatherInfo: "" };
+    let verifiedPlaces = [];
+    let durationRecommendation = null;
 
     try {
-      const [journeys, weather] = await Promise.all([
+      const [journeys, weather, places, destOverview] = await Promise.all([
         computeJourneys({
           origin,
           destination,
@@ -482,14 +521,38 @@ export class AIService {
           logger.warn(`[AIService] Journey engine failed on regen (non-fatal): ${err.message}`);
           return regenJourneys;
         }),
-        fetchWeather(destination).catch((err) => {
-          logger.warn(`[AIService] Weather fetch failed on regen: ${err.message}`);
+        fetchWeather(destination, config.WEATHER_API_KEY || config.OPENWEATHER_API_KEY || config.VITE_WEATHER_API_KEY, false, {
+          startDate,
+          endDate,
+        }).catch((err) => {
+          logger.warn(`[AIService] Weather fetch failed on regen (non-fatal): ${err.message}`);
           return { weatherData: null, weatherInfo: "" };
         }),
+        placeDiscoveryService
+          .discoverPlacesForInterests({
+            destination,
+            interests: interests || [],
+            dates: expectedDates,
+          })
+          .catch((err) => {
+            logger.warn(`[AIService] Place discovery failed on regen (non-fatal): ${err.message}`);
+            return [];
+          }),
+        destinationDurationService
+          .getDestinationOverview({
+            destination,
+            interests: interests || [],
+          })
+          .catch((err) => {
+            logger.warn(`[AIService] Destination duration overview failed on regen (non-fatal): ${err.message}`);
+            return null;
+          }),
       ]);
 
       regenJourneys = journeys;
       weatherResult = weather;
+      verifiedPlaces = places || [];
+      durationRecommendation = destOverview?.durationRecommendation || null;
     } catch (preErr) {
       logger.warn(`[AIService] Pre-regeneration fetch error: ${preErr.message}`);
     }
@@ -521,6 +584,9 @@ export class AIService {
       checkOutTime,
       weatherInfo: weatherResult.weatherInfo || "",
       weatherData: weatherResult.weatherData || null,
+      verifiedPlaces,
+      durationMode: body.durationMode === "CUSTOM" ? "CUSTOM" : "RECOMMENDED",
+      durationRecommendation,
     };
 
     const prompt = buildItineraryPrompt(promptParams, expectedDates);
@@ -530,7 +596,7 @@ export class AIService {
       {
         messages: [{ role: "user", content: prompt }],
         temperature: 0.8,
-        max_tokens: 8192,
+        maxTokens: 4096,
       },
       { maxAttempts: 2 }
     );
@@ -546,6 +612,7 @@ export class AIService {
       tripTiming: regenJourneys.tripTiming,
       style,
       interests,
+      verifiedPlaces,
     });
 
     trip.title = sanitized.title || trip.title;
@@ -556,6 +623,8 @@ export class AIService {
     trip.days = sanitized.days;
     trip.startDate = startDate;
     trip.endDate = endDate;
+    trip.duration = body.duration ? Number(body.duration) : numDays;
+    trip.durationMode = body.durationMode || trip.durationMode || "RECOMMENDED";
     trip.budgetTotal = budgetNum;
     trip.style = style;
     trip.interests = interests;
@@ -698,49 +767,17 @@ STRICT RESCHEDULING & PRESERVATION RULES:
   }
 
   /**
-   * Chat with AI about travel, augmented with Google Search RAG.
+   * Chat with AI about travel, powered by ConversationalAIService with full intent recognition,
+   * multi-turn memory, real place discovery, and anti-hallucination verification.
    */
-  async chatWithTravelAI(messages = []) {
-    let liveContext = "";
-    try {
-      const lastUserMessage = messages.filter((m) => m.role === "user").pop();
-      const content = lastUserMessage?.content || lastUserMessage?.text || "";
-      if (content.length > 10) {
-        const searchRes = await google.search(content, {
-          page: 0,
-          safe: false,
-          parse_ads: false,
-        });
-
-        if (searchRes.results && searchRes.results.length > 0) {
-          liveContext =
-            "\n\n--- LIVE REAL-TIME SEARCH CONTEXT ---\n(Use this verified info to answer the user if relevant to their question):\n";
-          searchRes.results.slice(0, 4).forEach((r, i) => {
-            liveContext += `[Source ${i + 1}] ${r.title} - ${r.description}\n`;
-          });
-        }
-      }
-    } catch (searchErr) {
-      logger.warn(`[AIService] Live search failed: ${searchErr.message}`);
+  async chatWithTravelAI(options = []) {
+    let payload = {};
+    if (Array.isArray(options)) {
+      payload = { messages: options };
+    } else if (typeof options === "object" && options !== null) {
+      payload = options;
     }
-
-    const systemPrompt = `You are Advenza, a premium AI travel assistant specialized in Indian travel.
-You help users plan detailed itineraries, find local food and stays, optimize budgets (quote in ₹ INR), and provide cultural tips.
-CRITICAL RULES FOR LOCAL TRANSIT:
-1. NEVER invent specific bus numbers or local train schedules unless certain.
-2. Recommend checking local apps like M-Indicator or Google Maps for exact timings.
-Keep responses concise (under 150 words), specific, and actionable.${liveContext}`;
-
-    const completion = await aiRouter.callAI({
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messages.map((m) => ({ role: m.role, content: m.text || m.content })),
-      ],
-      temperature: 0.9,
-      max_tokens: 400,
-    });
-
-    return { reply: completion.content };
+    return await conversationalAIService.handleChat(payload);
   }
 
   /**
@@ -786,48 +823,62 @@ Make items specific to ${destination}'s climate, culture, and activities. 3-4 it
    */
   async evaluateRisk({ destination, tripId, refresh, userId }) {
     const normalizedDest = normalizeDestination(destination);
-    const cacheKey = `${normalizedDest.toLowerCase()}_${tripId || "general"}`;
-
-    if (!refresh) {
-      const cached = riskResultCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < RISK_CACHE_TTL) {
-        logger.debug(`[Risk] Returning cached risk analysis for ${normalizedDest}`);
-        return cached.data;
-      }
-    }
 
     let trip = null;
     if (tripId) {
       try {
-        trip = await Trip.findById(tripId).lean();
+        const foundTrip = await Trip.findById(tripId).lean();
+        if (foundTrip) {
+          const tripDestNorm = normalizeDestination(foundTrip.destination || "").toLowerCase();
+          const targetNorm = normalizedDest.toLowerCase();
+          // Verify trip matches target destination
+          if (tripDestNorm.includes(targetNorm) || targetNorm.includes(tripDestNorm)) {
+            trip = foundTrip;
+          } else {
+            logger.debug(`[Risk] tripId ${tripId} destination "${foundTrip.destination}" does not match requested "${destination}". Evaluating city-level.`);
+          }
+        }
       } catch (e) {
         logger.warn(`[Risk] Failed to load tripId ${tripId}: ${e.message}`);
       }
     }
-    if (!trip && userId) {
-      try {
-        trip = await Trip.findOne({ createdBy: userId, destination: new RegExp(normalizedDest, "i") })
-          .sort({ createdAt: -1 })
-          .lean();
-      } catch (e) {
-        // ignore
+
+    const effectiveTripId = trip ? String(trip._id) : "general";
+    const cacheKey = `${normalizedDest.toLowerCase()}_${effectiveTripId}`;
+
+    if (!refresh) {
+      const cached = riskResultCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < RISK_CACHE_TTL) {
+        // If trip was updated after cache timestamp, invalidate cache to reflect fresh itinerary/dates
+        const tripModifiedAfterCache = trip?.updatedAt && new Date(trip.updatedAt).getTime() > cached.timestamp;
+        if (!tripModifiedAfterCache) {
+          logger.debug(`[Risk] Returning cached risk analysis for ${normalizedDest}`);
+          return cached.data;
+        }
       }
     }
 
     const apiKey = config.WEATHER_API_KEY || config.OPENWEATHER_API_KEY || config.VITE_WEATHER_API_KEY;
-    const weatherResult = await fetchWeather(normalizedDest, apiKey, !!refresh);
+    const weatherResult = await fetchWeather(normalizedDest, apiKey, !!refresh, {
+      startDate: trip?.startDate,
+      endDate: trip?.endDate,
+    });
     const weatherData = weatherResult.weatherData;
     const resolvedCity = weatherResult.resolvedCity || normalizedDest;
 
     const evaluated = evaluateRiskEngine({ destination: resolvedCity, trip, weatherData });
 
-    let safetyAdvisory = `Favorable conditions in ${resolvedCity}. Standard travel safety guidelines apply.`;
+    let safetyAdvisory = "";
     let localRisks = [];
 
     try {
+      const weatherLine = weatherData && weatherData.isForecastAvailable !== false
+        ? `Forecast for travel window in ${resolvedCity}: ${weatherData.temp}°C, ${weatherData.condition}, ${weatherData.rainChance}% daily max precipitation probability.`
+        : `Live 5-day meteorological forecast is not yet open for these future travel dates in ${resolvedCity}. Consider seasonal regional climate norms.`;
+
       const prompt = `You are Advenza's Travel Risk & Safety Intelligence Engine.
 Analyze genuine, localized safety, transit navigation, and scam considerations for travelers in "${resolvedCity}".
-Current weather in ${resolvedCity}: ${weatherData ? `${weatherData.temp}°C, ${weatherData.condition}, ${weatherData.rainChance}% rain chance` : "Normal seasonal"}.
+${weatherLine}
 
 Output STRICTLY a JSON object with this exact structure:
 {
@@ -840,7 +891,7 @@ Output STRICTLY a JSON object with this exact structure:
       "summary": "Specific facts about getting around ${resolvedCity} (e.g., metro/subway smart cards, licensed taxis vs unmarked touts, airport connectivity). Do NOT be generic.",
       "tips": ["Concrete tip 1 for ${resolvedCity}", "Concrete tip 2 for ${resolvedCity}"],
       "recommendation": "Main takeaway for navigating ${resolvedCity}",
-      "source": "Local Transit & Navigation Analysis"
+      "source": "Local Travel Intelligence (AI Assessed)"
     },
     {
       "key": "scams_local",
@@ -849,7 +900,7 @@ Output STRICTLY a JSON object with this exact structure:
       "summary": "Real specific scams or tourist traps known in ${resolvedCity} (e.g. ticket touts, fake tour operators, photo fee demands, overcharging). Specific to ${resolvedCity}.",
       "tips": ["Concrete tip 1", "Concrete tip 2"],
       "recommendation": "Main takeaway to protect money and valuables",
-      "source": "Tourist Safety Registry"
+      "source": "Tourist Safety Registry (AI Assessed)"
     },
     {
       "key": "health_local",
@@ -858,7 +909,7 @@ Output STRICTLY a JSON object with this exact structure:
       "summary": "Environmental, air quality, altitude, tap water, or late-night neighborhood notes specific to ${resolvedCity}.",
       "tips": ["Health/water tip", "Neighborhood safety tip"],
       "recommendation": "Precautionary action",
-      "source": "Regional Health & Advisory Bureau"
+      "source": "Regional Health Advisory (AI Assessed)"
     }
   ]
 }`;
@@ -881,7 +932,7 @@ Output STRICTLY a JSON object with this exact structure:
             summary: item.summary || `Safety context for ${resolvedCity}.`,
             tips: Array.isArray(item.tips) && item.tips.length > 0 ? item.tips : ["Follow local advisories"],
             recommendation: item.recommendation || (item.tips && item.tips[0]) || "Standard precautions apply.",
-            source: item.source || "Local Travel Intelligence",
+            source: item.source || "Local Travel Intelligence (AI Assessed)",
           }));
         }
       }
@@ -894,6 +945,19 @@ Output STRICTLY a JSON object with this exact structure:
       localRisks = getRegionalSafetyFallback(resolvedCity);
     }
 
+    // Context-aware safety advisory fallback if AI did not provide one
+    if (!safetyAdvisory) {
+      if (weatherData && weatherData.isForecastAvailable === false) {
+        safetyAdvisory = `Trip scheduled beyond current 5-day meteorological forecast horizon. Live precipitation radar activates 5 days prior to departure. Standard regional safety guidelines apply.`;
+      } else if (weatherData && (weatherData.rainChance >= 60 || (weatherData.temp !== null && weatherData.temp >= 38) || (weatherData.temp !== null && weatherData.temp <= 0))) {
+        safetyAdvisory = `Adverse weather conditions reported in ${resolvedCity} (${weatherData.condition}, ${weatherData.temp}°C, ${weatherData.rainChance}% rain). Review outdoor transit and timing advisories before departure.`;
+      } else if (evaluated.risks.some((r) => r.level === "high" || r.level === "critical")) {
+        safetyAdvisory = `Active travel logistics advisories detected for your trip to ${resolvedCity}. Review connection buffers and check-in schedules.`;
+      } else {
+        safetyAdvisory = `Favorable weather and travel conditions in ${resolvedCity}. Standard urban and regional travel guidelines apply.`;
+      }
+    }
+
     // Calibrated score: Telemetry score + weighted local risk levels (if medium/high)
     let additionalScore = 0;
     localRisks.forEach((r) => {
@@ -904,7 +968,18 @@ Output STRICTLY a JSON object with this exact structure:
     const finalScore = Math.max(10, Math.min(95, evaluated.score + additionalScore));
     const finalOverallLevel = finalScore >= 75 ? "CRITICAL" : finalScore >= 50 ? "HIGH" : finalScore >= 25 ? "MEDIUM" : "LOW";
 
-    const allRisks = [...evaluated.risks, ...localRisks];
+    // Deduplicate any overlapping keys between telemetry risks and local risks
+    const seenKeys = new Set();
+    const allRisks = [];
+    [...evaluated.risks, ...localRisks].forEach((r) => {
+      let uniqueKey = r.key;
+      let counter = 1;
+      while (seenKeys.has(uniqueKey)) {
+        uniqueKey = `${r.key}_${counter++}`;
+      }
+      seenKeys.add(uniqueKey);
+      allRisks.push({ ...r, key: uniqueKey });
+    });
 
     const responsePayload = {
       score: finalScore,
@@ -1005,6 +1080,13 @@ Output STRICTLY a JSON object with this exact structure:
       source: "Advenza Travel Data Engine & Normalized Stays",
       disclaimer: "This is an ESTIMATED budget. Actual prices may change before booking.",
     };
+  }
+
+  /**
+   * Generates a smart destination overview with duration recommendations and hidden gems.
+   */
+  async getDestinationOverview({ destination, interests }) {
+    return destinationDurationService.getDestinationOverview({ destination, interests });
   }
 }
 

@@ -24,10 +24,14 @@ import {
   Calendar,
   ShieldCheck,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Gem,
+  Star,
+  Info
 } from "lucide-react";
 import { cn, normalizeTimeTo24h, calculateInclusiveDays } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
+import { fetchDestinationOverview, type DestinationOverview } from "@/services/tripService";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -35,6 +39,7 @@ export const Route = createFileRoute("/trips/new")({ component: NewTrip });
 
 const steps = [
   "Destination",
+  "Destination Insights",
   "Dates & travelers",
   "Budget",
   "Interests & pace",
@@ -73,7 +78,30 @@ function NewTrip() {
   const [destination, setDestination] = useState("");
   const [originCity, setOriginCity] = useState("");
 
-  // ── Step 1: Dates & Travelers ──────────────────────────────────────────────
+  // ── Step 1: Destination Insights ───────────────────────────────────────────
+  const [destinationOverview, setDestinationOverview] = useState<DestinationOverview | null>(null);
+  const [isFetchingOverview, setIsFetchingOverview] = useState(false);
+  const [durationMode, setDurationMode] = useState<"RECOMMENDED" | "CUSTOM">("RECOMMENDED");
+  const [selectedDurationPlan, setSelectedDurationPlan] = useState<"min" | "recommended" | "extended">("recommended");
+  const [selectedDaysCount, setSelectedDaysCount] = useState<number | null>(null);
+
+  // Helper date utilities
+  const getDefaultStartDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split("T")[0];
+  };
+
+  const addDaysToDate = (startDateStr: string, daysToAdd: number) => {
+    if (!startDateStr) return "";
+    const [y, m, d] = startDateStr.split("-").map(Number);
+    if (!y || !m || !d) return "";
+    const date = new Date(Date.UTC(y, m - 1, d));
+    date.setUTCDate(date.getUTCDate() + daysToAdd);
+    return date.toISOString().split("T")[0];
+  };
+
+  // ── Step 2: Dates & Travelers ──────────────────────────────────────────────
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [travelers, setTravelers] = useState<string>("1");
@@ -138,14 +166,19 @@ function NewTrip() {
   // ── Per-step validation ────────────────────────────────────────────────────
   const canProceed = () => {
     if (step === 0) return destination.trim().length > 0;
-    if (step === 1) return startDate && endDate && endDate >= startDate && parseInt(travelers) >= 1;
-    if (step === 2) {
+    if (step === 1) {
+      if (isFetchingOverview) return false;
+      if (!startDate || !endDate || endDate < startDate) return false;
+      return true;
+    }
+    if (step === 2) return startDate && endDate && endDate >= startDate && parseInt(travelers) >= 1;
+    if (step === 3) {
       if (budget === "") return false;
       const b = parseInt(budget);
       if (isNaN(b) || b < 100) return false; // Block 2 digit numbers
       return true;
     }
-    return true; // Step 3 (Interests & Travel) has optional fields
+    return true; // Step 4 (Interests & Travel) and Step 5 (Review)
   };
 
   const fetchBudgetEstimate = async () => {
@@ -167,7 +200,34 @@ function NewTrip() {
 
   const handleNext = () => {
     if (!canProceed()) return;
-    if (step === 1 && minBudget === null && !isFetchingBudget) {
+    if (step === 0 && destination.trim()) {
+      setIsFetchingOverview(true);
+      fetchDestinationOverview(destination.trim(), interests)
+        .then((data) => {
+          setDestinationOverview(data);
+          const recDays = data?.durationRecommendation?.recommendedDays || 5;
+          // Auto-populate dates only if user is in RECOMMENDED mode and hasn't explicitly set custom dates
+          if (durationMode === "RECOMMENDED") {
+            const start = startDate || getDefaultStartDate();
+            setStartDate(start);
+            setSelectedDaysCount(recDays);
+            setSelectedDurationPlan("recommended");
+            const end = addDaysToDate(start, recDays - 1);
+            setEndDate(end);
+          } else {
+            if (!startDate) setStartDate(getDefaultStartDate());
+            if (!endDate && startDate) setEndDate(addDaysToDate(startDate, recDays - 1));
+            if (!selectedDaysCount) setSelectedDaysCount(recDays);
+          }
+        })
+        .catch((err) => {
+          console.warn("Destination overview fetch failed:", err);
+        })
+        .finally(() => {
+          setIsFetchingOverview(false);
+        });
+    }
+    if (step === 2 && minBudget === null && !isFetchingBudget) {
       fetchBudgetEstimate();
     }
     setStep((s) => s + 1);
@@ -211,6 +271,8 @@ function NewTrip() {
           origin: originCity.trim(),
           startDate,
           endDate,
+          duration: tripDays,
+          durationMode,
           budget: parseInt(budget) || 0,
           travelers: parseInt(travelers) || 1,
           // Travel detail fields (flat + structured)
@@ -367,8 +429,515 @@ function NewTrip() {
               </div>
             )}
 
-            {/* ── Step 1: Dates & Travelers ── */}
+            {/* ── Step 1: Destination Insights & Duration ── */}
             {step === 1 && (
+              <div className="space-y-6">
+                {isFetchingOverview ? (
+                  <div className="rounded-2xl border border-primary/20 bg-primary/5 p-8 text-center space-y-3">
+                    <div className="inline-block h-8 w-8 animate-spin rounded-full border-3 border-primary border-t-transparent" />
+                    <p className="text-sm font-semibold text-foreground">
+                      Analyzing {destination}...
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Discovering authentic hidden gems, popular attractions, and calculating ideal exploration duration.
+                    </p>
+                  </div>
+                ) : destinationOverview ? (
+                  <div className="space-y-6">
+                    {/* Destination Banner / Hero */}
+                    <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card p-5 md:p-6 shadow-sm">
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-display text-2xl font-bold tracking-tight text-foreground">
+                              {destinationOverview.destination}
+                            </h3>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs",
+                                destinationOverview.isUncertain
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                                  : "bg-primary/10 text-primary border-primary/20"
+                              )}
+                            >
+                              {destinationOverview.isUncertain ? "Baseline Estimate" : "Verified Intelligence"}
+                            </Badge>
+                          </div>
+                          <p className="mt-2 text-sm text-muted-foreground leading-relaxed max-w-2xl">
+                            {destinationOverview.overview}
+                          </p>
+                        </div>
+                        {destinationOverview.heroImage && (
+                          <div className="shrink-0 h-24 w-36 overflow-hidden rounded-xl border border-border/60">
+                            <img
+                              src={destinationOverview.heroImage}
+                              alt={destinationOverview.destination}
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Uncertainty Notice if applicable */}
+                      {destinationOverview.isUncertain && (
+                        <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                          <Info className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-semibold">Notice: </span>
+                            <span>
+                              {destinationOverview.uncertaintyReason ||
+                                "Limited verified catalog data for this destination. Advenza provides conservative pacing recommendations without displaying unverified attraction counts or speculative hidden gems."}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Stats row - only when verified places exist */}
+                      {destinationOverview.verifiedPlacesCount > 0 && (
+                        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/50 pt-4 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1 font-medium text-foreground">
+                            <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                            {destinationOverview.durationRecommendation.popularAttractionsCount} Popular Spots
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400">
+                            <Gem className="h-3.5 w-3.5 text-amber-500" />
+                            {destinationOverview.durationRecommendation.hiddenGemsCount} Hidden Gems
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3.5 w-3.5 text-primary" />
+                            {destinationOverview.durationRecommendation.regions.length} Key Regions
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Duration Mode & Recommendations Section */}
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <Label className="text-sm font-semibold">Exploration Duration & Dates</Label>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {destinationOverview.isUncertain
+                              ? "Select an Advenza baseline duration or choose your exact custom travel dates."
+                              : `Tailored dynamically for ${destinationOverview.destination}. Select a recommendation or set custom dates.`}
+                          </p>
+                        </div>
+
+                        {/* Mode Selector Toggle */}
+                        <div className="inline-flex rounded-xl bg-muted/60 p-1 border border-border/60 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDurationMode("RECOMMENDED");
+                              const recDays = destinationOverview?.durationRecommendation?.recommendedDays || 5;
+                              const start = startDate || getDefaultStartDate();
+                              if (!startDate) setStartDate(start);
+                              setSelectedDaysCount(recDays);
+                              setSelectedDurationPlan("recommended");
+                              setEndDate(addDaysToDate(start, recDays - 1));
+                            }}
+                            className={cn(
+                              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+                              durationMode === "RECOMMENDED"
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            <Sparkles className="h-3.5 w-3.5 text-primary" />
+                            Recommended
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDurationMode("CUSTOM");
+                              if (!startDate) setStartDate(getDefaultStartDate());
+                              if (!endDate && startDate) {
+                                setEndDate(addDaysToDate(startDate, (selectedDaysCount || 4) - 1));
+                              }
+                            }}
+                            className={cn(
+                              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+                              durationMode === "CUSTOM"
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            <Calendar className="h-3.5 w-3.5 text-primary" />
+                            Custom Dates
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* MODE A: Recommended Duration */}
+                      {durationMode === "RECOMMENDED" && (
+                        <div className="space-y-4">
+                          {/* Departure Start Date Picker */}
+                          <div className="rounded-xl border border-border/60 bg-background/50 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Calendar className="h-4 w-4 text-primary shrink-0" />
+                              <span>Trip Start Date (Departure):</span>
+                            </div>
+                            <Input
+                              type="date"
+                              value={startDate}
+                              onChange={(e) => {
+                                const newStart = e.target.value;
+                                setStartDate(newStart);
+                                if (selectedDaysCount && newStart) {
+                                  setEndDate(addDaysToDate(newStart, selectedDaysCount - 1));
+                                }
+                              }}
+                              className="h-9 w-full sm:w-44 rounded-lg text-xs"
+                            />
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            {/* Minimum */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedDurationPlan("min");
+                                const days = destinationOverview.durationRecommendation.minimumDays;
+                                setSelectedDaysCount(days);
+                                const start = startDate || getDefaultStartDate();
+                                if (!startDate) setStartDate(start);
+                                setEndDate(addDaysToDate(start, days - 1));
+                              }}
+                              className={cn(
+                                "rounded-xl border p-4 text-left transition-all",
+                                selectedDurationPlan === "min"
+                                  ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/30"
+                                  : "border-border bg-background/80 hover:border-primary/40",
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-muted-foreground">Minimum</span>
+                                {selectedDurationPlan === "min" && <Check className="h-3.5 w-3.5 text-primary" />}
+                              </div>
+                              <p className="mt-1 text-lg font-bold text-foreground">
+                                {destinationOverview.durationRecommendation.minRange}
+                              </p>
+                              <p className="mt-1 text-[11px] text-muted-foreground leading-normal">
+                                Covers main highlights and anchor attractions at a brisk pace.
+                              </p>
+                            </button>
+
+                            {/* Recommended */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedDurationPlan("recommended");
+                                const days = destinationOverview.durationRecommendation.recommendedDays;
+                                setSelectedDaysCount(days);
+                                const start = startDate || getDefaultStartDate();
+                                if (!startDate) setStartDate(start);
+                                setEndDate(addDaysToDate(start, days - 1));
+                              }}
+                              className={cn(
+                                "relative rounded-xl border p-4 text-left transition-all",
+                                selectedDurationPlan === "recommended"
+                                  ? "border-primary bg-primary/15 shadow-sm ring-1 ring-primary/40"
+                                  : "border-border bg-background/80 hover:border-primary/40",
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-primary">★ Recommended</span>
+                                {selectedDurationPlan === "recommended" && <Check className="h-3.5 w-3.5 text-primary" />}
+                              </div>
+                              <p className="mt-1 text-lg font-bold text-foreground">
+                                {destinationOverview.durationRecommendation.recommendedRange}
+                              </p>
+                              <p className="mt-1 text-[11px] text-muted-foreground leading-normal">
+                                Ideal balance: key landmarks, scenic spots, dining, and authentic hidden gems.
+                              </p>
+                            </button>
+
+                            {/* Extended */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedDurationPlan("extended");
+                                const days = destinationOverview.durationRecommendation.extendedDays;
+                                setSelectedDaysCount(days);
+                                const start = startDate || getDefaultStartDate();
+                                if (!startDate) setStartDate(start);
+                                setEndDate(addDaysToDate(start, days - 1));
+                              }}
+                              className={cn(
+                                "rounded-xl border p-4 text-left transition-all",
+                                selectedDurationPlan === "extended"
+                                  ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/30"
+                                  : "border-border bg-background/80 hover:border-primary/40",
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-muted-foreground">Extended</span>
+                                {selectedDurationPlan === "extended" && <Check className="h-3.5 w-3.5 text-primary" />}
+                              </div>
+                              <p className="mt-1 text-lg font-bold text-foreground">
+                                {destinationOverview.durationRecommendation.extendedRange}
+                              </p>
+                              <p className="mt-1 text-[11px] text-muted-foreground leading-normal">
+                                Deep dive with regional day trips and unhurried local exploration.
+                              </p>
+                            </button>
+                          </div>
+
+                          {/* Scheduled dates preview banner */}
+                          {startDate && endDate && (
+                            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">
+                                Scheduled Trip Window:
+                              </span>
+                              <span className="font-semibold text-foreground">
+                                {startDate} → {endDate} ({selectedDaysCount || tripDays} days, {Math.max(0, (selectedDaysCount || tripDays) - 1)} nights)
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* MODE B: Custom Duration Selection */}
+                      {durationMode === "CUSTOM" && (
+                        <div className="space-y-3.5 rounded-2xl border border-primary/30 bg-card p-4 md:p-5 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                              <Calendar className="h-4 w-4 text-primary" />
+                              Custom Travel Dates
+                            </span>
+                            <Badge variant="outline" className="text-[11px] border-primary/30 text-primary">
+                              User Controlled Dates
+                            </Badge>
+                          </div>
+
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <Label className="text-xs font-medium">Trip Start Date</Label>
+                              <Input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="mt-1.5 h-11 rounded-xl text-xs font-medium"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs font-medium">Trip End Date</Label>
+                              <Input
+                                type="date"
+                                value={endDate}
+                                min={startDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="mt-1.5 h-11 rounded-xl text-xs font-medium"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Calculated Duration Display */}
+                          {startDate && endDate && (
+                            <div className="rounded-xl border border-border/70 bg-muted/30 p-3.5 flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Calculated Duration:</span>
+                              <span className="font-semibold text-foreground text-sm">
+                                {startDate === endDate
+                                  ? "1 Calendar Day (Day Trip / 0 Nights)"
+                                  : `${tripDays} Calendar Days (${Math.max(0, tripDays - 1)} Nights)`}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Date Range Validation Error */}
+                          {startDate && endDate && endDate < startDate && (
+                            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center gap-2">
+                              <Info className="h-4 w-4 shrink-0" />
+                              <span>End date cannot be earlier than start date.</span>
+                            </div>
+                          )}
+
+                          {/* Pacing Feedback Warnings (Helpful, Non-blocking) */}
+                          {startDate && endDate && endDate >= startDate && (
+                            <>
+                              {/* Shorter than recommended minimum */}
+                              {tripDays < destinationOverview.durationRecommendation.minimumDays && (
+                                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                                  <Info className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <span className="font-semibold">Pacing Notice: </span>
+                                    <span>
+                                      Your selected duration of {tripDays} day{tripDays !== 1 ? "s" : ""} is shorter than the recommended minimum of {destinationOverview.durationRecommendation.minimumDays} days for {destinationOverview.destination}. Advenza will prioritize your top interests and must-see landmarks, skipping lower-priority stops so you are not rushed.
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Longer than recommended extended */}
+                              {tripDays > destinationOverview.durationRecommendation.extendedDays && (
+                                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs text-foreground/90 flex items-start gap-2.5">
+                                  <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                                  <div>
+                                    <span className="font-semibold text-primary">Extended Exploration: </span>
+                                    <span>
+                                      With {tripDays} days, Advenza will weave in authentic hidden gems, deeper neighborhood exploration, and suggested regional day trips without repeating activities.
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Within ideal range */}
+                              {tripDays >= destinationOverview.durationRecommendation.minimumDays &&
+                                tripDays <= destinationOverview.durationRecommendation.extendedDays && (
+                                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2.5">
+                                    <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                    <div>
+                                      <span className="font-semibold">Optimal Duration: </span>
+                                      <span>
+                                        Your {tripDays}-day plan comfortably matches Advenza's recommended {destinationOverview.durationRecommendation.recommendedRange} exploration window.
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Why Recommended Explanation */}
+                      {destinationOverview.durationRecommendation.whyRecommended && (
+                        <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs text-foreground/90 flex items-start gap-2.5">
+                          <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-semibold text-primary">Why this duration: </span>
+                            <span>{destinationOverview.durationRecommendation.whyRecommended}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Interest Alignment Note */}
+                      {destinationOverview.durationRecommendation.interestAlignmentNote && (
+                        <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                          <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-semibold">Interest Insight: </span>
+                            <span>{destinationOverview.durationRecommendation.interestAlignmentNote}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Discovered Highlights: Popular vs Hidden Gems (only when highlights exist) */}
+                    {(destinationOverview.durationRecommendation.popularHighlights.length > 0 ||
+                      destinationOverview.durationRecommendation.hiddenGemHighlights.length > 0) && (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {/* Popular Highlights */}
+                        {destinationOverview.durationRecommendation.popularHighlights.length > 0 && (
+                          <div className="rounded-2xl border border-border/70 bg-card p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                                Popular Attractions
+                              </h4>
+                              <span className="text-[11px] text-muted-foreground">
+                                {destinationOverview.durationRecommendation.popularHighlights.length} shown
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              {destinationOverview.durationRecommendation.popularHighlights.map((p, idx) => (
+                                <div key={idx} className="rounded-lg border border-border/50 bg-background/50 p-2.5 text-xs">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-medium text-foreground">{p.name}</span>
+                                    <Badge variant="secondary" className="text-[10px] py-0 px-1.5">{p.region}</Badge>
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground mt-0.5">{p.matchReason || p.category}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Hidden Gems Highlights */}
+                        {destinationOverview.durationRecommendation.hiddenGemHighlights.length > 0 && (
+                          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                                <Gem className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                Authentic Hidden Gems
+                              </h4>
+                              <span className="text-[11px] text-amber-700/80 dark:text-amber-400">
+                                {destinationOverview.durationRecommendation.hiddenGemHighlights.length} discovered
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              {destinationOverview.durationRecommendation.hiddenGemHighlights.map((g, idx) => (
+                                <div key={idx} className="rounded-lg border border-amber-500/20 bg-background/60 p-2.5 text-xs">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-semibold text-foreground flex items-center gap-1">
+                                      <span>💎</span> {g.name}
+                                    </span>
+                                    <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-amber-500/30 text-amber-700 dark:text-amber-300">
+                                      {g.region}
+                                    </Badge>
+                                  </div>
+                                  {g.whySpecial && (
+                                    <p className="text-[11px] text-amber-800 dark:text-amber-300/90 mt-1 italic">
+                                      Why it's special: {g.whySpecial}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Geographic Regions & Day Trips */}
+                    {(destinationOverview.durationRecommendation.regions.length > 0 ||
+                      destinationOverview.durationRecommendation.dayTrips.length > 0) && (
+                      <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-3 text-xs">
+                        {destinationOverview.durationRecommendation.regions.length > 0 && (
+                          <div>
+                            <span className="font-semibold text-muted-foreground">Geographic Regions: </span>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {destinationOverview.durationRecommendation.regions.map((r, i) => (
+                                <Badge key={i} variant="outline" className="text-xs">
+                                  {r}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {destinationOverview.durationRecommendation.dayTrips.length > 0 && (
+                          <div className="pt-2 border-t border-border/40">
+                            <span className="font-semibold text-muted-foreground">Suggested Day Trips: </span>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {destinationOverview.durationRecommendation.dayTrips.map((d, i) => (
+                                <Badge key={i} variant="secondary" className="text-xs">
+                                  {d}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-border/70 bg-muted/20 p-6 text-center space-y-3">
+                    <Compass className="h-8 w-8 text-primary mx-auto" />
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Destination: {destination}
+                    </h3>
+                    <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                      Click continue to set your preferred travel dates and travelers for this journey.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Step 2: Dates & Travelers ── */}
+            {step === 2 && (
               <div className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
@@ -376,7 +945,10 @@ function NewTrip() {
                     <Input
                       type="date"
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        setDurationMode("CUSTOM");
+                      }}
                       className="mt-1.5 h-12 rounded-xl"
                     />
                   </div>
@@ -386,7 +958,10 @@ function NewTrip() {
                       type="date"
                       value={endDate}
                       min={startDate}
-                      onChange={(e) => setEndDate(e.target.value)}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        setDurationMode("CUSTOM");
+                      }}
                       className="mt-1.5 h-12 rounded-xl"
                     />
                   </div>
@@ -411,8 +986,46 @@ function NewTrip() {
                 </div>
                 {startDate && endDate && (
                   <div className="rounded-xl border border-border/70 bg-muted/30 p-3.5 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Calendar trip duration:</span>
-                    <span className="font-semibold text-foreground">{tripDays} calendar day{tripDays !== 1 ? "s" : ""}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Trip duration:</span>
+                      <Badge variant="outline" className="text-[11px]">
+                        {durationMode === "CUSTOM" ? "Custom Duration" : "Advenza Recommended"}
+                      </Badge>
+                    </div>
+                    <span className="font-semibold text-foreground">
+                      {startDate === endDate
+                        ? "1 calendar day (Day Trip / 0 nights)"
+                        : `${tripDays} calendar day${tripDays !== 1 ? "s" : ""} (${Math.max(0, tripDays - 1)} night${Math.max(0, tripDays - 1) !== 1 ? "s" : ""})`}
+                    </span>
+                  </div>
+                )}
+                {destinationOverview && startDate && endDate && endDate >= startDate && tripDays < destinationOverview.durationRecommendation.minimumDays && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                    <Info className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold">Pacing Notice: </span>
+                      <span>
+                        Your selected duration of {tripDays} day{tripDays !== 1 ? "s" : ""} is shorter than the recommended minimum of {destinationOverview.durationRecommendation.minimumDays} days for {destination}. Advenza will prioritize your top interests and must-see landmarks.
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {selectedDaysCount && durationMode === "RECOMMENDED" && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 flex items-center justify-between text-xs">
+                    <span className="text-foreground/90">
+                      Target duration recommended for {destination}: <strong>{selectedDaysCount} days</strong>
+                    </span>
+                    {startDate && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEndDate(addDaysToDate(startDate, selectedDaysCount - 1));
+                        }}
+                        className="text-primary hover:underline font-semibold"
+                      >
+                        Set end date ({selectedDaysCount} days)
+                      </button>
+                    )}
                   </div>
                 )}
                 {endDate && startDate && endDate < startDate && (
@@ -421,8 +1034,8 @@ function NewTrip() {
               </div>
             )}
 
-            {/* ── Step 2: Budget ── */}
-            {step === 2 && (
+            {/* ── Step 3: Budget ── */}
+            {step === 3 && (
               <div className="space-y-6">
                 <div>
                   <Label className="text-xs font-medium">Total budget (₹ INR)</Label>
@@ -463,8 +1076,8 @@ function NewTrip() {
               </div>
             )}
 
-            {/* ── Step 3: Interests, Pace & Travel Details ── */}
-            {step === 3 && (
+            {/* ── Step 4: Interests, Pace & Travel Details ── */}
+            {step === 4 && (
               <div className="space-y-6">
                 <div>
                   <Label className="text-xs font-medium">Trip pace / style</Label>
@@ -815,8 +1428,8 @@ function NewTrip() {
               </div>
             )}
 
-            {/* ── Step 4: Review ── */}
-            {step === 4 && (
+            {/* ── Step 5: Review ── */}
+            {step === 5 && (
               <div className="space-y-5">
                 <div className="rounded-2xl glass-tile p-5 flex flex-wrap items-center justify-between gap-4 border border-primary/20 bg-primary/5">
                   <div>

@@ -5,77 +5,106 @@ import { AIProviderError } from "../../utils/errors.js";
 
 export class AIRetryService {
   async executeWithSchemaValidation({ messages, schema, options = {}, maxAttempts = 2 }) {
-    let lastError = null;
+    const configuredProviders = aiRouter.getConfiguredProviders(options.preferredProvider);
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const response = await aiRouter.execute({
-          ...options,
-          messages,
-        });
+    if (configuredProviders.length === 0) {
+      throw new AIProviderError("No AI providers are configured with valid API keys.", 503);
+    }
+
+    const attemptsSummary = [];
+
+    // Iterate through configured providers in order (Groq -> OpenRouter -> Cerebras -> Together -> OpenAI)
+    for (const provider of configuredProviders) {
+      let currentMessages = [...messages];
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        let response;
+        try {
+          response = await aiRouter.executeOnProvider(provider, {
+            ...options,
+            messages: currentMessages,
+            jsonMode: true,
+          });
+        } catch (apiErr) {
+          logger.warn(`[AIRetry] Provider ${provider.name} attempt ${attempt} API error: ${apiErr.message}`);
+          attemptsSummary.push({ provider: provider.name, attempt, error: apiErr.message });
+          // If the provider fails with an API error, advance to the next provider
+          break;
+        }
 
         // 1. Parse JSON
         let parsed;
         try {
           parsed = parseAIJson(response.content);
         } catch (jsonErr) {
-          logger.warn(`[AIRetry] Attempt ${attempt}: JSON parse error: ${jsonErr.message}`);
-          if (attempt === maxAttempts) throw jsonErr;
-          continue;
+          logger.warn(`[AIRetry] Provider ${provider.name} attempt ${attempt}: JSON parse error: ${jsonErr.message}`);
+          attemptsSummary.push({ provider: provider.name, attempt, error: jsonErr.message });
+
+          if (attempt < maxAttempts) {
+            const repairPrompt = `The previous response was not valid JSON (${jsonErr.message}). Return ONLY a valid, raw JSON object matching the required structure. Do not include markdown code fences, thoughts, or conversational prose.`;
+            currentMessages = [
+              ...messages,
+              { role: "assistant", content: response.content || "{}" },
+              { role: "user", content: repairPrompt },
+            ];
+            continue; // Retry once on same provider
+          }
+          break; // Move to next provider
         }
 
-        // 2. Validate with Zod Schema
+        // 2. Validate with Zod Schema (if provided)
         if (schema) {
           const validated = schema.safeParse(parsed);
           if (validated.success) {
+            logger.info(`[AIRetry] Provider ${provider.name} succeeded with valid schema on attempt ${attempt}`);
             return {
               data: validated.data,
               provider: response.provider,
               model: response.model,
               attempt,
+              durationMs: response.durationMs,
             };
           }
 
-          logger.warn(`[AIRetry] Attempt ${attempt}: Schema validation failed:`, validated.error.format());
+          const issuesSummary = validated.error.issues
+            .map((i) => `${i.path.join(".") || "root"}: ${i.message}`)
+            .slice(0, 5)
+            .join("; ");
 
-          // 3. Attempt in-flight repair prompt if another attempt remains
+          logger.warn(`[AIRetry] Provider ${provider.name} attempt ${attempt}: Schema validation failed: ${issuesSummary}`);
+          attemptsSummary.push({ provider: provider.name, attempt, error: `Schema errors: ${issuesSummary}` });
+
           if (attempt < maxAttempts) {
-            const repairPrompt = `The previous JSON response had schema errors: ${JSON.stringify(
-              validated.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)
-            )}.
-Please fix the JSON and return ONLY the corrected, valid JSON object matching the required schema.`;
-
-            messages = [
+            const repairPrompt = `The previous JSON response did not match the required schema: ${issuesSummary}. Please return ONLY the corrected, valid JSON object matching the required schema.`;
+            currentMessages = [
               ...messages,
-              { role: "assistant", content: response.content },
+              { role: "assistant", content: response.content || "{}" },
               { role: "user", content: repairPrompt },
             ];
-            continue;
+            continue; // Retry once on same provider
           }
-
-          // If last attempt failed schema validation, fallback to parsed if structure has minimum required fields
-          return {
-            data: parsed,
-            provider: response.provider,
-            model: response.model,
-            attempt,
-            schemaWarning: validated.error.message,
-          };
+          break; // Move to next provider
         }
 
+        // If no schema required, parsed JSON is sufficient
         return {
           data: parsed,
           provider: response.provider,
           model: response.model,
           attempt,
+          durationMs: response.durationMs,
         };
-      } catch (err) {
-        lastError = err;
-        logger.warn(`[AIRetry] Attempt ${attempt} failed: ${err.message}`);
       }
     }
 
-    throw new AIProviderError(`AI schema validation and retry failed: ${lastError?.message || "Unknown error"}`, 502);
+    const cleanErrorSummary = attemptsSummary
+      .map((a) => `${a.provider} (attempt ${a.attempt}): ${a.error}`)
+      .join(" | ");
+
+    throw new AIProviderError(
+      `All AI providers failed. Attempts: ${cleanErrorSummary}`,
+      502
+    );
   }
 }
 
@@ -95,4 +124,5 @@ export const executeWithSchema = async (schema, options = {}, retryOptions = {})
 };
 
 export default aiRetryService;
+
 

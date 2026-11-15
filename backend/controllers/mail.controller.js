@@ -1,5 +1,5 @@
 import { sendMailSchema } from "../schemas/mail.schemas.js";
-import { sendBrevoMail } from "../services/mail/brevo-mail.service.js";
+import { sendBrevoMail, checkBrevoDiagnostics, getBrevoEmailDeliveryStatus } from "../services/mail/brevo-mail.service.js";
 import { logger } from "../utils/logger.js";
 
 /**
@@ -46,5 +46,38 @@ export async function sendMail(req, res, next) {
       success: false,
       message: error.message || "Failed to send email via Brevo. Please check parameters and try again.",
     });
+  }
+}
+
+/**
+ * Controller to check Brevo service diagnostics, authorized IP status, and verified senders.
+ */
+export async function getMailStatus(req, res, next) {
+  try {
+    const diagnostics = await checkBrevoDiagnostics();
+    return res.status(200).json({
+      success: true,
+      service: "Brevo Email Provider",
+      diagnostics,
+    });
+  } catch (error) {
+    logger.error(`[Mail Controller] Diagnostics error: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * Controller to query message delivery status by Brevo messageId.
+ */
+export async function getMessageDeliveryStatus(req, res, next) {
+  try {
+    const { messageId } = req.params;
+    const status = await getBrevoEmailDeliveryStatus(messageId);
+    return res.status(200).json(status);
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 }

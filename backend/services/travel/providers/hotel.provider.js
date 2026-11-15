@@ -159,7 +159,21 @@ export class HotelProvider extends BaseHotelProvider {
     guests = 2,
     rooms = 1,
   }) {
-    const normDest = normalizeDestination(destination || "Goa");
+    const rawDest = (destination || "").trim();
+    if (!rawDest) {
+      return {
+        provider: "Advenza Stays",
+        configured: this.isConfigured(),
+        status: "UNAVAILABLE",
+        isLive: false,
+        source: "UNAVAILABLE",
+        disclaimer: "Destination is required to search accommodations.",
+        currency: "INR",
+        results: [],
+      };
+    }
+
+    const normDest = normalizeDestination(rawDest);
     const cityKey = normDest.toLowerCase().split(",")[0].trim();
     const inDate = checkIn || new Date(Date.now() + 86400000 * 7).toISOString().split("T")[0];
     const outDate = checkOut || new Date(Date.now() + 86400000 * 10).toISOString().split("T")[0];
@@ -167,7 +181,20 @@ export class HotelProvider extends BaseHotelProvider {
 
     // 1. If live credentials are NOT configured:
     if (!this.isConfigured()) {
-      const staticInventory = CURATED_STATIC_CATALOG[cityKey] || CURATED_STATIC_CATALOG.goa;
+      const staticInventory = CURATED_STATIC_CATALOG[cityKey];
+
+      if (!staticInventory || staticInventory.length === 0) {
+        return {
+          provider: "Advenza Stays",
+          configured: false,
+          status: "NOT_CONFIGURED",
+          isLive: false,
+          source: "UNAVAILABLE",
+          disclaimer: `Live hotel booking provider is not configured, and no curated stay catalog is available for "${normDest}".`,
+          currency: "INR",
+          results: [],
+        };
+      }
 
       const results = staticInventory.map((h, idx) => ({
         provider: "Advenza Curated Stays",

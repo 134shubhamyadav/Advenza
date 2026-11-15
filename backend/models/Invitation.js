@@ -55,6 +55,20 @@ const InvitationSchema = new mongoose.Schema(
     acceptedBy: {
       type: String,
     },
+    emailDeliveryStatus: {
+      type: String,
+      enum: ["PENDING", "SENT", "FAILED"],
+      default: "PENDING",
+      index: true,
+    },
+    emailDeliveryError: {
+      type: String,
+      default: null,
+    },
+    brevoMessageId: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

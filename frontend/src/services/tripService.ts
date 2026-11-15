@@ -6,6 +6,72 @@ export interface TripActivity {
   type?: string;
   meta?: string;
   interestTags?: string[];
+  placeName?: string;
+  placeCategory?: string;
+  placeSubcategory?: string;
+  address?: string;
+  coordinates?: { lat?: number | null; lng?: number | null };
+  openingHours?: string;
+  verificationStatus?: string;
+  suggestedDuration?: string;
+  distanceFromPrevious?: string;
+  mapLink?: string;
+  matchReason?: string;
+  isFutureScheduleUnconfirmed?: boolean;
+  // Hidden gem & place metadata
+  placeType?: "POPULAR_ATTRACTION" | "HIDDEN_GEM" | "CONFIRMED_HIDDEN_GEM" | "POTENTIAL_HIDDEN_GEM" | string;
+  gemConfidence?: "CONFIRMED_HIDDEN_GEM" | "POTENTIAL_HIDDEN_GEM" | "POPULAR_ATTRACTION" | "UNCLASSIFIED" | string;
+  isPlaceHiddenGem?: boolean;
+  whySpecial?: string;
+  region?: string;
+}
+
+// ── Destination Overview ───────────────────────────────────────────────────────
+
+export interface DestinationOverviewHighlight {
+  name: string;
+  category: string;
+  region: string;
+  matchReason?: string;
+  whySpecial?: string;
+  gemConfidence?: string;
+}
+
+export interface DestinationDurationRecommendation {
+  minimumDays: number;
+  recommendedDays: number;
+  extendedDays: number;
+  minRange: string;
+  recommendedRange: string;
+  extendedRange: string;
+  whyRecommended: string;
+  popularAttractionsCount: number;
+  hiddenGemsCount: number;
+  regions: string[];
+  dayTrips: string[];
+  popularHighlights: DestinationOverviewHighlight[];
+  hiddenGemHighlights: DestinationOverviewHighlight[];
+  interestAlignmentNote: string | null;
+}
+
+export interface DestinationOverview {
+  destination: string;
+  heroImage: string | null;
+  overview: string;
+  durationRecommendation: DestinationDurationRecommendation;
+  verifiedPlacesCount: number;
+  dataConfidence: "VERIFIED" | "LIVE_DISCOVERED" | "PARTIAL_EVIDENCE" | "UNCERTAIN_BASELINE" | string;
+  isUncertain?: boolean;
+  uncertaintyReason?: string | null;
+}
+
+export async function fetchDestinationOverview(
+  destination: string,
+  interests: string[] = []
+): Promise<DestinationOverview> {
+  const params = new URLSearchParams({ destination });
+  if (interests.length > 0) params.set("interests", interests.join(","));
+  return apiFetch(`/api/ai/destination-overview?${params.toString()}`);
 }
 
 export interface TripDay {
@@ -145,6 +211,8 @@ export interface TripSummary {
   travelers?: number;
   startDate?: string;
   endDate?: string;
+  duration?: number;
+  durationMode?: "RECOMMENDED" | "CUSTOM";
   style?: string;
   interests?: string[];
   travelMode?: string;
