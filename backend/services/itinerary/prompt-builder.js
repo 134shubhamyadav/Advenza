@@ -127,6 +127,9 @@ export const buildItineraryPrompt = (params, expectedDates) => {
     checkOutTime,
     weatherInfo = "",
     weatherData = null,
+    verifiedPlaces = [],
+    durationMode = "RECOMMENDED",
+    durationRecommendation = null,
   } = params;
 
   const numDays = expectedDates.length;
@@ -134,7 +137,7 @@ export const buildItineraryPrompt = (params, expectedDates) => {
   const styleNormalized = String(style || "Balanced").trim();
 
   // ── 1. Format Interest Guidance via Part 7 Intelligence Engine ─────────────
-  const interestsBlock = buildInterestPromptSection(interestProfile);
+  const interestsBlock = buildInterestPromptSection(interestProfile, verifiedPlaces);
 
   // ── 2. Format Trip Style / Pacing Guidance ─────────────────────────────────
   const pacingGuidance = (() => {
@@ -157,6 +160,38 @@ export const buildItineraryPrompt = (params, expectedDates) => {
 • 3 to 4 well-curated activities per day.
 • Thoughtful balance of key attractions, authentic local dining, scenic stops, and comfortable rest intervals.
 • Group activities by geographic neighborhood to minimize transit fatigue.`;
+  })();
+
+  // ── 2b. Duration-Aware Adaptation Guidance ─────────────────────────────────
+  const minRecDays = durationRecommendation?.minimumDays || 3;
+  const recDays = durationRecommendation?.recommendedDays || 5;
+  const maxRecDays = durationRecommendation?.extendedDays || 7;
+  const recDayTrips = durationRecommendation?.dayTrips || [];
+  const recRegions = durationRecommendation?.regions || [];
+
+  const durationAdaptationBlock = (() => {
+    if (numDays < minRecDays) {
+      return `DURATION-AWARE ADAPTATION: SHORT-STAY FOCUS (${numDays} Days vs Recommended Minimum ${minRecDays} Days)
+• The traveler chose a compact duration (${numDays} calendar days) which is shorter than the recommended minimum (${minRecDays} days) for ${destination}.
+• STRICT SELECTION & PRIORITIZATION: Prioritize ONLY the top iconic anchor landmarks and highest-alignment experiences matching stated interests: [${interestProfile.selected.join(", ") || "Sightseeing"}].
+• ZERO OVERCROWDING: Do NOT pack excessive activities to compensate for a shorter stay. Maintain a comfortable pace (maximum 3 to 4 high-value stops per full day).
+• EXCLUDE PERIPHERAL ATTRACTIONS: Omit outlying excursions, long day trips, and secondary sights that cannot realistically fit without causing transit exhaustion.
+• GEOGRAPHIC COMPACTNESS: Keep activities tightly clustered in the core central area to minimize travel time.`;
+    }
+    if (numDays >= maxRecDays) {
+      const dayTripStr = recDayTrips.length > 0 ? recDayTrips.join(", ") : "scenic nearby valleys, historic towns, or nature reserves";
+      const regionStr = recRegions.length > 0 ? recRegions.join(", ") : "distinct geographic sectors";
+      return `DURATION-AWARE ADAPTATION: EXTENDED IMMERSIVE PACING (${numDays} Days vs Recommended ${recDays} Days)
+• The traveler has generous exploration time (${numDays} calendar days) to discover ${destination} in depth.
+• DEEP IMMERSION & AUTHENTIC HIDDEN GEMS: Go far beyond the standard tourist checklist. Feature authentic hidden gems, quiet artisan quarters, scenic local trails, and experiential dining.
+• REGIONAL SPREAD: Dedicate different days to distinct geographic regions (${regionStr}) to give every day a unique character and scenery.
+• SUGGESTED DAY TRIPS: Integrate 1 to 2 rewarding regional day trips (${dayTripStr}) on the middle full destination days.
+• ZERO REPETITIVE FILLER: Do NOT repeat identical activities, generic café stops, or redundant market walks just to fill time. Every single day must have a distinct thematic identity.
+• RELAXED TEMPO: Integrate sunset viewpoints, leisurely meals, and local cultural immersion.`;
+    }
+    return `DURATION-AWARE ADAPTATION: BALANCED DESTINATION PACING (${numDays} Days)
+• The trip duration (${numDays} days) comfortably aligns with Advenza's recommended ${recDays}-day exploration window for ${destination}.
+• Seamlessly balance iconic landmarks, authentic hidden gems, and regional dining across the key geographic clusters without rushing.`;
   })();
 
   // ── 3. Format Travel Timing & Anti-Hallucination Details ───────────────────
@@ -238,7 +273,7 @@ You craft hyper-personalized, realistic, time-aware itineraries that deeply resp
 ==================================================
 - Destination: ${destination}
 - Origin (Home City): ${origin || "Not specified"}
-- Dates: ${startDate} to ${endDate} (EXACTLY ${numDays} calendar days)
+- Dates: ${startDate} to ${endDate} (EXACTLY ${numDays} calendar days, Mode: ${durationMode})
 - Total Budget: ₹${budgetNum} INR (${perDayBudget ? `~₹${perDayBudget}/day` : "budget controlled"})
 - Travelers: ${travelersNum} person(s) (${perPersonBudget ? `~₹${perPersonBudget}/person` : ""})
 - Travel Pace / Density: ${styleNormalized}
@@ -285,9 +320,11 @@ If multiple interests are selected (e.g. Food + Culture + Photography), blend th
 - Evening: Vibrant street food market or lively beach shack dinner (Food/Nightlife)
 
 ==================================================
-5. TRIP PACING & DENSITY RULES
+5. TRIP PACING, DENSITY & DURATION ADAPTATION
 ==================================================
 ${pacingGuidance}
+
+${durationAdaptationBlock}
 
 GEOGRAPHIC CLUSTERING:
 - Cluster geographically neighboring sights into the same day or half-day to prevent exhausting cross-city travel.
@@ -328,7 +365,14 @@ Return ONLY a valid JSON object matching this exact structure:
         {
           "time": "HH:mm",
           "description": "Specific activity description with landmark, local tip, and estimated cost in INR",
-          "interestTags": ["Food", "Culture"]
+          "interestTags": ["Food", "Culture"],
+          "placeName": "Name of the venue or landmark if applicable",
+          "placeCategory": "Food",
+          "placeSubcategory": "Local Cuisine & Regional Specialties",
+          "placeType": "POPULAR_ATTRACTION or HIDDEN_GEM",
+          "isPlaceHiddenGem": false,
+          "whySpecial": "Explanation of why this place is unique and special (especially for hidden gems)",
+          "region": "e.g. North Goa Coast"
         }
       ]
     }

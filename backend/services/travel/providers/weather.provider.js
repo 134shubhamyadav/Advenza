@@ -19,6 +19,7 @@ function interpretWmoCode(code) {
 const REGIONAL_HUBS = {
   goa: { latitude: 15.4909, longitude: 73.8278, name: "Goa, India" },
   ladakh: { latitude: 34.1526, longitude: 77.5771, name: "Ladakh, India" },
+  leh: { latitude: 34.1526, longitude: 77.5771, name: "Leh, Ladakh, India" },
   andaman: { latitude: 11.6234, longitude: 92.7265, name: "Port Blair, Andaman, India" },
   kashmir: { latitude: 34.0837, longitude: 74.7973, name: "Srinagar, Kashmir, India" },
   coorg: { latitude: 12.3375, longitude: 75.8069, name: "Coorg, Karnataka, India" },

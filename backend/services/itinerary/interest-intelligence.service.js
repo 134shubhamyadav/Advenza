@@ -5,6 +5,8 @@
  * prompt context generation, and deterministic activity tag validation for Advenza.
  */
 
+import { INTEREST_TAXONOMY, getTaxonomyForInterest } from "./interest-taxonomy.js";
+
 // ── Master Domain Identifiers ────────────────────────────────────────────────
 export const NORMALIZED_DOMAINS = {
   FOOD_CULINARY: "FOOD_CULINARY",
@@ -287,11 +289,23 @@ export function normalizeInterests(rawInterests) {
     }
   });
 
+  // Map granular taxonomy entries for selected interests
+  const taxonomies = [];
+  const seenTaxonomyKeys = new Set();
+  selected.forEach((interest) => {
+    const tax = getTaxonomyForInterest(interest);
+    if (tax && !seenTaxonomyKeys.has(tax.label)) {
+      seenTaxonomyKeys.add(tax.label);
+      taxonomies.push(tax);
+    }
+  });
+
   return {
     selected,
     normalizedDomains,
     domainLabels,
     compositeIntents,
+    taxonomies,
     hasInterests: selected.length > 0 || normalizedDomains.length > 0,
   };
 }
@@ -300,16 +314,45 @@ export function normalizeInterests(rawInterests) {
  * Builds the structured User Interest Alignment prompt section for the AI itinerary builder.
  *
  * @param {Object} interestProfile - Output from normalizeInterests
+ * @param {Array} [verifiedPlaces] - Array of verified candidate places discovered for the trip
  * @returns {string} Formatted prompt block
  */
-export function buildInterestPromptSection(interestProfile) {
+export function buildInterestPromptSection(interestProfile, verifiedPlaces = []) {
   if (!interestProfile.hasInterests) {
     return `• GENERAL EXPLORATION: Balance authentic regional highlights, local dining, scenic views, and key cultural/heritage landmarks without generic checklist filler.`;
   }
 
   const sections = [];
 
-  // 1. Individual Domain Directives
+  // 1. Deep Subcategory & Time-Window Directives
+  if (interestProfile.taxonomies && interestProfile.taxonomies.length > 0) {
+    sections.push("DEEP INTEREST SUBCATEGORIES & TIME-AWARE SCHEDULING PREFERENCES:");
+    interestProfile.taxonomies.forEach((tax) => {
+      const subcatList = tax.subcategories.map((s) => s.label).join(", ");
+      const windowList = tax.preferredWindows.map((w) => `${w.name} (${w.start}–${w.end})`).join("; ");
+      sections.push(`▶ ${tax.label.toUpperCase()}:`);
+      sections.push(`  - Meaningful Subcategories: ${subcatList}`);
+      sections.push(`  - Intelligent Time Windows: ${windowList}`);
+      if (tax.label.toLowerCase() === "nightlife") {
+        sections.push(`  - NIGHTLIFE SPECIFIC RULES: Default preferred window is 21:00 to 01:00. DO NOT schedule nightclubs or bars in the afternoon. Check operating hours (many open 19:00 or 21:00 and close late 02:00-04:00 spanning midnight). Never overload a single night with too many venues. Pair with dinner beforehand.`);
+      }
+      if (tax.label.toLowerCase() === "food") {
+        sections.push(`  - FOOD SPECIFIC RULES: Match meal times to breakfast/cafes (08:00-10:30), lunch (12:30-14:30), evening snacks/street food (17:00-19:00), and dinner (19:30-22:30).`);
+      }
+      if (tax.label.toLowerCase() === "hiking" || tax.label.toLowerCase() === "adventure") {
+        sections.push(`  - ACTIVE ADVENTURE RULES: Schedule nature treks or water activities during comfortable daylight (06:30-10:30 or 15:30-18:00). Avoid peak midday heat.`);
+      }
+      if (tax.label.toLowerCase() === "museums" || tax.label.toLowerCase() === "history") {
+        sections.push(`  - HERITAGE & MUSEUM RULES: Schedule during operating hours (typically 10:00-17:00). Note that many museums are closed on Mondays.`);
+      }
+      if (tax.label.toLowerCase() === "photography") {
+        sections.push(`  - PHOTOGRAPHY RULES: Time visits to scenic viewpoints for sunrise/golden hour (06:00-08:00) or sunset (17:00-18:30).`);
+      }
+    });
+  }
+
+  // 2. Individual Domain Directives
+  sections.push("\nDOMAIN FOCUS DIRECTIVES:");
   interestProfile.normalizedDomains.forEach((domain) => {
     const directive = DOMAIN_DIRECTIVES[domain];
     if (directive) {
@@ -317,12 +360,47 @@ export function buildInterestPromptSection(interestProfile) {
     }
   });
 
-  // 2. Multi-Interest Composite Intent Directives (if any triggered)
+  // 3. Multi-Interest Composite Intent Directives (if any triggered)
   if (interestProfile.compositeIntents.length > 0) {
     sections.push("\nCOMPOSITE MULTI-INTEREST SYNERGY DIRECTIVES (CRITICAL):");
     interestProfile.compositeIntents.forEach((synergy) => {
       sections.push(`★ ${synergy.title.toUpperCase()}: ${synergy.directive}`);
     });
+  }
+
+  // 4. Verified Real Places Context (Anti-Hallucination & Hidden Gems)
+  if (Array.isArray(verifiedPlaces) && verifiedPlaces.length > 0) {
+    sections.push("\n==================================================");
+    sections.push("VERIFIED CANDIDATE PLACES (POPULAR ATTRACTIONS & AUTHENTIC HIDDEN GEMS):");
+    sections.push("Integrate both iconic popular attractions and authentic hidden gems without inventing fake venues:");
+
+    const popPlaces = verifiedPlaces.filter((p) => p.placeType !== "HIDDEN_GEM");
+    const gemPlaces = verifiedPlaces.filter((p) => p.placeType === "HIDDEN_GEM");
+
+    if (popPlaces.length > 0) {
+      sections.push("\nPOPULAR ICONIC ATTRACTIONS (Major Landmarks):");
+      popPlaces.forEach((p, idx) => {
+        const hoursInfo = p.openingHours ? `[Hours: ${p.openingHours}]` : "";
+        sections.push(
+          `• "${p.placeName}" (${p.region || "Central"} - ${p.placeCategory}) ${hoursInfo}\n  - Context: ${p.matchReason || ""}`
+        );
+      });
+    }
+
+    if (gemPlaces.length > 0) {
+      sections.push("\nAUTHENTIC HIDDEN GEMS (Lesser-Known Discoveries):");
+      gemPlaces.forEach((p, idx) => {
+        const hoursInfo = p.openingHours ? `[Hours: ${p.openingHours}]` : "";
+        sections.push(
+          `★ "${p.placeName}" [HIDDEN GEM] (${p.region || "Outer Area"} - ${p.placeCategory}) ${hoursInfo}\n  - Why it's special: ${p.whySpecial || p.matchReason || ""}`
+        );
+      });
+    }
+
+    sections.push("\nCRITICAL SCHEDULING & HIDDEN GEM REQUIREMENTS:");
+    sections.push("1. When scheduling a hidden gem, set placeType: 'HIDDEN_GEM', isPlaceHiddenGem: true, and provide its genuine whySpecial explanation.");
+    sections.push("2. Maintain a balanced mix: do not overload days exclusively with hidden gems or exclusively with commercial tourist hotspots.");
+    sections.push("3. Group activities geographically by region/neighborhood each day to minimize transit fatigue.");
   }
 
   return sections.join("\n");

@@ -22,7 +22,9 @@ import {
   RotateCcw,
   Sparkles,
   Compass,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck,
+  ExternalLink,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { inr, normalizeTimeTo24h, formatDurationMinutes, getDurationStatusBadge, calculateInclusiveDays } from "@/lib/utils";
@@ -262,6 +264,11 @@ function TripDetails() {
                     {trip.travelers || trip.members?.length} traveler{((trip.travelers || trip.members?.length) !== 1) ? "s" : ""}
                   </span>
                 ) : null}
+                {trip.durationMode ? (
+                  <Badge variant="outline" className="text-[11px] bg-white/10 text-white/90 border-white/20">
+                    {trip.durationMode === "CUSTOM" ? "Custom Duration" : "Recommended Pacing"}
+                  </Badge>
+                ) : null}
               </p>
             </div>
             <div className="flex gap-2 items-center flex-wrap">
@@ -498,6 +505,82 @@ function TripDetails() {
                                   </span>
                                 ))}
                               </div>
+                            )}
+                            {(item.placeSubcategory || item.openingHours || item.verificationStatus) && (
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                {item.placeSubcategory && (
+                                  <span className="font-medium text-foreground/80">
+                                    {item.placeSubcategory}
+                                  </span>
+                                )}
+                                {item.openingHours && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                                    <Clock className="h-3 w-3" />
+                                    {item.openingHours}
+                                  </span>
+                                )}
+                                {item.verificationStatus && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                                    <ShieldCheck className="h-3 w-3" />
+                                    {item.verificationStatus === "LIVE_VERIFIED"
+                                      ? "Live Verified"
+                                      : item.verificationStatus === "CURATED_VERIFIED"
+                                      ? "Verified Venue"
+                                      : "Indicative"}
+                                  </span>
+                                )}
+                                {item.mapLink && (
+                                  <a
+                                    href={item.mapLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-0.5 text-[11px] text-primary hover:underline"
+                                  >
+                                    <MapPin className="h-3 w-3" />
+                                    Map
+                                    <ExternalLink className="h-2.5 w-2.5" />
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                            {/* Hidden Gem Badge & Why Special */}
+                            {item.isPlaceHiddenGem && (item.gemConfidence === "POTENTIAL_HIDDEN_GEM" || item.placeType === "POTENTIAL_HIDDEN_GEM") ? (
+                              <div className="mt-1.5 flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 text-[11px] font-semibold text-purple-700 dark:text-purple-300 ring-1 ring-purple-300/50">
+                                  🔍 Potential Hidden Gem
+                                </span>
+                                {item.region && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    ({item.region})
+                                  </span>
+                                )}
+                              </div>
+                            ) : item.isPlaceHiddenGem ? (
+                              <div className="mt-1.5 flex items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300 ring-1 ring-amber-300/50">
+                                  💎 Confirmed Hidden Gem
+                                </span>
+                                {item.region && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    ({item.region})
+                                  </span>
+                                )}
+                              </div>
+                            ) : null}
+                            {item.isPlaceHiddenGem && item.whySpecial && (
+                              <p className="mt-1 text-xs text-amber-800 dark:text-amber-300 italic leading-relaxed">
+                                Why it's special: {item.whySpecial}
+                              </p>
+                            )}
+                            {item.matchReason && (
+                              <p className="mt-1 text-xs text-muted-foreground/90 italic">
+                                ★ {item.matchReason}
+                              </p>
+                            )}
+                            {item.isFutureScheduleUnconfirmed && (
+                              <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">
+                                ⚠️ Regular hours shown · Schedule subject to seasonal confirmation
+                              </p>
                             )}
                           </div>
                         </li>

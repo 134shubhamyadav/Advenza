@@ -28,6 +28,8 @@ export const generateTripInputSchema = z
     destination: z.string().trim().min(1, "Destination is required").max(150, "Destination too long"),
     startDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be in YYYY-MM-DD format"),
     endDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "End date must be in YYYY-MM-DD format"),
+    duration: z.coerce.number().optional(),
+    durationMode: z.enum(["RECOMMENDED", "CUSTOM"]).optional().default("RECOMMENDED"),
     budget: z.coerce.number().min(0, "Budget cannot be negative").optional(),
     origin: z.string().trim().max(150).optional(),
     style: z.string().trim().max(100).optional(),
@@ -58,6 +60,8 @@ export const regenerateTripInputSchema = z
     origin: z.string().trim().max(150).optional(),
     startDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     endDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    duration: z.coerce.number().optional(),
+    durationMode: z.enum(["RECOMMENDED", "CUSTOM"]).optional(),
     budget: z.coerce.number().min(0).optional(),
     style: z.string().trim().max(100).optional(),
     interests: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
@@ -103,7 +107,11 @@ export const chatInputSchema = z.object({
       text: z.string().optional(),
     })
   ).min(1, "At least one message is required"),
-});
+  tripId: z.string().trim().optional(),
+  destination: z.string().trim().optional(),
+  hotelLocation: z.string().trim().optional(),
+  context: z.any().optional(),
+}).passthrough();
 
 export const packingInputSchema = z.object({
   destination: z.string().trim().min(1, "destination is required"),
@@ -125,13 +133,44 @@ export const estimateBudgetInputSchema = z.object({
   travelers: z.coerce.number().min(1).default(1),
 });
 
+export const destinationOverviewInputSchema = z
+  .object({
+    destination: z.string().trim().min(1, "destination is required").max(150),
+    interests: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
+  })
+  .passthrough();
+
 // ── AI STRUCTURED OUTPUT SCHEMAS (Validation for Model Completions) ───────────
 
-export const ActivityOutputSchema = z.object({
-  time: z.string().default("09:00"),
-  description: z.string().default("Sightseeing"),
-  interestTags: z.array(z.string().trim()).optional().default([]),
-});
+export const ActivityOutputSchema = z
+  .object({
+    time: z.string().default("09:00"),
+    description: z.string().default("Sightseeing"),
+    interestTags: z.array(z.string().trim()).optional().default([]),
+    placeName: z.string().trim().optional(),
+    placeCategory: z.string().trim().optional(),
+    placeSubcategory: z.string().trim().optional(),
+    placeType: z.string().trim().optional(),
+    gemConfidence: z.string().trim().optional(),
+    isPlaceHiddenGem: z.boolean().optional(),
+    whySpecial: z.string().trim().optional(),
+    region: z.string().trim().optional(),
+    address: z.string().trim().optional(),
+    coordinates: z
+      .object({
+        lat: z.coerce.number().nullable().optional(),
+        lng: z.coerce.number().nullable().optional(),
+      })
+      .optional(),
+    openingHours: z.string().trim().optional(),
+    verificationStatus: z.string().trim().optional(),
+    suggestedDuration: z.string().trim().optional(),
+    distanceFromPrevious: z.string().trim().optional(),
+    mapLink: z.string().trim().optional(),
+    matchReason: z.string().trim().optional(),
+    isFutureScheduleUnconfirmed: z.boolean().optional(),
+  })
+  .passthrough();
 
 export const DayOutputSchema = z.object({
   dayNumber: z.coerce.number().default(1),

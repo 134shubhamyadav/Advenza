@@ -1,11 +1,188 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
 import Invitation from "../models/Invitation.js";
 import Trip from "../models/Trip.js";
+import User from "../models/User.js";
 import { sendBrevoGroupInvitationMail } from "../services/mail/brevo-mail.service.js";
-import { config } from "../config/env.js";
+import { config, getClientBaseUrl } from "../config/env.js";
 import { logger } from "../utils/logger.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { NotFoundError, ForbiddenError, ValidationError } from "../utils/errors.js";
+
+/**
+ * Resolves the authorized group membership for the invitation email and invitation landing page.
+ * - Extracts organizer exactly once (labeled Organizer)
+ * - Extracts confirmed members who have joined (labeled Member)
+ * - Strictly excludes Pending, Rejected, Revoked, or Removed invitations
+ * - Strictly prevents duplicate members or the organizer appearing in joined members
+ * - Sanitizes names so email addresses are never exposed
+ *
+ * @param {Object} trip - MongoDB Trip document or plain object
+ * @param {string} [inviterName] - Optional name of organizer from request
+ * @returns {Promise<{ organizer: { name: string, role: string, userId?: string, email?: string }, joinedMembers: Array<{ name: string, role: string, userId?: string }>, confirmedCount: number }>}
+ */
+export async function resolveGroupMembers(trip, inviterName) {
+  const rawMembers = Array.isArray(trip?.members) ? trip.members : [];
+  const tripCreatorUid = trip?.createdBy ? String(trip.createdBy) : null;
+
+  // 1. Resolve Organizer Identity
+  let organizerUser = null;
+  let organizerMember = null;
+  let organizerName = "";
+  let organizerEmail = "";
+
+  // Check if organizer is in trip.members
+  organizerMember = rawMembers.find(
+    (m) =>
+      m &&
+      (m.role === "Organizer" ||
+        (tripCreatorUid && m.userId && String(m.userId) === tripCreatorUid))
+  ) || null;
+
+  // If trip creator UID exists, look up User collection
+  if (tripCreatorUid && mongoose.connection?.readyState === 1) {
+    try {
+      organizerUser = await User.findOne({ firebaseUid: tripCreatorUid }).lean();
+      if (organizerUser?.displayName) {
+        organizerName = organizerUser.displayName.trim();
+      }
+      if (organizerUser?.email) {
+        organizerEmail = organizerUser.email.trim().toLowerCase();
+      }
+    } catch (_) {}
+  }
+
+  // If organizerMember has name and no organizerName resolved yet
+  if (!organizerName && organizerMember?.name && !organizerMember.name.includes("@")) {
+    organizerName = organizerMember.name.trim();
+  }
+  if (!organizerEmail && organizerMember?.email) {
+    organizerEmail = organizerMember.email.trim().toLowerCase();
+  }
+
+  // If inviterName was provided and is a human name (not placeholder)
+  const cleanInviter = (inviterName || "").trim();
+  const isGenericInviter =
+    !cleanInviter ||
+    cleanInviter.toLowerCase() === "your travel companion" ||
+    cleanInviter.toLowerCase() === "a fellow traveler" ||
+    cleanInviter.toLowerCase() === "trip organizer";
+
+  if (!organizerName && !isGenericInviter) {
+    organizerName = cleanInviter;
+  }
+
+  // If inviterName is provided, also check if any member matches it
+  if (!organizerMember && !isGenericInviter) {
+    organizerMember = rawMembers.find(
+      (m) => m?.name && m.name.toLowerCase().trim() === cleanInviter.toLowerCase()
+    ) || null;
+  }
+
+  // Format organizer name if missing or raw email
+  if (!organizerName || organizerName.includes("@")) {
+    if (organizerName && organizerName.includes("@")) {
+      const handle = organizerName.split("@")[0].replace(/[._-]/g, " ");
+      organizerName = handle.charAt(0).toUpperCase() + handle.slice(1);
+    } else if (organizerEmail) {
+      const handle = organizerEmail.split("@")[0].replace(/[._-]/g, " ");
+      organizerName = handle.charAt(0).toUpperCase() + handle.slice(1);
+    } else {
+      organizerName = "Trip Organizer";
+    }
+  }
+
+  // 2. Resolve Joined Members
+  // Only include users who have successfully joined (role === "Member" or confirmed userId)
+  // Strictly EXCLUDE:
+  // - "Pending", "Rejected", "Removed", "Revoked"
+  // - The organizer (by role, userId, object reference, email, or exact name)
+  // - Duplicate entries
+  const seenUserIds = new Set();
+  const seenEmails = new Set();
+  const seenNames = new Set();
+
+  if (tripCreatorUid) seenUserIds.add(tripCreatorUid);
+  if (organizerMember?.userId) seenUserIds.add(String(organizerMember.userId));
+  if (organizerEmail) seenEmails.add(organizerEmail);
+  if (organizerMember?.email) seenEmails.add(organizerMember.email.toLowerCase().trim());
+  if (organizerName && organizerName !== "Trip Organizer") seenNames.add(organizerName.toLowerCase().trim());
+
+  const joinedCandidates = rawMembers.filter((m) => {
+    if (!m) return false;
+    const role = (m.role || "").trim();
+    if (role === "Pending" || role === "Rejected" || role === "Removed" || role === "Revoked") return false;
+    if (role === "Organizer") return false;
+    if (organizerMember && m === organizerMember) return false;
+
+    const mUid = m.userId ? String(m.userId) : null;
+    const mEmail = m.email ? m.email.toLowerCase().trim() : null;
+    const mName = m.name ? m.name.toLowerCase().trim() : null;
+
+    if (mUid && seenUserIds.has(mUid)) return false;
+    if (mEmail && seenEmails.has(mEmail)) return false;
+    if (mName && seenNames.has(mName)) return false;
+
+    // Must be confirmed member (explicit "Member" role or confirmed userId)
+    return role === "Member" || Boolean(mUid);
+  });
+
+  const joinedMembers = [];
+  for (const m of joinedCandidates) {
+    let memberName = (m.name || "").trim();
+    const mUid = m.userId ? String(m.userId) : null;
+    const mEmail = m.email ? m.email.toLowerCase().trim() : null;
+
+    // If missing name or raw email, look up displayName from User collection
+    if ((!memberName || memberName.includes("@")) && mUid && mongoose.connection?.readyState === 1) {
+      try {
+        const u = await User.findOne({ firebaseUid: mUid }).lean();
+        if (u?.displayName) {
+          memberName = u.displayName.trim();
+        }
+      } catch (_) {}
+    }
+
+    // Ensure email is never exposed
+    if (!memberName || memberName.includes("@")) {
+      if (memberName.includes("@")) {
+        const handle = memberName.split("@")[0].replace(/[._-]/g, " ");
+        memberName = handle.charAt(0).toUpperCase() + handle.slice(1);
+      } else if (mEmail) {
+        const handle = mEmail.split("@")[0].replace(/[._-]/g, " ");
+        memberName = handle.charAt(0).toUpperCase() + handle.slice(1);
+      } else {
+        memberName = "Traveler";
+      }
+    }
+
+    // Deduplicate in final list
+    const lowerName = memberName.toLowerCase().trim();
+    if (seenNames.has(lowerName)) continue;
+    seenNames.add(lowerName);
+    if (mUid) seenUserIds.add(mUid);
+    if (mEmail) seenEmails.add(mEmail);
+
+    joinedMembers.push({
+      name: memberName,
+      role: "Member",
+      userId: mUid || undefined,
+    });
+  }
+
+  const confirmedCount = 1 + joinedMembers.length;
+
+  return {
+    organizer: {
+      name: organizerName,
+      role: "Organizer",
+      userId: tripCreatorUid || organizerMember?.userId || undefined,
+      email: organizerEmail || undefined,
+    },
+    joinedMembers,
+    confirmedCount,
+  };
+}
 
 /**
  * Creates and sends a group / consensus invitation email.
@@ -56,7 +233,7 @@ export const createTripInvitation = asyncHandler(async (req, res) => {
   });
 
   const effectiveInviterName = inviterName || "Your travel companion";
-  const clientBaseUrl = (config.CLIENT_URL || "http://localhost:3000").replace(/\/$/, "");
+  const clientBaseUrl = getClientBaseUrl(req);
 
   let token;
   if (invitation) {
@@ -101,27 +278,70 @@ export const createTripInvitation = asyncHandler(async (req, res) => {
 
   const inviteLink = `${clientBaseUrl}/invite/${token}`;
 
+  let emailDelivery = { sent: false, error: null, messageId: null, isIpUnauthorized: false, detectedIp: null };
+
+  // Format trip dates if present
+  let tripDates = "";
+  if (trip.startDate && trip.endDate) {
+    tripDates = `${trip.startDate} – ${trip.endDate}`;
+  } else if (trip.duration) {
+    tripDates = `${trip.duration} Day${trip.duration > 1 ? "s" : ""}`;
+  }
+
+  // Resolve actual group members for email (Organizer + joined members, strictly excluding pending)
+  // Fetch fresh trip from MongoDB to guarantee zero stale cache
+  const freshTrip = await Trip.findById(trip._id).lean();
+  const groupMembers = await resolveGroupMembers(freshTrip || trip, effectiveInviterName);
+
   // Send invitation email via Brevo
   try {
-    await sendBrevoGroupInvitationMail({
+    const sendResult = await sendBrevoGroupInvitationMail({
       to: invitedEmail,
-      inviterName: effectiveInviterName,
+      inviterName: groupMembers.organizer.name,
       tripTitle: trip.title,
+      tripDestination: trip.destination || "",
+      tripDates,
+      tripStyle: trip.style || "",
+      groupMembers,
       inviteLink,
       expiresInDays: 7,
     });
-    logger.info(`[Invitation Controller] Sent invite email to ${invitedEmail} for trip ${trip._id}`);
+    emailDelivery = { sent: true, error: null, messageId: sendResult.messageId, isIpUnauthorized: false, detectedIp: null };
+    logger.info(`[Invitation Controller] Sent invite email to ${invitedEmail} for trip ${trip._id} (MessageId: ${sendResult.messageId})`);
   } catch (emailErr) {
+    const isIpUnauthorized = Boolean(emailErr.isIpUnauthorized);
+    const detectedIp = emailErr.detectedIp || null;
+    emailDelivery = {
+      sent: false,
+      error: emailErr.cleanMessage || emailErr.message,
+      messageId: null,
+      isIpUnauthorized,
+      detectedIp,
+    };
     logger.error(`[Invitation Controller] Failed to send email via Brevo: ${emailErr.message}`);
-    // Still return success with invite link if Brevo had issue in dev/local mode
   }
+
+  // Update invitation record with delivery status (Invitation remains 100% created and valid)
+  invitation.emailDeliveryStatus = emailDelivery.sent ? "SENT" : "FAILED";
+  invitation.emailDeliveryError = emailDelivery.isIpUnauthorized ? "BREVO_IP_UNAUTHORIZED" : emailDelivery.error;
+  invitation.brevoMessageId = emailDelivery.messageId;
+  await invitation.save();
+
+  const userFacingMessage = emailDelivery.sent
+    ? `Invitation email successfully sent to ${invitedEmail} via Brevo!`
+    : emailDelivery.isIpUnauthorized
+    ? `Invitation created! However, Brevo rejected email delivery because server IP (${emailDelivery.detectedIp || "unknown"}) is not authorized in Brevo Security settings. You can share the invitation link directly.`
+    : `Invitation created! However, email delivery could not be completed (${emailDelivery.error}). You can share the invitation link directly.`;
 
   return res.status(200).json({
     success: true,
-    message: `Invitation successfully sent to ${invitedEmail}!`,
+    emailSent: emailDelivery.sent,
+    emailError: emailDelivery.error,
+    isIpUnauthorized: emailDelivery.isIpUnauthorized,
+    detectedIp: emailDelivery.detectedIp,
+    message: userFacingMessage,
     invitationId: invitation._id,
     inviteLink,
-    token,
     trip,
   });
 });
@@ -169,9 +389,7 @@ export const getInvitationByToken = asyncHandler(async (req, res) => {
     });
   }
 
-  const trip = await Trip.findById(invitation.tripId).select(
-    "title destination origin startDate endDate travelers style interests members"
-  );
+  const trip = await Trip.findById(invitation.tripId).lean();
 
   if (!trip) {
     return res.status(404).json({
@@ -179,6 +397,9 @@ export const getInvitationByToken = asyncHandler(async (req, res) => {
       message: "The trip associated with this invitation is no longer available.",
     });
   }
+
+  // Resolve actual group members directly from live MongoDB trip document
+  const groupMembers = await resolveGroupMembers(trip, invitation.inviterName);
 
   return res.status(200).json({
     valid: true,
@@ -193,9 +414,12 @@ export const getInvitationByToken = asyncHandler(async (req, res) => {
       travelers: trip.travelers,
       style: trip.style,
       interests: trip.interests,
-      memberCount: (trip.members || []).length,
+      memberCount: groupMembers.confirmedCount,
+      confirmedCount: groupMembers.confirmedCount,
+      organizer: groupMembers.organizer,
+      confirmedMembers: groupMembers.joinedMembers,
     },
-    inviterName: invitation.inviterName,
+    inviterName: groupMembers.organizer.name || invitation.inviterName,
     invitedEmail: invitation.invitedEmail,
     expiresAt: invitation.expiresAt,
   });
@@ -295,9 +519,10 @@ export const acceptInvitation = asyncHandler(async (req, res) => {
     });
   }
 
-  // Synchronize total travelers count if needed
-  if (trip.travelers < trip.members.length) {
-    trip.travelers = trip.members.length;
+  // Synchronize total travelers count to match confirmed members count
+  const confirmedCount = 1 + trip.members.filter((m) => m.role === "Member").length;
+  if (trip.travelers < confirmedCount) {
+    trip.travelers = confirmedCount;
   }
 
   // Explicitly notify Mongoose of subdocument array mutation

@@ -131,6 +131,13 @@ import {
   sanitizeActivityInterestTags,
   NORMALIZED_DOMAINS,
 } from "./interest-intelligence.service.js";
+import {
+  isVenueOpenAt,
+  isOutside7DayWindow,
+  normalizeTo24hTime,
+  parseOpeningHours,
+} from "./opening-hours.service.js";
+import { CURATED_DESTINATION_VENUES } from "../places/place-discovery.service.js";
 
 // Parse legacy pipe string if present
 export const parseLegacyBudgetEstimate = (budgetStr, travelers = 1, nights = 1) => {
@@ -372,6 +379,40 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
     return false;
   };
 
+  let verifiedPlaces = Array.isArray(context?.verifiedPlaces) && context.verifiedPlaces.length > 0
+    ? [...context.verifiedPlaces]
+    : [];
+
+  if (verifiedPlaces.length === 0 && (context?.destination || destination)) {
+    const rawDestStr = context?.destination || destination || "";
+    const destKey = String(rawDestStr).toLowerCase().split(",")[0].trim();
+    const catalog = CURATED_DESTINATION_VENUES[destKey] || [];
+    if (catalog.length > 0) {
+      verifiedPlaces = catalog.map((p) => {
+        const isGem = p.placeType === "HIDDEN_GEM" || p.placeType === "CONFIRMED_HIDDEN_GEM";
+        return {
+          placeName: p.name,
+          placeCategory: p.category,
+          placeSubcategory: p.subcategory || p.category,
+          placeType: isGem ? "HIDDEN_GEM" : "POPULAR_ATTRACTION",
+          gemConfidence: isGem ? "CONFIRMED_HIDDEN_GEM" : "POPULAR_ATTRACTION",
+          isPlaceHiddenGem: isGem,
+          whySpecial: p.whySpecial || p.matchReason || "",
+          region: p.region || "",
+          address: p.address,
+          coordinates: p.coordinates,
+          openingHours: p.openingHours,
+          verificationStatus: "CURATED_VERIFIED",
+          suggestedDurationMins: p.timeRequiredMins || 90,
+          mapLink: p.mapLink,
+          matchReason: p.matchReason,
+        };
+      });
+    }
+  }
+
+  const usedVenueNames = new Set();
+
   const sanitizedDays = expectedDates.map((dateObj, idx) => {
     const dayNum = dateObj.dayNumber;
     const existing = rawDaysMap.get(dayNum) || rawDays[idx];
@@ -400,15 +441,142 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
         .filter((a) => a && typeof a === "object" && (a.description || a.title))
         .map((a, actIdx) => {
           const rawDesc = String(a.description || a.title || "");
-          const desc = stripMarkdownFormatting(rawDesc);
+          let desc = stripMarkdownFormatting(rawDesc);
           const defaultTimes = ["09:00", "12:00", "15:00", "18:00", "20:30", "22:30"];
-          const time = normalizeTime(a.time, defaultTimes[actIdx % defaultTimes.length]);
+          let time = normalizeTime(a.time, defaultTimes[actIdx % defaultTimes.length]);
           const rawTags = Array.isArray(a.interestTags) ? a.interestTags : [];
           const interestTags = sanitizeActivityInterestTags(rawTags, interestProfile);
+
+          // ── Place Resolution & Anti-Hallucination Matching ────────────────
+          let matchedPlace = null;
+          const aPlaceName = (a.placeName || "").toLowerCase().trim();
+
+          if (aPlaceName) {
+            matchedPlace = verifiedPlaces.find(
+              (p) => p.placeName.toLowerCase() === aPlaceName || p.placeName.toLowerCase().includes(aPlaceName) || aPlaceName.includes(p.placeName.toLowerCase())
+            );
+          }
+
+          if (!matchedPlace) {
+            const descLower = desc.toLowerCase();
+            matchedPlace = verifiedPlaces.find((p) => descLower.includes(p.placeName.toLowerCase()));
+          }
+
+          // ── Duplicate Venue Prevention (Across Nights) ───────────────────
+          if (matchedPlace && usedVenueNames.has(matchedPlace.placeName.toLowerCase())) {
+            // Check if there is an unused verified place of the same category
+            const unusedAlt = verifiedPlaces.find(
+              (p) =>
+                p.placeCategory === matchedPlace.placeCategory &&
+                !usedVenueNames.has(p.placeName.toLowerCase())
+            );
+            if (unusedAlt) {
+              desc = desc.replace(new RegExp(matchedPlace.placeName, "gi"), unusedAlt.placeName);
+              matchedPlace = unusedAlt;
+            }
+          }
+
+          if (matchedPlace) {
+            usedVenueNames.add(matchedPlace.placeName.toLowerCase());
+          }
+
+          // ── Time-Aware Interest Scheduling Constraints ────────────────────
+          const hasNightlifeTag = interestTags.some((t) => t.toLowerCase().includes("nightlife")) ||
+            /nightclub|club|pub|bar|rooftop lounge|night market|dj event/i.test(desc);
+
+          const hasHikingTag = interestTags.some((t) => t.toLowerCase().includes("hiking")) ||
+            /trek|hike|summit trail|ridge walk/i.test(desc);
+
+          if (hasNightlifeTag) {
+            // Nightlife should never be scheduled in the morning or early afternoon
+            const [th] = time.split(":").map(Number);
+            if (th < 18) {
+              time = "21:30"; // Reschedule to preferred nightlife window
+            }
+          } else if (hasHikingTag) {
+            // Hiking should be scheduled during comfortable daylight (avoid midday heat 12-15 and night)
+            const [th] = time.split(":").map(Number);
+            if (th >= 12 && th < 16) {
+              time = "07:30"; // Reschedule to early morning
+            } else if (th >= 18) {
+              time = "07:30";
+            }
+          }
+
+          // ── Opening Hours & Overnight Overlap Validation ─────────────────
+          let placeMetadata = {};
+          if (matchedPlace) {
+            const parsedHours = matchedPlace.parsedHours || parseOpeningHours(matchedPlace.openingHours);
+            const { isOpen, reason } = isVenueOpenAt({
+              parsedHours,
+              targetTimeStr: time,
+              dateStr: dateObj.date,
+            });
+
+            // If closed on this date/time, adjust time or note
+            if (!isOpen) {
+              // Try moving to preferred slot
+              const fallbackSlot = matchedPlace.suggestedVisitTime || "20:00";
+              const retryOpen = isVenueOpenAt({ parsedHours, targetTimeStr: fallbackSlot, dateStr: dateObj.date });
+              if (retryOpen.isOpen) {
+                time = fallbackSlot;
+              } else if (reason.includes("closed on")) {
+                desc += ` (Note: ${reason})`;
+              }
+            }
+
+            const isFutureUnconfirmed = isOutside7DayWindow(dateObj.date);
+            const isConfirmedGem = matchedPlace.gemConfidence === "CONFIRMED_HIDDEN_GEM" || matchedPlace.placeType === "CONFIRMED_HIDDEN_GEM" || (matchedPlace.isPlaceHiddenGem && matchedPlace.verificationStatus === "CURATED_VERIFIED");
+            const isPotentialGem = matchedPlace.gemConfidence === "POTENTIAL_HIDDEN_GEM" || matchedPlace.placeType === "POTENTIAL_HIDDEN_GEM" || (matchedPlace.isPlaceHiddenGem && !isConfirmedGem);
+            const isPopular = matchedPlace.gemConfidence === "POPULAR_ATTRACTION" || matchedPlace.placeType === "POPULAR_ATTRACTION" || (!isConfirmedGem && !isPotentialGem);
+
+            const isGem = isConfirmedGem || isPotentialGem;
+            const gemConfidence = isConfirmedGem ? "CONFIRMED_HIDDEN_GEM" : isPotentialGem ? "POTENTIAL_HIDDEN_GEM" : "POPULAR_ATTRACTION";
+
+            placeMetadata = {
+              placeName: matchedPlace.placeName,
+              placeCategory: matchedPlace.placeCategory,
+              placeSubcategory: matchedPlace.placeSubcategory,
+              placeType: isGem ? "HIDDEN_GEM" : "POPULAR_ATTRACTION",
+              gemConfidence,
+              isPlaceHiddenGem: isGem,
+              whySpecial: isGem ? (a.whySpecial || matchedPlace.whySpecial || matchedPlace.matchReason || "") : "",
+              region: a.region || matchedPlace.region || "",
+              address: matchedPlace.address,
+              coordinates: matchedPlace.coordinates,
+              openingHours: matchedPlace.openingHours,
+              verificationStatus: matchedPlace.verificationStatus || "CURATED_VERIFIED",
+              suggestedDuration: `${matchedPlace.suggestedDurationMins || 90} mins`,
+              mapLink: matchedPlace.mapLink,
+              matchReason: matchedPlace.matchReason,
+              isFutureScheduleUnconfirmed: isFutureUnconfirmed,
+            };
+          } else if (a.placeName) {
+            // Unverified AI-generated place: never allow self-certified hidden gem status
+            placeMetadata = {
+              placeName: a.placeName,
+              placeCategory: a.placeCategory || "",
+              placeSubcategory: a.placeSubcategory || "",
+              placeType: "POPULAR_ATTRACTION",
+              gemConfidence: "UNCLASSIFIED",
+              isPlaceHiddenGem: false,
+              whySpecial: "",
+              region: a.region || "",
+              address: a.address || "",
+              coordinates: a.coordinates || null,
+              openingHours: a.openingHours || "Hours unconfirmed",
+              verificationStatus: "UNVERIFIED",
+              mapLink: a.mapLink || "",
+              matchReason: a.matchReason || "",
+              isFutureScheduleUnconfirmed: isOutside7DayWindow(dateObj.date),
+            };
+          }
+
           return {
             time,
             description: desc,
             interestTags,
+            ...placeMetadata,
           };
         });
     }

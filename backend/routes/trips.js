@@ -44,6 +44,12 @@ router.delete("/:id/expenses/:expenseId", tripController.deleteExpense);
 router.post("/:id/members", validate({ body: inviteMemberSchema }), createTripInvitation);
 router.post("/:id/invitations", validate({ body: inviteMemberSchema }), createTripInvitation);
 
+// DELETE /api/trips/:id/members/:memberId — remove a member (organizer only)
+router.delete("/:id/members/:memberId", tripController.removeTripMember);
+
+// POST /api/trips/:id/leave — leave a trip (members only)
+router.post("/:id/leave", tripController.leaveTrip);
+
 // POST /api/trips/:id/vote — cast a vote
 router.post("/:id/vote", validate({ body: voteSchema }), tripController.castVote);
 

@@ -4,6 +4,26 @@ const ActivitySchema = new mongoose.Schema({
   time: String,
   description: String,
   interestTags: { type: [String], default: [] },
+  placeName: { type: String, default: "" },
+  placeCategory: { type: String, default: "" },
+  placeSubcategory: { type: String, default: "" },
+  placeType: { type: String, default: "POPULAR_ATTRACTION" },
+  gemConfidence: { type: String, default: "UNCLASSIFIED" },
+  isPlaceHiddenGem: { type: Boolean, default: false },
+  whySpecial: { type: String, default: "" },
+  region: { type: String, default: "" },
+  address: { type: String, default: "" },
+  coordinates: {
+    lat: { type: Number, default: null },
+    lng: { type: Number, default: null },
+  },
+  openingHours: { type: String, default: "" },
+  verificationStatus: { type: String, default: "" },
+  suggestedDuration: { type: String, default: "" },
+  distanceFromPrevious: { type: String, default: "" },
+  mapLink: { type: String, default: "" },
+  matchReason: { type: String, default: "" },
+  isFutureScheduleUnconfirmed: { type: Boolean, default: false },
 });
 
 const DayPlanSchema = new mongoose.Schema({
@@ -134,6 +154,8 @@ const TripSchema = new mongoose.Schema({
   },
   startDate: String,
   endDate: String,
+  duration: { type: Number },
+  durationMode: { type: String, enum: ["RECOMMENDED", "CUSTOM"], default: "RECOMMENDED" },
   style: String,
   interests: [String],
   transport: [String],          // user-selected transport modes

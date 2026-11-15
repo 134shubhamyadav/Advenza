@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,16 +16,29 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  ArrowRight,
   Loader2,
   LogIn,
   UserPlus,
   HeartHandshake,
+  ShieldCheck,
 } from "lucide-react";
 
 export const Route = createFileRoute("/invite/$token")({
   component: InvitePage,
 });
+
+interface GroupMember {
+  name: string;
+  role: string;
+  userId?: string;
+}
+
+interface GroupOrganizer {
+  name: string;
+  role: string;
+  userId?: string;
+  email?: string;
+}
 
 interface TripPreview {
   _id: string;
@@ -38,6 +51,9 @@ interface TripPreview {
   style?: string;
   interests?: string[];
   memberCount?: number;
+  confirmedCount?: number;
+  organizer?: GroupOrganizer;
+  confirmedMembers?: GroupMember[];
 }
 
 interface InvitationData {
@@ -258,10 +274,50 @@ function InvitePage() {
                 <div className="flex items-center gap-1.5">
                   <Users className="h-3.5 w-3.5 text-primary shrink-0" />
                   <span>
-                    {inviteData.trip.memberCount || inviteData.trip.travelers || 2} Companion{((inviteData.trip.memberCount || 2) !== 1) ? "s" : ""}
+                    {(inviteData.trip.confirmedCount ?? inviteData.trip.memberCount ?? inviteData.trip.travelers ?? 1)} Confirmed
                   </span>
                 </div>
               </div>
+
+              {/* Live Group Member Roster */}
+              {(inviteData.trip.organizer || (inviteData.trip.confirmedMembers && inviteData.trip.confirmedMembers.length > 0)) && (
+                <div className="pt-3 border-t border-primary/10">
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                    Who's in this group
+                  </p>
+                  <div className="space-y-1.5">
+                    {/* Organizer */}
+                    {inviteData.trip.organizer && (
+                      <div className="flex items-center justify-between gap-2 rounded-lg bg-primary/5 border border-primary/15 px-3 py-2">
+                        <span className="text-xs font-semibold text-foreground truncate">
+                          {inviteData.trip.organizer.name}
+                        </span>
+                        <span className="flex items-center gap-1 text-[10px] font-semibold text-primary shrink-0">
+                          <ShieldCheck className="h-3 w-3" /> Organizer
+                        </span>
+                      </div>
+                    )}
+                    {/* Confirmed Members */}
+                    {inviteData.trip.confirmedMembers?.map((m, idx) => (
+                      <div
+                        key={m.userId || idx}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-muted/30 border border-border/40 px-3 py-2"
+                      >
+                        <span className="text-xs font-medium text-foreground truncate">
+                          {m.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">Member</span>
+                      </div>
+                    ))}
+                    {/* Empty state if only organizer exists */}
+                    {(!inviteData.trip.confirmedMembers || inviteData.trip.confirmedMembers.length === 0) && inviteData.trip.organizer && (
+                      <p className="text-[11px] text-muted-foreground italic px-1">
+                        Be the first to join this group.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Group Interests */}
               {inviteData.trip.interests && inviteData.trip.interests.length > 0 && (

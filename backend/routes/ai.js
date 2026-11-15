@@ -10,6 +10,7 @@ import {
   packingInputSchema,
   riskInputSchema,
   estimateBudgetInputSchema,
+  destinationOverviewInputSchema,
 } from "../schemas/ai.schemas.js";
 import * as aiController from "../controllers/ai.controller.js";
 
@@ -17,6 +18,13 @@ const router = express.Router();
 
 // Enforce auth token verification on all AI endpoints
 router.use(verifyToken);
+
+// GET /api/ai/destination-overview
+router.get(
+  "/destination-overview",
+  validate({ query: destinationOverviewInputSchema }),
+  aiController.getDestinationOverview
+);
 
 // GET /api/ai/estimate-budget
 router.get(

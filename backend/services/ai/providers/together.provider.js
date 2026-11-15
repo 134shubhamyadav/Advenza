@@ -23,26 +23,32 @@ export class TogetherProvider extends BaseAIProvider {
     return this.client;
   }
 
-  async createCompletion({ messages, temperature = 0.7, maxTokens = 8192, signal, preferredModel }) {
+  async createCompletion({ messages, temperature = 0.7, maxTokens = 4096, signal, preferredModel, jsonMode = false }) {
     const client = this.getClient();
     if (!client) {
       throw new Error("Together API key is not configured");
     }
 
     const modelsToTry = preferredModel ? [preferredModel, ...this.models.filter((m) => m !== preferredModel)] : this.models;
+    const effectiveMaxTokens = Math.min(Number(maxTokens) || 4096, 4096);
     let lastError = null;
 
     for (const model of modelsToTry) {
+      if (signal?.aborted) throw new Error("Aborted");
+
       try {
-        const completion = await client.chat.completions.create(
-          {
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens,
-          },
-          { signal }
-        );
+        const params = {
+          model,
+          messages,
+          temperature,
+          max_tokens: effectiveMaxTokens,
+        };
+
+        if (jsonMode) {
+          params.response_format = { type: "json_object" };
+        }
+
+        const completion = await client.chat.completions.create(params, { signal });
         return { completion, provider: this.name, model };
       } catch (err) {
         lastError = err;
