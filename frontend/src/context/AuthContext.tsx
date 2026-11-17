@@ -75,15 +75,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!auth) {
-      // Provide a mock user for local development if Firebase fails to initialize
-      console.warn("AuthContext: Using mock user because Firebase auth is not initialized.");
-      setUser({ uid: "mock-user-123", email: "demo@advenza.test", displayName: "Demo User" } as any);
-      setProfile({ uid: "mock-user-123", email: "demo@advenza.test", displayName: "Demo User", photoURL: null });
+      setUser(null);
+      setProfile(null);
       setLoading(false);
       return;
     }
 
+    let isSubscribed = true;
+
+    // Use authStateReady if available in Firebase SDK
+    if (typeof auth.authStateReady === "function") {
+      auth.authStateReady().then(() => {
+        if (!isSubscribed) return;
+        const current = auth.currentUser;
+        setUser(current);
+        if (current) {
+          setProfile({
+            uid: current.uid,
+            email: current.email,
+            displayName: current.displayName,
+            photoURL: current.photoURL,
+          });
+          try {
+            localStorage.setItem("advenza_auth_session", "true");
+          } catch {}
+          void fetchProfile(current);
+        } else {
+          setProfile(null);
+          try {
+            localStorage.removeItem("advenza_auth_session");
+          } catch {}
+        }
+        setLoading(false);
+      }).catch(() => {
+        if (isSubscribed) setLoading(false);
+      });
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (!isSubscribed) return;
       setUser(currentUser);
       if (currentUser) {
         // Set basic profile instantly so UI resolves in milliseconds
@@ -93,21 +123,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: currentUser.displayName,
           photoURL: currentUser.photoURL,
         });
+        try {
+          localStorage.setItem("advenza_auth_session", "true");
+        } catch {}
         setLoading(false);
         // Fetch deeper Firestore preferences in background
         void fetchProfile(currentUser);
       } else {
         setProfile(null);
+        try {
+          localStorage.removeItem("advenza_auth_session");
+        } catch {}
         setLoading(false);
       }
     });
 
-    // 1.5s safety timeout: guarantees loading does not hang the UI if network is sluggish
+    // 6.0s safety fallback timeout (replaces overly aggressive 1.5s timeout)
     const timeout = setTimeout(() => {
-      setLoading(false);
-    }, 1500);
+      if (isSubscribed) {
+        setLoading(false);
+      }
+    }, 6000);
 
     return () => {
+      isSubscribed = false;
       clearTimeout(timeout);
       unsubscribe();
     };

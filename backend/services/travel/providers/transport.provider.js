@@ -1,5 +1,6 @@
 import { BaseTransportProvider } from "./base.provider.js";
 import { weatherProvider } from "./weather.provider.js";
+import { osrmRoutingService } from "../osrm-routing.service.js";
 import { apiClient } from "../../../utils/apiClient.js";
 import { logger } from "../../../utils/logger.js";
 import { env } from "../../../config/env.js";
@@ -176,6 +177,39 @@ export class TransportProvider extends BaseTransportProvider {
         };
       }
 
+      // 2. Try Open Source Routing Machine (OSRM) for live road geometry and turn-by-turn distance
+      try {
+        const osrmRoute = await osrmRoutingService.calculateDrivingRoute({
+          origin: { lat: origGeo.latitude, lon: origGeo.longitude },
+          destination: { lat: destGeo.latitude, lon: destGeo.longitude },
+        });
+
+        if (osrmRoute) {
+          return {
+            provider: "Open Source Routing Machine (OSRM)",
+            status: "LIVE",
+            isLive: true,
+            source: "LIVE_OSRM_ROUTING",
+            origin: origGeo.name || origClean,
+            destination: destGeo.name || destClean,
+            mode,
+            distanceKm: osrmRoute.distanceKm,
+            estimatedDurationMins: osrmRoute.durationMins,
+            normalDurationMins: osrmRoute.durationMins,
+            trafficLevel: "normal",
+            trafficStatus: "LIVE_ROUTING",
+            delayMinutes: 0,
+            fuelCostINR: osrmRoute.fuelCostINR,
+            estimatedTollsINR: osrmRoute.estimatedTollsINR,
+            priceType: "LIVE_VERIFIED",
+            lastUpdated: new Date().toISOString(),
+          };
+        }
+      } catch (osrmErr) {
+        logger.warn(`[TransportProvider] OSRM query failed: ${osrmErr.message}. Falling back to geodesic.`);
+      }
+
+      // 3. Geodesic routing calculation (ESTIMATED - Never claims live traffic)
       const directDistance = calculateHaversineDistance(
         origGeo.latitude,
         origGeo.longitude,
@@ -202,6 +236,7 @@ export class TransportProvider extends BaseTransportProvider {
         trafficLevel: "unknown",
         trafficStatus: "UNAVAILABLE",
         delayMinutes: 0,
+        priceType: "HISTORICAL_ESTIMATE",
         disclaimer: "Live traffic telemetry not configured. Transit times and distances are geodesic road estimates.",
         lastUpdated: new Date().toISOString(),
       };

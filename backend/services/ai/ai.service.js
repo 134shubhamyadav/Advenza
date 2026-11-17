@@ -141,34 +141,43 @@ export function getRegionalSafetyFallback(city) {
     ];
   }
 
-  // Major Indian Metros (Delhi, Mumbai, Bengaluru, etc.)
+  // International & Universal Urban Fallback
   return [
     {
       key: "transport_local",
-      label: "Metro & City Transit Guidelines",
+      label: "City Transit & Navigation Guidelines",
       level: "low",
-      summary: `City Metro network provides reliable, air-conditioned transit across ${city}. For road transit, app-based cabs (Uber/Ola) provide upfront GPS pricing.`,
-      tips: ["Use Metro smart cards or digital QR tickets to skip ticket queues", "Take prepaid airport/station taxis or app cabs rather than hailing unmetered autos"],
-      recommendation: "Opt for Metro rail for cross-city travel and pre-booked rides for airport transfers.",
-      source: "Urban Transport Authority",
+      summary: `Public transit networks and official licensed transport offer reliable transit across ${city}. For road travel, use app-based rides or authorized prepaid terminal desks.`,
+      tips: [
+        `Use official transit passes or contactless payment cards to navigate ${city}`,
+        "Take authorized airport transfers or metered taxis rather than unverified private rides",
+      ],
+      recommendation: "Use official metro/bus transit or pre-booked rides for intercity and airport transfers.",
+      source: "International Transit Advisory",
     },
     {
       key: "scams_local",
-      label: "Station Touts & Ticket Office Cautions",
+      label: "Tourist District Cautions",
       level: "low",
-      summary: `Touts near major transit hubs in ${city} may claim hotels are closed or direct travelers to unofficial private travel desks.`,
-      tips: ["Proceed directly to your pre-booked hotel or official ticket counter", "Purchase monument tickets through the official ASI website or verified QR codes"],
-      recommendation: "Disregard unsolicited claims about closed hotels or cancelled trains.",
-      source: "Tourist Safety Advisory",
+      summary: `High-footfall tourist areas in ${city} can attract unofficial ticket sellers, overpriced private tours, or currency exchange touts.`,
+      tips: [
+        "Purchase monument, museum, and experience tickets strictly through official venue websites or certified counters",
+        "Keep personal belongings secure in front pockets or zipped bags in crowded transit stations",
+      ],
+      recommendation: "Book admissions directly through verified official platforms.",
+      source: "Tourist Safety Registry",
     },
     {
       key: "health_local",
-      label: "Water & Environmental Health",
+      label: "Hydration & Health Preparedness",
       level: "low",
-      summary: `Drink sealed bottled or filtered water in ${city}. Check seasonal air quality index during winter and stay hydrated during warmer months.`,
-      tips: ["Drink only packaged mineral water with unbroken seals", "Keep ORS or hydration salts handy during warm afternoon sightseeing"],
-      recommendation: "Drink bottled water and dine at well-reviewed establishments.",
-      source: "Public Health Guidelines",
+      summary: `Stay prepared for weather shifts in ${city}. Carry a refillable water bottle or drink sealed water, and save local emergency contact numbers.`,
+      tips: [
+        "Stay hydrated during walking tours and keep basic travel first aid handy",
+        "Check daily weather forecasts before outdoor explorations",
+      ],
+      recommendation: "Follow local public health advisories and carry personal travel insurance information.",
+      source: "Public Health Advisory",
     },
   ];
 }
@@ -332,6 +341,17 @@ export class AIService {
 
     const accommodationLine = (() => {
       const parts = [];
+      if (accommodation) {
+        if (
+          accommodation === "OWN_HOME" ||
+          accommodation === "RELATIVE" ||
+          /own home|relative/i.test(accommodation)
+        ) {
+          parts.push("Staying at Own Home / Relative's Home (₹0 lodging expense - family accommodation)");
+        } else {
+          parts.push(`Tier/Preference: ${accommodation}`);
+        }
+      }
       if (hotelName) parts.push(hotelName);
       if (hotelLocation) parts.push(`in ${hotelLocation}`);
       if (checkInTime) parts.push(`check-in at ${checkInTime}`);
@@ -399,6 +419,7 @@ export class AIService {
 
     const tripData = {
       ...sanitized,
+      destination: destination || sanitized?.destination || "",
       origin: origin || "",
       heroImage,
       createdBy: userId || "guest",
@@ -480,6 +501,17 @@ export class AIService {
 
     const accommodationLine = (() => {
       const parts = [];
+      if (accommodation) {
+        if (
+          accommodation === "OWN_HOME" ||
+          accommodation === "RELATIVE" ||
+          /own home|relative/i.test(accommodation)
+        ) {
+          parts.push("Staying at Own Home / Relative's Home (₹0 lodging expense - family accommodation)");
+        } else {
+          parts.push(`Tier/Preference: ${accommodation}`);
+        }
+      }
       if (hotelName) parts.push(hotelName);
       if (hotelLocation) parts.push(`in ${hotelLocation}`);
       if (checkInTime) parts.push(`check-in at ${checkInTime}`);

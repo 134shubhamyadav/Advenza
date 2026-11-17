@@ -47,6 +47,9 @@ const envSchema = z.object({
   CEREBRAS_API_KEY: z.string().optional(),
   TOGETHER_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  COHERE_API_KEY: z.string().optional(),
+  MISTRAL_API_KEY: z.string().optional(),
   AI_TIMEOUT_MS: z.coerce.number().default(30000),
   AI_MAX_RETRIES: z.coerce.number().default(2),
 
@@ -65,6 +68,10 @@ const envSchema = z.object({
   BREVO_API_KEY: z.string().optional(),
   BREVO_SENDER_EMAIL: z.string().email().optional().default("advenzaaa@gmail.com"),
   BREVO_SENDER_NAME: z.string().optional().default("Advenza Travel Companion"),
+
+  // RailCore Indian Railways API Provider
+  RAILCORE_API_KEY: z.string().optional(),
+  RAILCORE_BASE_URL: z.string().default("https://ir.railcore.tech/v1"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -125,12 +132,18 @@ export function getProviderConfigStatus() {
     ai: {
       groq: Boolean(env.GROQ_API_KEY),
       openrouter: Boolean(env.OPENROUTER_API_KEY),
+      gemini: Boolean(env.GEMINI_API_KEY),
+      cohere: Boolean(env.COHERE_API_KEY),
+      mistral: Boolean(env.MISTRAL_API_KEY),
       together: Boolean(env.TOGETHER_API_KEY),
       cerebras: Boolean(env.CEREBRAS_API_KEY),
       openai: Boolean(env.OPENAI_API_KEY),
       anyConfigured: Boolean(
         env.GROQ_API_KEY ||
         env.OPENROUTER_API_KEY ||
+        env.GEMINI_API_KEY ||
+        env.COHERE_API_KEY ||
+        env.MISTRAL_API_KEY ||
         env.TOGETHER_API_KEY ||
         env.CEREBRAS_API_KEY ||
         env.OPENAI_API_KEY
@@ -138,6 +151,9 @@ export function getProviderConfigStatus() {
       status: (
         env.GROQ_API_KEY ||
         env.OPENROUTER_API_KEY ||
+        env.GEMINI_API_KEY ||
+        env.COHERE_API_KEY ||
+        env.MISTRAL_API_KEY ||
         env.TOGETHER_API_KEY ||
         env.CEREBRAS_API_KEY ||
         env.OPENAI_API_KEY

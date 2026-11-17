@@ -7,7 +7,7 @@ import { getAnalytics, isSupported } from "firebase/analytics";
 const firebaseConfig = {
   // Firebase web API keys are public client identifiers (restricted via Google Cloud Console).
   // Set VITE_FIREBASE_* variables in your .env file — see .env.example for required keys.
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "dummy-api-key-for-local-dev",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
   authDomain: "advenzaa7.firebaseapp.com",
   projectId: "advenzaa7",
   storageBucket: "advenzaa7.firebasestorage.app",

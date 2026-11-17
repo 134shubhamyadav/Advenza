@@ -54,6 +54,15 @@ export class AIRetryService {
 
         // 2. Validate with Zod Schema (if provided)
         if (schema) {
+          if (parsed && typeof parsed === "object") {
+            if (!Array.isArray(parsed.days)) {
+              if (Array.isArray(parsed.itinerary)) parsed.days = parsed.itinerary;
+              else if (Array.isArray(parsed.schedule)) parsed.days = parsed.schedule;
+              else if (Array.isArray(parsed.plan)) parsed.days = parsed.plan;
+              else if (Array.isArray(parsed.trip)) parsed.days = parsed.trip;
+            }
+          }
+
           const validated = schema.safeParse(parsed);
           if (validated.success) {
             logger.info(`[AIRetry] Provider ${provider.name} succeeded with valid schema on attempt ${attempt}`);

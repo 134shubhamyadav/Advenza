@@ -6,14 +6,12 @@ import { logger } from "../../../utils/logger.js";
 export class GroqProvider extends BaseAIProvider {
   constructor() {
     super("Groq");
-    // Verified active Groq models (tested live)
-    // 1. openai/gpt-oss-20b: ultra-fast (~600ms), reliable structured JSON
-    // 2. qwen/qwen3.8-27b: blazing fast (~100ms)
-    // 3. openai/gpt-oss-120b: deep reasoning (~1.8s)
+    // Verified active Groq models:
+    // 1. qwen/qwen3.8-27b: ultra-fast (~1.1s), exceptional structured JSON (OTPM capped to 900)
+    // 2. openai/gpt-oss-20b: fast (~1.7s) fallback
     this.models = [
-      "openai/gpt-oss-20b",
       "qwen/qwen3.8-27b",
-      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
     ];
     this.client = null;
   }
@@ -41,7 +39,7 @@ export class GroqProvider extends BaseAIProvider {
     const modelsToTry = preferredModel ? [preferredModel, ...this.models.filter((m) => m !== preferredModel)] : this.models;
     // Cap max_tokens to 4096 to prevent hitting Groq's 6,000 TPM limit on free tier
     const effectiveMaxTokens = Math.min(Number(maxTokens) || 4096, 4096);
-    const PER_MODEL_TIMEOUT_MS = 25_000;
+    const PER_MODEL_TIMEOUT_MS = 15_000;
     let lastError = null;
 
     for (const model of modelsToTry) {
@@ -54,11 +52,12 @@ export class GroqProvider extends BaseAIProvider {
       }
 
       try {
+        const modelMaxTokens = model.includes("qwen") ? Math.min(effectiveMaxTokens, 900) : effectiveMaxTokens;
         const params = {
           model,
           messages,
           temperature,
-          max_tokens: effectiveMaxTokens,
+          max_tokens: modelMaxTokens,
         };
 
         if (jsonMode) {

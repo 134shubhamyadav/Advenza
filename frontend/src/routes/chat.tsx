@@ -24,12 +24,23 @@ import { MarkdownMessage } from "@/components/markdown-message";
 
 export const Route = createFileRoute("/chat")({ component: Chat });
 
-const starterPrompts = [
-  { icon: Utensils, text: "Suggest non-veg lunch places in North Goa" },
-  { icon: Sparkles, text: "Suggest hidden gems in Goa" },
-  { icon: Map, text: "Which beaches in Goa are less crowded?" },
-  { icon: Compass, text: "Plan a one-day sightseeing route" },
-];
+const getDynamicStarterPrompts = (destination?: string) => {
+  const dest = destination?.trim();
+  if (dest) {
+    return [
+      { icon: Utensils, text: `Best local dining & authentic food in ${dest}` },
+      { icon: Sparkles, text: `Secret hidden gems & scenic spots in ${dest}` },
+      { icon: Map, text: `Must-visit cultural landmarks & highlights in ${dest}` },
+      { icon: Compass, text: `Plan a 1-day exploration itinerary for ${dest}` },
+    ];
+  }
+  return [
+    { icon: Utensils, text: "Best local dining & authentic food recommendations" },
+    { icon: Sparkles, text: "Discover offbeat hidden gems and authentic experiences" },
+    { icon: Map, text: "Cultural landmarks and top sights for my journey" },
+    { icon: Compass, text: "Plan a realistic day-wise sightseeing route" },
+  ];
+};
 
 interface PlaceCard {
   name: string;
@@ -85,7 +96,7 @@ function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      text: "Namaste! I'm Advenza, your intelligent Indian travel companion. I provide verified restaurant recommendations, authentic hidden gems, route distances, and time-aware local guidance.\n\nAsk me anything about your destination or active journey!",
+      text: "Hello! I'm Advenza, your intelligent travel companion. I provide verified restaurant recommendations, authentic hidden gems, route distances, and time-aware local guidance for destinations worldwide.\n\nAsk me anything about your destination or active journey!",
     },
   ]);
   const [input, setInput] = useState("");
@@ -406,7 +417,7 @@ function Chat() {
         {/* Starter Prompts (shown when only initial greeting is in thread) */}
         {messages.length <= 1 && (
           <div className="mb-3 grid grid-cols-2 gap-2">
-            {starterPrompts.map((p) => (
+            {getDynamicStarterPrompts(activeTrip?.destination).map((p) => (
               <button
                 key={p.text}
                 onClick={() => send(p.text)}

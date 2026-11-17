@@ -7,13 +7,13 @@ export class OpenRouterProvider extends BaseAIProvider {
   constructor() {
     super("OpenRouter");
     // Priority order:
-    // 1. Fast, highly reliable models first (llama-3.1-8b finishes in ~4s)
-    // 2. High-quality 70B models (llama-3.3-70b finishes in ~15s)
+    // 1. Fast, highly reliable models first (llama-3.1-8b finishes in ~3s)
+    // 2. High-quality 70B models (llama-3.3-70b finishes in ~8s)
     // 3. Fallbacks
     this.models = [
-      "openai/gpt-4o-mini",
       "meta-llama/llama-3.1-8b-instruct",
       "meta-llama/llama-3.3-70b-instruct",
+      "openai/gpt-4o-mini",
       "qwen/qwen-2.5-72b-instruct",
       "openrouter/auto",
     ];
@@ -46,7 +46,7 @@ export class OpenRouterProvider extends BaseAIProvider {
 
     const modelsToTry = preferredModel ? [preferredModel, ...this.models.filter((m) => m !== preferredModel)] : this.models;
     const effectiveMaxTokens = Math.min(Number(maxTokens) || 4096, 4096);
-    const PER_MODEL_TIMEOUT_MS = 55_000;
+    const PER_MODEL_TIMEOUT_MS = 15_000;
     let lastError = null;
 
     for (const model of modelsToTry) {

@@ -1,5 +1,8 @@
 import groqProvider from "./providers/groq.provider.js";
 import openRouterProvider from "./providers/openrouter.provider.js";
+import geminiProvider from "./providers/gemini.provider.js";
+import mistralProvider from "./providers/mistral.provider.js";
+import cohereProvider from "./providers/cohere.provider.js";
 import cerebrasProvider from "./providers/cerebras.provider.js";
 import togetherProvider from "./providers/together.provider.js";
 import openaiProvider from "./providers/openai.provider.js";
@@ -13,6 +16,9 @@ export class AIRouterService {
     this.providers = [
       groqProvider,
       openRouterProvider,
+      geminiProvider,
+      mistralProvider,
+      cohereProvider,
       cerebrasProvider,
       togetherProvider,
       openaiProvider,
@@ -33,7 +39,7 @@ export class AIRouterService {
       temperature = 0.7,
       maxTokens = 4096,
       max_tokens,
-      timeoutMs = 45000,
+      timeoutMs = 25000,
       preferredModel = null,
       jsonMode = false,
     } = options;

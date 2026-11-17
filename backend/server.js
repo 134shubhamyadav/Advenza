@@ -2,6 +2,12 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dns from "dns";
+
+// Ensure IPv4 lookup precedence to avoid IPv6 getaddrinfo timeouts on Windows/home networks
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch (_) {}
+
 import { config } from "./config/env.js";
 import { logger } from "./utils/logger.js";
 import { requestId } from "./middleware/requestId.js";
@@ -127,7 +133,16 @@ mongoose
 const server = app.listen(PORT, () => {
   logger.info(`🚀 Advenza Server running on http://localhost:${PORT}`);
   // Redacted configuration sanity check
-  const providers = ["GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY", "TOGETHER_API_KEY"];
+  const providers = [
+    "GROQ_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GEMINI_API_KEY",
+    "COHERE_API_KEY",
+    "MISTRAL_API_KEY",
+    "CEREBRAS_API_KEY",
+    "OPENAI_API_KEY",
+    "TOGETHER_API_KEY",
+  ];
   for (const k of providers) {
     const isSet = Boolean(process.env[k]);
     logger.info(`🔑 ${k}: ${isSet ? "✅ configured" : "⚠️  not set"}`);

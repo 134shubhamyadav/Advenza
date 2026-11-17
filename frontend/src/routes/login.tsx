@@ -88,34 +88,7 @@ function Login() {
     }
   };
 
-  const handleDemoLogin = async () => {
-    setEmail("demo@Advenza.travel");
-    setPassword("demo1234");
-    // Just filling the form isn't enough, we actually trigger login
-    try {
-      setLoading(true);
-      setError("");
-      // Using a predefined demo account. Note: You must create this account in Firebase console.
-      const result = await signInWithEmailAndPassword(auth, "demo@Advenza.travel", "demo1234");
-      await saveUserProfile({
-        uid: result.user.uid,
-        email: result.user.email,
-        displayName: "Demo User",
-        photoURL: null,
-      });
-      const dest = getPostLoginDestination();
-      if (dest.startsWith("/invite/")) {
-        window.location.href = dest;
-      } else {
-        nav({ to: "/dashboard" });
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError("Demo account is not set up on this Firebase instance yet.");
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
@@ -178,16 +151,7 @@ function Login() {
             </Button>
           </form>
 
-          <div className="mt-6">
-            <Button
-              variant="secondary"
-              className="h-11 w-full rounded-xl border border-border/50"
-              onClick={handleDemoLogin}
-              disabled={loading}
-            >
-              Try Demo Account
-            </Button>
-          </div>
+
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
             New to Advenza?{" "}

@@ -26,6 +26,30 @@ router.get(
   aiController.getDestinationOverview
 );
 
+// GET /api/ai/destination-disambiguation
+router.get(
+  "/destination-disambiguation",
+  aiController.disambiguateDestination
+);
+
+// POST /api/ai/budget-feasibility
+router.post(
+  "/budget-feasibility",
+  aiController.calculateBudgetFeasibility
+);
+
+// POST /api/ai/orchestrated-research
+router.post(
+  "/orchestrated-research",
+  aiController.orchestratedResearch
+);
+
+// GET /api/ai/trains (Live RailCore Indian Railways train search, fares & availability)
+router.get(
+  "/trains",
+  aiController.searchTrains
+);
+
 // GET /api/ai/estimate-budget
 router.get(
   "/estimate-budget",

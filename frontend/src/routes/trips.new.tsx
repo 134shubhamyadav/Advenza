@@ -62,6 +62,71 @@ const LOADING_MESSAGES = [
   "Finalizing your personalized plan...",
 ];
 
+interface DisambiguationCandidate {
+  id: string;
+  destinationName: string;
+  stateOrRegion: string;
+  district?: string;
+  country: string;
+  fullName: string;
+  coordinates?: { lat: number; lng: number };
+  referenceInfo?: string;
+}
+
+interface BudgetFeasibilityData {
+  isFeasible: boolean;
+  budgetStatus: "FEASIBLE" | "EXCEEDS_BUDGET" | "NO_BUDGET_SET";
+  totalEstimatedBudgetINR: number;
+  userBudgetINR: number | null;
+  shortfallAmountINR: number;
+  surplusAmountINR: number;
+  costDrivers: string[];
+  actionableSavingsOptions: Array<{
+    title: string;
+    potentialSavingsINR: number;
+    description: string;
+    tradeoff: string;
+  }>;
+}
+
+const ACCOMMODATION_OPTIONS = [
+  {
+    id: "OWN_HOME",
+    title: "Own Home / Relative's Home",
+    desc: "Staying with family, friends, or own residence (₹0 lodging expense)",
+    icon: "🏡",
+    isFree: true,
+  },
+  {
+    id: "BUDGET",
+    title: "Budget Accommodation",
+    desc: "Hostels, homestays, and guesthouses (Economical)",
+    icon: "🛏️",
+    isFree: false,
+  },
+  {
+    id: "HOTEL",
+    title: "Hotel (Standard 3-4 Star)",
+    desc: "Comfortable private room with standard amenities & breakfast",
+    icon: "🏨",
+    isFree: false,
+  },
+  {
+    id: "RESORT",
+    title: "Resort / Premium Stay",
+    desc: "Luxury 5-star resort, heritage property, or boutique villa",
+    icon: "✨",
+    isFree: false,
+  },
+  {
+    id: "AI_RECOMMENDED",
+    title: "Let AI find the best option",
+    desc: "AI selects optimal balance of location, comfort, and reviews",
+    icon: "🤖",
+    isFree: false,
+  },
+];
+
 function NewTrip() {
   const nav = useNavigate();
   const { user } = useAuth();
@@ -77,6 +142,13 @@ function NewTrip() {
   // ── Step 0: Destination ────────────────────────────────────────────────────
   const [destination, setDestination] = useState("");
   const [originCity, setOriginCity] = useState("");
+  const [disambiguationCandidates, setDisambiguationCandidates] = useState<DisambiguationCandidate[]>([]);
+  const [isCheckingDisambiguation, setIsCheckingDisambiguation] = useState(false);
+  const [disambiguationWarning, setDisambiguationWarning] = useState("");
+
+  // ── Budget Feasibility State ───────────────────────────────────────────────
+  const [budgetFeasibility, setBudgetFeasibility] = useState<BudgetFeasibilityData | null>(null);
+  const [isCheckingBudgetFeasibility, setIsCheckingBudgetFeasibility] = useState(false);
 
   // ── Step 1: Destination Insights ───────────────────────────────────────────
   const [destinationOverview, setDestinationOverview] = useState<DestinationOverview | null>(null);
@@ -144,6 +216,60 @@ function NewTrip() {
   const [interests, setInterests] = useState<string[]>([]);
   const [special, setSpecial] = useState("");
 
+  // ── RailCore Indian Railways State ──────────────────────────────────────────
+  const [railcoreData, setRailcoreData] = useState<any | null>(null);
+  const [isFetchingTrains, setIsFetchingTrains] = useState(false);
+  const [selectedTrain, setSelectedTrain] = useState<any | null>(null);
+  const [selectedTrainClass, setSelectedTrainClass] = useState<string>("3A");
+
+  const fetchLiveTrains = async (originParam?: string, destParam?: string, dateParam?: string, classParam?: string) => {
+    const o = (originParam || originCity || "").trim();
+    const d = (destParam || destination || "").trim();
+    if (!o || !d) return;
+
+    setIsFetchingTrains(true);
+    try {
+      const q = new URLSearchParams({
+        origin: o,
+        destination: d,
+        date: dateParam || startDate || getDefaultStartDate(),
+        passengers: travelers || "1",
+        preferredClass: classParam || selectedTrainClass || "3A",
+      });
+      const res = await apiFetch(`/api/ai/trains?${q.toString()}`);
+      if (res && res.status === "SUCCESS") {
+        setRailcoreData(res);
+        if (res.recommendedTrain && !selectedTrain) {
+          handleSelectTrain(res.recommendedTrain, classParam || selectedTrainClass);
+        }
+      } else {
+        setRailcoreData(res || null);
+      }
+    } catch (err) {
+      console.warn("RailCore train fetch error:", err);
+    } finally {
+      setIsFetchingTrains(false);
+    }
+  };
+
+  const handleSelectTrain = (train: any, classCode?: string) => {
+    setSelectedTrain(train);
+    const cls = classCode || selectedTrainClass || train.selectedClass || "3A";
+    setSelectedTrainClass(cls);
+    setTravelMode("Train");
+    setDepartureHub(train.fromStationCode || train.fromStationName || "Station");
+    setArrivalHub(train.toStationCode || train.toStationName || "Station");
+    setTransitRef(`${train.trainNumber} - ${train.trainName} (${cls})`);
+    if (train.departureTime) setDepartureTime(train.departureTime);
+    if (train.arrivalTime) setArrivalTime(train.arrivalTime);
+  };
+
+  useEffect(() => {
+    if (step === 4 && travelMode === "Train" && !railcoreData && !isFetchingTrains && (originCity || destination)) {
+      fetchLiveTrains();
+    }
+  }, [step, travelMode]);
+
   // Cycle loading messages smoothly
   useEffect(() => {
     if (!loading) {
@@ -181,6 +307,112 @@ function NewTrip() {
     return true; // Step 4 (Interests & Travel) and Step 5 (Review)
   };
 
+  const checkDisambiguation = async (query: string): Promise<boolean> => {
+    if (!query.trim() || query.trim().length < 2) return true;
+    setIsCheckingDisambiguation(true);
+    setDisambiguationWarning("");
+    try {
+      const res = await apiFetch(
+        `/api/ai/destination-disambiguation?query=${encodeURIComponent(query.trim())}`
+      );
+      if (res && res.isAmbiguous && Array.isArray(res.candidates) && res.candidates.length > 1) {
+        setDisambiguationCandidates(res.candidates);
+        setDisambiguationWarning(
+          `Multiple geographical locations match "${query.trim()}". Please select your exact destination below.`
+        );
+        setIsCheckingDisambiguation(false);
+        return false;
+      } else {
+        setDisambiguationCandidates([]);
+        setIsCheckingDisambiguation(false);
+        return true;
+      }
+    } catch (err) {
+      console.warn("Disambiguation check failed:", err);
+      setIsCheckingDisambiguation(false);
+      return true;
+    }
+  };
+
+  const handleSelectCandidate = (candidate: DisambiguationCandidate) => {
+    setDestination(candidate.fullName);
+    setDisambiguationCandidates([]);
+    setDisambiguationWarning("");
+    setIsFetchingOverview(true);
+    fetchDestinationOverview(candidate.fullName, interests)
+      .then((data) => {
+        setDestinationOverview(data);
+        const recDays = data?.durationRecommendation?.recommendedDays || 5;
+        if (durationMode === "RECOMMENDED") {
+          const start = startDate || getDefaultStartDate();
+          setStartDate(start);
+          setSelectedDaysCount(recDays);
+          setSelectedDurationPlan("recommended");
+          const end = addDaysToDate(start, recDays - 1);
+          setEndDate(end);
+        } else {
+          if (!startDate) setStartDate(getDefaultStartDate());
+          if (!endDate && startDate) setEndDate(addDaysToDate(startDate, recDays - 1));
+          if (!selectedDaysCount) setSelectedDaysCount(recDays);
+        }
+        setStep(1);
+      })
+      .catch((err) => {
+        console.warn("Destination overview fetch failed:", err);
+        setStep(1);
+      })
+      .finally(() => {
+        setIsFetchingOverview(false);
+      });
+  };
+
+  const fetchBudgetFeasibility = async (budgetVal?: string) => {
+    const val = budgetVal !== undefined ? budgetVal : budget;
+    const bNum = parseInt(val);
+    if (isNaN(bNum) || bNum < 100 || !destination) return;
+    setIsCheckingBudgetFeasibility(true);
+    try {
+      const res = await apiFetch("/api/ai/budget-feasibility", {
+        method: "POST",
+        body: JSON.stringify({
+          destination: destination.trim(),
+          origin: originCity.trim() || undefined,
+          userBudget: bNum,
+          durationDays: tripDays,
+          travelers: parseInt(travelers) || 1,
+          accommodationPreference: accommodation || "HOTEL",
+        }),
+      });
+      if (res) {
+        setBudgetFeasibility(res);
+      }
+    } catch (err) {
+      console.warn("Budget feasibility check failed:", err);
+    } finally {
+      setIsCheckingBudgetFeasibility(false);
+    }
+  };
+
+  const handleApplySavingsOption = (opt: any) => {
+    const title = (opt.title || "").toLowerCase();
+    if (title.includes("stay") || title.includes("hotel") || title.includes("hostel") || title.includes("accommodation")) {
+      setAccommodation("BUDGET");
+      fetchBudgetFeasibility(budget);
+    } else if (title.includes("transport") || title.includes("train") || title.includes("bus") || title.includes("transit")) {
+      setTravelMode("Train");
+      fetchBudgetFeasibility(budget);
+    } else if (title.includes("trim") || title.includes("day") || title.includes("duration")) {
+      if (startDate && endDate && tripDays > 2) {
+        const newEnd = addDaysToDate(startDate, tripDays - 2);
+        setEndDate(newEnd);
+        setTimeout(() => fetchBudgetFeasibility(budget), 100);
+      }
+    } else {
+      setAccommodation("BUDGET");
+      fetchBudgetFeasibility(budget);
+    }
+  };
+
   const fetchBudgetEstimate = async () => {
     if (!destination || !startDate || !endDate) return;
     setIsFetchingBudget(true);
@@ -198,9 +430,17 @@ function NewTrip() {
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!canProceed()) return;
     if (step === 0 && destination.trim()) {
+      if (disambiguationCandidates.length > 0) {
+        setDisambiguationWarning("Please select your intended destination from the options below to proceed.");
+        return;
+      }
+      const isClear = await checkDisambiguation(destination);
+      if (!isClear) {
+        return; // Ambiguity detected, cards are now shown
+      }
       setIsFetchingOverview(true);
       fetchDestinationOverview(destination.trim(), interests)
         .then((data) => {
@@ -229,6 +469,9 @@ function NewTrip() {
     }
     if (step === 2 && minBudget === null && !isFetchingBudget) {
       fetchBudgetEstimate();
+    }
+    if (step === 3 && budget) {
+      fetchBudgetFeasibility(budget);
     }
     setStep((s) => s + 1);
   };
@@ -414,6 +657,210 @@ function NewTrip() {
                   </div>
                 </div>
 
+                {/* Accommodation Selection (Selectable Visual Cards) */}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium">Where would you prefer to stay?</Label>
+                    <span className="text-[11px] text-muted-foreground">Selectable Choice</span>
+                  </div>
+                  <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                    {ACCOMMODATION_OPTIONS.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setAccommodation(t.id)}
+                        className={cn(
+                          "rounded-xl border p-3.5 text-left transition-all flex flex-col justify-between",
+                          accommodation === t.id
+                            ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
+                            : "border-border bg-background/80 hover:border-primary/40",
+                        )}
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm">{t.icon}</span>
+                            <p className="font-semibold text-xs text-foreground">{t.title}</p>
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground leading-normal">{t.desc}</p>
+                        </div>
+                        {t.isFree && (
+                          <Badge variant="outline" className="mt-2 text-[10px] w-fit border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+                            ₹0 Lodging Cost
+                          </Badge>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {accommodation === "OWN_HOME" && (
+                    <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                      <span>🏡</span>
+                      <span>
+                        <strong>Zero Lodging Expense:</strong> Staying with family, relatives, or at your own home incurs ₹0 accommodation fees. Your budget will be reserved for travel, dining, and activities.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Primary Transportation Mode (Selectable Mode Buttons) */}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium">Preferred Mode of Travel</Label>
+                    <span className="text-[11px] text-muted-foreground">{originCity || "Origin"} → {destination}</span>
+                  </div>
+                  <div className="mt-2.5 flex flex-wrap gap-2.5">
+                    {MODES.map(({ id, icon: Icon, label }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => {
+                          setTravelMode(id);
+                          if (id === "Train") {
+                            fetchLiveTrains();
+                          }
+                        }}
+                        className={cn(
+                          "flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs font-medium transition-all",
+                          travelMode === id
+                            ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                            : "border-border bg-background/80 hover:border-primary/40",
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* RailCore Live Indian Railways Experience */}
+                  {travelMode === "Train" && (
+                    <div className="mt-3.5 rounded-2xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Train className="h-4 w-4 text-primary" />
+                          <span className="text-xs font-semibold text-foreground">
+                            Live Indian Railways
+                          </span>
+                          <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium py-0 h-4">
+                            ● Live RailCore
+                          </Badge>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => fetchLiveTrains()}
+                          disabled={isFetchingTrains}
+                          className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <RotateCcw className={cn("h-3 w-3", isFetchingTrains && "animate-spin")} />
+                          {isFetchingTrains ? "Checking..." : "Refresh Trains"}
+                        </button>
+                      </div>
+
+                      {railcoreData?.fromStation && railcoreData?.toStation && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Route: <strong>{railcoreData.fromStation}</strong> → <strong>{railcoreData.toStation}</strong> on {startDate || "upcoming journey"} ({railcoreData.totalTrainsFound || 0} scheduled trains)
+                        </p>
+                      )}
+
+                      {isFetchingTrains && (
+                        <div className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                          <RotateCcw className="h-3.5 w-3.5 animate-spin text-primary" />
+                          Searching RailCore for live schedules, class-wise fares & seat availability...
+                        </div>
+                      )}
+
+                      {!isFetchingTrains && railcoreData?.trains && railcoreData.trains.length > 0 && (
+                        <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                          {railcoreData.trains.map((train: any) => {
+                            const isTrainSelected = selectedTrain?.trainNumber === train.trainNumber;
+                            const statusText = train.seatAvailability?.availabilityText || train.seatAvailability?.status || "Available";
+                            const isWaitlist = /WL|WAITLIST/i.test(statusText);
+                            const isAvail = /AVL|AVAILABLE/i.test(statusText);
+
+                            return (
+                              <div
+                                key={train.trainNumber}
+                                className={cn(
+                                  "rounded-xl border p-3.5 transition-all text-left",
+                                  isTrainSelected
+                                    ? "border-primary bg-background shadow-sm ring-1 ring-primary/50"
+                                    : "border-border/70 bg-background/80 hover:border-primary/40"
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-xs text-foreground">
+                                        #{train.trainNumber} {train.trainName}
+                                      </span>
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "text-[10px] px-1.5 py-0 h-4 font-medium",
+                                          isAvail
+                                            ? "border-emerald-500/40 text-emerald-700 bg-emerald-500/10"
+                                            : isWaitlist
+                                            ? "border-amber-500/40 text-amber-700 bg-amber-500/10"
+                                            : "border-blue-500/40 text-blue-700 bg-blue-500/10"
+                                        )}
+                                      >
+                                        {statusText}
+                                      </Badge>
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                      {train.fromStationCode || train.fromStationName} ({train.departureTime}) → {train.toStationCode || train.toStationName} ({train.arrivalTime}) · {train.durationHours}h {train.distanceKm ? `(${train.distanceKm} km)` : ""}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    type="button"
+                                    variant={isTrainSelected ? "default" : "outline"}
+                                    className="h-7 text-xs px-2.5"
+                                    onClick={() => handleSelectTrain(train, selectedTrainClass)}
+                                  >
+                                    {isTrainSelected ? "Selected" : "Select"}
+                                  </Button>
+                                </div>
+
+                                {/* Class chips with live fares */}
+                                <div className="mt-2.5 flex flex-wrap gap-1.5 pt-2 border-t border-border/40">
+                                  {(train.fares && train.fares.length > 0 ? train.fares : (train.availableClasses || []).map((c: string) => ({ classCode: c, fareINR: 0 }))).map((f: any) => {
+                                    const isClassActive = isTrainSelected && selectedTrainClass === f.classCode;
+                                    return (
+                                      <button
+                                        key={f.classCode}
+                                        type="button"
+                                        onClick={() => handleSelectTrain(train, f.classCode)}
+                                        className={cn(
+                                          "rounded-lg border px-2 py-1 text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer",
+                                          isClassActive
+                                            ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                                            : "border-border/60 bg-muted/30 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                                        )}
+                                      >
+                                        <span>{f.classCode}</span>
+                                        {f.fareINR > 0 && <span className="opacity-80">₹{f.fareINR}</span>}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {!isFetchingTrains && (!railcoreData || railcoreData.status === "NO_DIRECT_TRAINS" || railcoreData.trains?.length === 0) && (
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300">
+                          <p className="font-medium">No direct scheduled train found between {originCity || "Origin"} and {destination}.</p>
+                          <p className="text-[11px] opacity-80 mt-0.5">
+                            Connecting train legs or regional road transfers can be used. Try searching with a nearby major railway junction.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {originCity && destination && (
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 flex items-center gap-3">
                     <Compass className="h-4 w-4 text-primary shrink-0" />
@@ -421,6 +868,70 @@ function NewTrip() {
                       Route: <strong className="text-primary">{originCity}</strong> → <strong className="text-primary">{destination}</strong>
                     </p>
                   </div>
+                )}
+
+                {/* Geolocation verification / disambiguation spinner */}
+                {isCheckingDisambiguation && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 flex items-center gap-2.5 text-xs text-primary animate-pulse">
+                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
+                    <span>Verifying coordinates & checking geographical disambiguation for "{destination}"...</span>
+                  </div>
+                )}
+
+                {/* Disambiguation Dynamic Selectable Cards */}
+                {disambiguationCandidates.length > 0 && (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">
+                          Multiple locations match "{destination}"
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Please select your intended destination to continue:
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      {disambiguationCandidates.map((c) => (
+                        <button
+                          key={c.id || c.fullName}
+                          type="button"
+                          onClick={() => handleSelectCandidate(c)}
+                          className="group rounded-xl border border-border/80 bg-card p-3 text-left hover:border-primary hover:bg-primary/5 hover:shadow-sm transition-all flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-xs text-foreground group-hover:text-primary">
+                                {c.destinationName}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] py-0">
+                                {c.country}
+                              </Badge>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              {c.stateOrRegion ? `${c.stateOrRegion}, ` : ""}{c.country}
+                              {c.district ? ` · ${c.district}` : ""}
+                            </p>
+                            {c.referenceInfo && (
+                              <p className="text-[10px] text-muted-foreground/80 mt-1 italic">
+                                {c.referenceInfo}
+                              </p>
+                            )}
+                          </div>
+                          <div className="mt-2 pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-primary font-medium">
+                            <span>Select this location</span>
+                            <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {disambiguationWarning && disambiguationCandidates.length === 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">{disambiguationWarning}</p>
                 )}
 
                 {!destination.trim() && (
@@ -1054,7 +1565,17 @@ function NewTrip() {
                       type="number"
                       inputMode="numeric"
                       value={budget}
-                      onChange={(e) => setBudget(e.target.value)}
+                      onChange={(e) => {
+                        setBudget(e.target.value);
+                        if (e.target.value && parseInt(e.target.value) >= 100) {
+                          fetchBudgetFeasibility(e.target.value);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (budget && parseInt(budget) >= 100) {
+                          fetchBudgetFeasibility(budget);
+                        }
+                      }}
                       className="h-12 rounded-xl text-base"
                       min={100}
                       placeholder={minBudget ? `e.g. ${minBudget}` : "e.g. 50000"}
@@ -1073,6 +1594,94 @@ function NewTrip() {
                      <p className="mt-1 text-xs text-amber-500">Warning: Your budget is significantly lower than the estimated minimum. AI will optimize for budget options.</p>
                   )}
                 </div>
+
+                {/* Arithmetic Budget Feasibility Analysis */}
+                {isCheckingBudgetFeasibility && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-center gap-2 text-xs text-primary animate-pulse">
+                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
+                    <span>Evaluating arithmetic feasibility, accommodation, and transport models...</span>
+                  </div>
+                )}
+
+                {budgetFeasibility && budgetFeasibility.budgetStatus === "EXCEEDS_BUDGET" && (
+                  <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 md:p-5 space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40 text-xs font-semibold">
+                            Budget Feasibility Notice
+                          </Badge>
+                          <span className="text-xs text-amber-800 dark:text-amber-300 font-semibold">
+                            Shortfall: ₹{budgetFeasibility.shortfallAmountINR.toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                        <p className="text-xs text-foreground/90 mt-1.5 leading-relaxed">
+                          The realistic calculated total for this trip is <strong>₹{budgetFeasibility.totalEstimatedBudgetINR.toLocaleString("en-IN")}</strong>, which exceeds your planned budget of <strong>₹{budgetNum.toLocaleString("en-IN")}</strong>.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Primary Cost Drivers */}
+                    {budgetFeasibility.costDrivers && budgetFeasibility.costDrivers.length > 0 && (
+                      <div>
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                          Primary Cost Drivers:
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {budgetFeasibility.costDrivers.map((driver, dIdx) => (
+                            <Badge key={dIdx} variant="secondary" className="text-[11px]">
+                              {driver}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actionable Savings Options */}
+                    {budgetFeasibility.actionableSavingsOptions && budgetFeasibility.actionableSavingsOptions.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-amber-500/20">
+                        <p className="text-xs font-semibold text-foreground">
+                          3 Actionable Savings Options (Choose without sacrificing quality):
+                        </p>
+                        <div className="grid gap-2.5 sm:grid-cols-3">
+                          {budgetFeasibility.actionableSavingsOptions.map((opt, oIdx) => (
+                            <div
+                              key={oIdx}
+                              className="rounded-xl border border-border/80 bg-background/90 p-3 text-xs flex flex-col justify-between shadow-sm space-y-2"
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="font-semibold text-foreground">{opt.title}</span>
+                                  <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                                    Save ₹{opt.potentialSavingsINR.toLocaleString("en-IN")}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground leading-normal">{opt.description}</p>
+                                <p className="text-[10px] text-muted-foreground italic">Trade-off: {opt.tradeoff}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleApplySavingsOption(opt)}
+                                className="mt-2 w-full rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 py-1.5 px-2.5 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1 border border-emerald-500/20"
+                              >
+                                <span>✓</span> Apply this recommendation
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {budgetFeasibility && budgetFeasibility.budgetStatus === "FEASIBLE" && budgetNum >= 100 && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300">
+                    <span className="font-semibold">✓ Budget Arithmetic Feasible</span>
+                    <span>
+                      Est. Total: ₹{budgetFeasibility.totalEstimatedBudgetINR.toLocaleString("en-IN")} (Surplus: ₹{budgetFeasibility.surplusAmountINR.toLocaleString("en-IN")})
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1103,6 +1712,210 @@ function NewTrip() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Accommodation Selection (Selectable Visual Cards) */}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium">Where would you prefer to stay?</Label>
+                    <span className="text-[11px] text-muted-foreground">Selectable Choice</span>
+                  </div>
+                  <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                    {ACCOMMODATION_OPTIONS.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setAccommodation(t.id)}
+                        className={cn(
+                          "rounded-xl border p-3.5 text-left transition-all flex flex-col justify-between",
+                          accommodation === t.id
+                            ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
+                            : "border-border bg-background/80 hover:border-primary/40",
+                        )}
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm">{t.icon}</span>
+                            <p className="font-semibold text-xs text-foreground">{t.title}</p>
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground leading-normal">{t.desc}</p>
+                        </div>
+                        {t.isFree && (
+                          <Badge variant="outline" className="mt-2 text-[10px] w-fit border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+                            ₹0 Lodging Cost
+                          </Badge>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {accommodation === "OWN_HOME" && (
+                    <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                      <span>🏡</span>
+                      <span>
+                        <strong>Zero Lodging Expense:</strong> Staying with family, relatives, or at your own home incurs ₹0 accommodation fees. Your budget will be reserved for travel, dining, and activities.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Primary Transportation Mode (Selectable Mode Buttons) */}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium">Preferred Mode of Travel</Label>
+                    <span className="text-[11px] text-muted-foreground">{originCity || "Origin"} → {destination}</span>
+                  </div>
+                  <div className="mt-2.5 flex flex-wrap gap-2.5">
+                    {MODES.map(({ id, icon: Icon, label }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => {
+                          setTravelMode(id);
+                          if (id === "Train") {
+                            fetchLiveTrains();
+                          }
+                        }}
+                        className={cn(
+                          "flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs font-medium transition-all",
+                          travelMode === id
+                            ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                            : "border-border bg-background/80 hover:border-primary/40",
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* RailCore Live Indian Railways Experience */}
+                  {travelMode === "Train" && (
+                    <div className="mt-3.5 rounded-2xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Train className="h-4 w-4 text-primary" />
+                          <span className="text-xs font-semibold text-foreground">
+                            Live Indian Railways
+                          </span>
+                          <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium py-0 h-4">
+                            ● Live RailCore
+                          </Badge>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => fetchLiveTrains()}
+                          disabled={isFetchingTrains}
+                          className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <RotateCcw className={cn("h-3 w-3", isFetchingTrains && "animate-spin")} />
+                          {isFetchingTrains ? "Checking..." : "Refresh Trains"}
+                        </button>
+                      </div>
+
+                      {railcoreData?.fromStation && railcoreData?.toStation && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Route: <strong>{railcoreData.fromStation}</strong> → <strong>{railcoreData.toStation}</strong> on {startDate || "upcoming journey"} ({railcoreData.totalTrainsFound || 0} scheduled trains)
+                        </p>
+                      )}
+
+                      {isFetchingTrains && (
+                        <div className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                          <RotateCcw className="h-3.5 w-3.5 animate-spin text-primary" />
+                          Searching RailCore for live schedules, class-wise fares & seat availability...
+                        </div>
+                      )}
+
+                      {!isFetchingTrains && railcoreData?.trains && railcoreData.trains.length > 0 && (
+                        <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                          {railcoreData.trains.map((train: any) => {
+                            const isTrainSelected = selectedTrain?.trainNumber === train.trainNumber;
+                            const statusText = train.seatAvailability?.availabilityText || train.seatAvailability?.status || "Available";
+                            const isWaitlist = /WL|WAITLIST/i.test(statusText);
+                            const isAvail = /AVL|AVAILABLE/i.test(statusText);
+
+                            return (
+                              <div
+                                key={train.trainNumber}
+                                className={cn(
+                                  "rounded-xl border p-3.5 transition-all text-left",
+                                  isTrainSelected
+                                    ? "border-primary bg-background shadow-sm ring-1 ring-primary/50"
+                                    : "border-border/70 bg-background/80 hover:border-primary/40"
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-xs text-foreground">
+                                        #{train.trainNumber} {train.trainName}
+                                      </span>
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "text-[10px] px-1.5 py-0 h-4 font-medium",
+                                          isAvail
+                                            ? "border-emerald-500/40 text-emerald-700 bg-emerald-500/10"
+                                            : isWaitlist
+                                            ? "border-amber-500/40 text-amber-700 bg-amber-500/10"
+                                            : "border-blue-500/40 text-blue-700 bg-blue-500/10"
+                                        )}
+                                      >
+                                        {statusText}
+                                      </Badge>
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                      {train.fromStationCode || train.fromStationName} ({train.departureTime}) → {train.toStationCode || train.toStationName} ({train.arrivalTime}) · {train.durationHours}h {train.distanceKm ? `(${train.distanceKm} km)` : ""}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    type="button"
+                                    variant={isTrainSelected ? "default" : "outline"}
+                                    className="h-7 text-xs px-2.5"
+                                    onClick={() => handleSelectTrain(train, selectedTrainClass)}
+                                  >
+                                    {isTrainSelected ? "Selected" : "Select"}
+                                  </Button>
+                                </div>
+
+                                {/* Class chips with live fares */}
+                                <div className="mt-2.5 flex flex-wrap gap-1.5 pt-2 border-t border-border/40">
+                                  {(train.fares && train.fares.length > 0 ? train.fares : (train.availableClasses || []).map((c: string) => ({ classCode: c, fareINR: 0 }))).map((f: any) => {
+                                    const isClassActive = isTrainSelected && selectedTrainClass === f.classCode;
+                                    return (
+                                      <button
+                                        key={f.classCode}
+                                        type="button"
+                                        onClick={() => handleSelectTrain(train, f.classCode)}
+                                        className={cn(
+                                          "rounded-lg border px-2 py-1 text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer",
+                                          isClassActive
+                                            ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                                            : "border-border/60 bg-muted/30 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                                        )}
+                                      >
+                                        <span>{f.classCode}</span>
+                                        {f.fareINR > 0 && <span className="opacity-80">₹{f.fareINR}</span>}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {!isFetchingTrains && (!railcoreData || railcoreData.status === "NO_DIRECT_TRAINS" || railcoreData.trains?.length === 0) && (
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300">
+                          <p className="font-medium">No direct scheduled train found between {originCity || "Origin"} and {destination}.</p>
+                          <p className="text-[11px] opacity-80 mt-0.5">
+                            Connecting train legs or regional road transfers can be used. Try searching with a nearby major railway junction.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1351,34 +2164,9 @@ function NewTrip() {
                         )}
                       </div>
 
-                      {/* Accommodation Details */}
+                      {/* Hotel Name & Timings */}
                       <div className="rounded-2xl border border-border/70 bg-muted/20 p-5 space-y-4">
-                        <h3 className="text-sm font-semibold">Accommodation Details</h3>
-                        <div>
-                          <Label className="text-xs font-medium">Accommodation tier</Label>
-                          <div className="mt-2 grid gap-3 sm:grid-cols-3">
-                            {[
-                              { id: "Economy", desc: "Hostels & budget stays" },
-                              { id: "Comfort", desc: "Boutique stays & 3-4 star" },
-                              { id: "Luxury", desc: "5-star resorts & luxury villas" },
-                            ].map((t) => (
-                              <button
-                                key={t.id}
-                                type="button"
-                                onClick={() => setAccommodation(t.id)}
-                                className={cn(
-                                  "rounded-xl border p-3.5 text-left transition-all",
-                                  accommodation === t.id
-                                    ? "border-primary bg-primary/10 shadow-sm"
-                                    : "border-border bg-background/80 hover:border-primary/40",
-                                )}
-                              >
-                                <p className="font-semibold text-xs">{t.id}</p>
-                                <p className="mt-0.5 text-[11px] text-muted-foreground">{t.desc}</p>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                        <h3 className="text-sm font-semibold">Stay Timings & Custom Venue (Optional)</h3>
 
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
@@ -1387,7 +2175,7 @@ function NewTrip() {
                               value={hotelName}
                               onChange={(e) => setHotelName(e.target.value)}
                               className="mt-1 h-9 rounded-lg text-xs"
-                              placeholder="e.g. Taj Fort Aguada"
+                              placeholder={accommodation === "OWN_HOME" ? "e.g. Uncle's house / Family residence" : "e.g. Taj Fort Aguada / Radisson"}
                             />
                           </div>
                           <div>
@@ -1396,7 +2184,7 @@ function NewTrip() {
                               value={hotelLocation}
                               onChange={(e) => setHotelLocation(e.target.value)}
                               className="mt-1 h-9 rounded-lg text-xs"
-                              placeholder="e.g. Candolim, North Goa"
+                              placeholder={destination ? `e.g. Central ${destination}` : "e.g. Candolim, North Goa"}
                             />
                           </div>
                         </div>
@@ -1476,6 +2264,16 @@ function NewTrip() {
                           {departureHub || originCity} → {arrivalHub || destination}
                         </p>
                       )}
+                      {transitRef && (
+                        <p className="text-[11px] font-medium text-primary mt-1 flex items-center gap-1">
+                          🚆 {transitRef}
+                        </p>
+                      )}
+                      {travelMode === "Train" && (
+                        <Badge variant="outline" className="mt-1 border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] py-0 h-4">
+                          ● Live RailCore IRCTC Verified
+                        </Badge>
+                      )}
                     </div>
                   )}
 
@@ -1505,10 +2303,21 @@ function NewTrip() {
                   )}
                 </div>
 
-                {hotelName && (
+                {(accommodation || hotelName) && (
                   <div className="rounded-xl glass-tile p-4">
                     <p className="text-xs text-muted-foreground">Accommodation</p>
-                    <p className="mt-1 text-sm font-medium">{hotelName} {hotelLocation ? `(${hotelLocation})` : ""}</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">
+                      {accommodation === "OWN_HOME"
+                        ? "Own Home / Relative's Home (₹0 Free Lodging)"
+                        : accommodation
+                        ? ACCOMMODATION_OPTIONS.find((a) => a.id === accommodation)?.title || accommodation
+                        : hotelName}
+                    </p>
+                    {(hotelName || hotelLocation) && accommodation !== "OWN_HOME" && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {hotelName} {hotelLocation ? `(${hotelLocation})` : ""}
+                      </p>
+                    )}
                   </div>
                 )}
 

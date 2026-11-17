@@ -20,6 +20,7 @@
 
 import { transportProvider } from "./providers/transport.provider.js";
 import { flightProvider, resolveAirportCode } from "./providers/flight.provider.js";
+import { railcoreProvider } from "../ai/providers/railcore.provider.js";
 import { travelCacheService, CACHE_TTLS } from "./travel-cache.service.js";
 import { calculateDestinationWindows } from "./destination-window.service.js";
 import { logger } from "../../utils/logger.js";
@@ -335,6 +336,35 @@ async function _estimateFlightDuration(result, origin, destination) {
  * These are NOT presented as live data. They are clearly labelled ESTIMATED_HAVERSINE.
  */
 async function _calculateScheduleBasedJourney(result, origin, destination, mode) {
+  // If Indian train mode and RailCore is configured, use live IRCTC schedule data
+  if (mode === "train" && railcoreProvider.isConfigured()) {
+    try {
+      const railData = await railcoreProvider.resolveRailwayRoute({
+        origin,
+        destination,
+        journeyDate: result.departureDate,
+      });
+      if (railData?.status === "SUCCESS" && railData?.recommendedTrain) {
+        const train = railData.recommendedTrain;
+        result.durationMinutes = train.durationMinutes;
+        result.durationSource = "SCHEDULED";
+        result.status = result.booked ? "CONFIRMED" : "SCHEDULED";
+        if (!result.transitRef) {
+          result.transitRef = `${train.trainNumber} - ${train.trainName}`;
+        }
+        if (!result.departureTime && train.departureTime) {
+          result.departureTime = train.departureTime;
+        }
+        if (!result.arrivalTime && train.arrivalTime) {
+          result.arrivalTime = train.arrivalTime;
+        }
+        return result;
+      }
+    } catch (railErr) {
+      logger.warn(`[JourneyEngine] RailCore train lookup failed: ${railErr.message}`);
+    }
+  }
+
   const speeds = { train: 55, bus: 45, ferry: 30 };
   const avgSpeed = speeds[mode] || 50;
 

@@ -30,9 +30,7 @@ export const apiFetch = async (
       if (user.uid) headers["x-user-id"] = user.uid;
       if (user.email) headers["x-user-email"] = user.email.toLowerCase().trim();
     }
-  } else if (!auth) {
-    // If auth is completely missing/mocked, simulate a logged-in dev user
-    headers["x-user-id"] = "mock-user-123";
+
   }
 
   const controller = new AbortController();

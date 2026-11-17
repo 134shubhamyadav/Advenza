@@ -23,9 +23,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   const isPublic = PUBLIC_PATHS.has(pathname);
   const isAuthOnly = pathname === "/login" || pathname === "/signup";
+  const hasCachedSession = typeof window !== "undefined" && localStorage.getItem("advenza_auth_session") === "true";
+  const isResolvingAuth = loading || (!user && hasCachedSession);
 
   useEffect(() => {
     if (loading) return; // wait until Firebase resolves auth state
+    if (!user && hasCachedSession) return; // wait until Firebase finishes restoring active session
 
     if (!user && !isPublic) {
       // Unauthenticated user trying to access a protected page
@@ -34,11 +37,11 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       // Already-authenticated user visiting login/signup
       void navigate({ to: "/dashboard", replace: true });
     }
-  }, [user, loading, isPublic, isAuthOnly, navigate]);
+  }, [user, loading, hasCachedSession, isPublic, isAuthOnly, navigate]);
 
   // While Firebase is resolving the auth state, show spinner ONLY on protected pages.
   // Public pages (e.g. landing page "/") render instantly without blocking.
-  if (loading && !isPublic) {
+  if (isResolvingAuth && !isPublic) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">

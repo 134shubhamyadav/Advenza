@@ -58,3 +58,11 @@ docs/
 backend/uploads/*
 !backend/uploads/**/.gitkeep
 
+# Temporary, Scratch & Audit files
+scratch/
+backend/scratch/
+tmp/
+*.tmp
+audit_test_results.json
+
+

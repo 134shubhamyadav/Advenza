@@ -25,6 +25,7 @@ import { placeDiscoveryService, CURATED_DESTINATION_VENUES } from "../places/pla
 import { transportProvider } from "../travel/providers/transport.provider.js";
 import { fetchWeather, normalizeDestination } from "../travel/weather.service.js";
 import { destinationDurationService } from "../places/destination-duration.service.js";
+import { destinationResearchAgent } from "./orchestrator/destination-research.agent.js";
 import { parseOpeningHours, isVenueOpenAt } from "../itinerary/opening-hours.service.js";
 import { logger } from "../../utils/logger.js";
 
@@ -285,12 +286,12 @@ export class ConversationalAIService {
       intent = CHAT_INTENTS.RESTAURANT_RECOMMENDATION;
     }
 
-    // Default destination fallback
+    // Context destination resolution (without hardcoded defaults)
     if (!resolvedDestination && context.trip?.destination) {
       resolvedDestination = context.trip.destination;
     }
-    if (!resolvedDestination) {
-      resolvedDestination = "Goa"; // Sensible Indian travel fallback if totally unspecified
+    if (!resolvedDestination && context.clientContext?.destination) {
+      resolvedDestination = context.clientContext.destination;
     }
 
     return {
@@ -335,7 +336,31 @@ export class ConversationalAIService {
       const curatedVenues = CURATED_DESTINATION_VENUES[destKey] || [];
       let foodVenues = curatedVenues.filter((v) => v.category === "Food");
 
-      // Fallback: If not in curated catalog, try live Google Places search
+      // Dynamic Destination Research Agent fallback for any global destination
+      if (foodVenues.length === 0 && destination) {
+        try {
+          const research = await destinationResearchAgent.research({ destination, interests: ["Food", ...cuisineFilters] });
+          if (Array.isArray(research?.localDining) && research.localDining.length > 0) {
+            foodVenues = research.localDining.map((d) => ({
+              name: d.name,
+              category: "Food",
+              cuisine: d.cuisine,
+              priceTier: d.priceTier,
+              region: destination,
+              matchReason: `Renowned for ${d.specialtyDish} (${d.cuisine} cuisine)`,
+              whySpecial: `Iconic ${d.priceTier.toLowerCase()} venue serving authentic ${d.specialtyDish}`,
+              rating: 4.6,
+              openingHours: "12:00 – 23:00",
+              mapLink: `https://maps.google.com/?q=${encodeURIComponent(d.name + " " + destination)}`,
+            }));
+            data.sourceConfidence = "LIVE_AI_RESEARCH";
+          }
+        } catch (resErr) {
+          logger.warn(`[ConversationalAI] Dynamic dining research failed: ${resErr.message}`);
+        }
+      }
+
+      // Secondary fallback: If still empty, try live Google Places search
       if (foodVenues.length === 0) {
         const liveSearch = await placeDiscoveryService.searchGooglePlaces({
           query: `${cuisineFilters.join(" ")} restaurants in ${region || destination}`,
@@ -453,6 +478,28 @@ export class ConversationalAIService {
       const curatedVenues = CURATED_DESTINATION_VENUES[destKey] || [];
       let candidateGems = curatedVenues.filter((v) => v.placeType === "HIDDEN_GEM" || v.isPlaceHiddenGem);
 
+      // Dynamic research fallback for hidden gems in any destination
+      if (candidateGems.length === 0 && destination) {
+        try {
+          const research = await destinationResearchAgent.research({ destination });
+          if (Array.isArray(research?.hiddenGems) && research.hiddenGems.length > 0) {
+            candidateGems = research.hiddenGems.map((g) => ({
+              name: g.name,
+              category: g.category,
+              region: destination,
+              matchReason: g.description,
+              whySpecial: g.whySpecial,
+              rating: 4.8,
+              userRatingsCount: 450,
+              openingHours: "Daylight hours recommended",
+            }));
+            data.sourceConfidence = "LIVE_AI_RESEARCH";
+          }
+        } catch (resErr) {
+          logger.warn(`[ConversationalAI] Dynamic gems research failed: ${resErr.message}`);
+        }
+      }
+
       if (intent === CHAT_INTENTS.BEACH_DISCOVERY || memory.category === "Beaches" || /beach/i.test(memory.latestQuery)) {
         const beaches = curatedVenues.filter((v) => v.category === "Beaches");
         if (beaches.length > 0) candidateGems = beaches;
@@ -476,7 +523,7 @@ export class ConversationalAIService {
         userRatingsCount: p.userRatingsCount || 1000,
         whySpecial: p.whySpecial || p.matchReason,
         openingHours: p.openingHours || "Daylight hours recommended",
-        confidence: "VERIFIED_STORED",
+        confidence: data.sourceConfidence || "VERIFIED_STORED",
         mapLink: p.mapLink || `https://maps.google.com/?q=${encodeURIComponent(p.name + " " + destination)}`,
       }));
     }
@@ -490,9 +537,8 @@ export class ConversationalAIService {
       if (!targetPlace && memory.previouslyMentionedPlaces.length > 0) {
         targetPlace = curatedVenues.find((v) => v.name === memory.previouslyMentionedPlaces[0]);
       }
-      if (!targetPlace) {
-        // Default to first food venue if discussed
-        targetPlace = curatedVenues.find((v) => v.name === "Vinayak Family Restaurant") || curatedVenues[0];
+      if (!targetPlace && curatedVenues.length > 0) {
+        targetPlace = curatedVenues[0];
       }
 
       if (targetPlace) {

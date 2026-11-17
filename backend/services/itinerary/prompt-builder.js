@@ -265,7 +265,7 @@ ANTI-HALLUCINATION TRAVEL RULES:
     : "";
 
   // ── 6. Assemble Full Structured Prompt ─────────────────────────────────────
-  return `You are Advenza, an expert Indian travel planner and intelligence engine.
+  return `You are Advenza, an expert global travel planner and intelligence engine.
 You craft hyper-personalized, realistic, time-aware itineraries that deeply respect traveler interests and real-world travel logistics.
 
 ==================================================
