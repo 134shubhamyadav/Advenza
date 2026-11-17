@@ -124,43 +124,54 @@ Advenza is built with **zero hardcoded destination names or static fallbacks**. 
 ## 🔄 Autonomous Multi-Agent Pipeline
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor Traveler as 👤 Traveler (React 19 UI)
-    participant Orch as 🎯 Mission Orchestrator
-    participant Nominatim as 🌍 OpenStreetMap / Places
-    participant RailCore as 🚆 RailCore IRCTC API
-    participant OSRM as 🚗 Project-OSRM Routing
-    participant AI as 🧠 Multi-LLM Router (Groq/OpenRouter/Gemini)
-    participant Budget as 💰 Deterministic Budget Math
-    participant Judge as ⚖️ Final AI Judge
-    participant DB as 💾 MongoDB Atlas
+flowchart TD
+    subgraph Client ["👤 Traveler Interface (React 19 + TanStack Start)"]
+        UI["Traveler Query Input<br/>'Mumbai to Pune, 3 Days, ₹12,000, Own Home'"]
+        Result["Interactive Itinerary Day Explorer<br/>Chronological Timeline, GPS Anchors & Budget Radar"]
+    end
 
-    Traveler->>Orch: Submit Query ("Mumbai to Pune, 3 Days, ₹12,000, Own Home")
-    par Concurrent Entity Discovery
-        Orch->>Nominatim: Query verified POIs, heritage & dining spots
-        Orch->>RailCore: Search stations (CSMT -> PUNE) & 23 scheduled trains
-        Orch->>OSRM: Query driving geometry (152.4 km, ₹1,219 fuel, tolls)
+    subgraph Orchestration ["🎯 Mission Control Orchestration Layer"]
+        Orch["Master Mission Orchestrator"]
+        Judge["Final AI Judge Agent<br/>(Evidence-Based Adjudication)"]
+        BudgetEngine["Deterministic Budget Engine<br/>(Exact Math + 7% Buffer)"]
     end
-    Nominatim-->>Orch: Lat/Lon coordinates & verified attractions
-    RailCore-->>Orch: Live train numbers, departure times, 3A/2A tariffs
-    OSRM-->>Orch: Exact driving duration & distance
-    
-    par AI Intelligence Synthesis
-        Orch->>AI: Destination Research Agent (Enriched with GPS POIs)
-        Orch->>AI: Transportation Research Agent (Corridor evaluation)
-        Orch->>AI: Accommodation Agent (Enforce ₹0 for OWN_HOME)
-        Orch->>AI: Safety & Risk Agent (Neighborhood scores & weather)
+
+    subgraph TransitFeeds ["🌐 Authoritative Ground Data Feeds"]
+        OSM["OpenStreetMap Nominatim<br/>(Physical Attractions & Dining)"]
+        RailCore["RailCore IRCTC API<br/>(23 Trains, 3A/2A Live Fares)"]
+        OSRM["Project-OSRM Engine<br/>(152.4 km Route, Fuel & Tolls)"]
     end
-    AI-->>Orch: Structured JSON responses with provider telemetry
+
+    subgraph AIAgents ["🧠 Autonomous Multi-Agent AI Network"]
+        DestAgent["Destination Research Agent<br/>(Grounded with Real Coordinates)"]
+        TransitAgent["Transportation Research Agent<br/>(Multimodal Corridor Evaluation)"]
+        HotelAgent["Accommodation Agent<br/>(Zero-Cost Own-Home Lodging Rule)"]
+        RiskAgent["Safety & Risk Radar Agent<br/>(Neighborhood Safety & Weather)"]
+        VerifyAgent["Quantitative Verification Agent<br/>(6-Factor Feasibility Scoring)"]
+    end
+
+    subgraph Storage ["💾 Distributed Persistence"]
+        DB[("MongoDB Atlas<br/>Multi-Tenant Trip Documents")]
+    end
+
+    UI --> Orch
+    Orch --> OSM
+    Orch --> RailCore
+    Orch --> OSRM
+
+    OSM --> DestAgent
+    RailCore --> TransitAgent
+    OSRM --> TransitAgent
     
-    Orch->>Budget: Calculate deterministic arithmetic & 7% buffer
-    Budget-->>Orch: Accurate totals (₹5,820 estimated, ₹6,180 surplus)
-    
-    Orch->>Judge: Adjudicate grounded evidence (Coords + IRCTC + Math)
-    Judge-->>Orch: Final verified travel intelligence dossier
-    Orch->>DB: Persist immutable Trip document
-    Orch-->>Traveler: Render interactive itinerary day explorer & charts
+    DestAgent --> VerifyAgent
+    TransitAgent --> VerifyAgent
+    HotelAgent --> VerifyAgent
+    RiskAgent --> VerifyAgent
+
+    VerifyAgent --> BudgetEngine
+    BudgetEngine --> Judge
+    Judge --> DB
+    DB --> Result
 ```
 
 ---
