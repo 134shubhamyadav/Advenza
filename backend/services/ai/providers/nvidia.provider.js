@@ -7,12 +7,14 @@ export class NvidiaProvider extends BaseAIProvider {
   constructor() {
     super("Nvidia");
     // Verified active models on NVIDIA API Catalog (NIM):
-    // 1. nvidia/nemotron-3.5-bolt-e4b: Ultra-fast (~1000ms), high throughput JSON synthesis
+    // 1. nvidia/nemotron-3.5-bolt-e4b: Ultra-fast (~700ms), high throughput JSON synthesis
     // 2. nvidia/nemotron-3.5-lightning-30b-a3b: High-depth 30B MoE reasoning model
-    // 3. nvidia/nemotron-3-nano-omni-30b-a3b-reasoning: Multimodal reasoning fallback
+    // 3. nvidia/nemotron-3.5-super-vl-120b-a12b: 120B Flagship Vision-Language (VLM) model
+    // 4. nvidia/nemotron-3-nano-omni-30b-a3b-reasoning: Multimodal reasoning fallback
     this.models = [
       "nvidia/nemotron-3.5-bolt-e4b",
       "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "nvidia/nemotron-3.5-super-vl-120b-a12b",
       "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     ];
     this.client = null;
@@ -38,8 +40,24 @@ export class NvidiaProvider extends BaseAIProvider {
       throw new Error("NVIDIA API key is not configured");
     }
 
-    const modelsToTry = preferredModel ? [preferredModel, ...this.models.filter((m) => m !== preferredModel)] : this.models;
-    const effectiveMaxTokens = Math.min(Number(maxTokens) || 4096, 4096);
+    // Detect multimodal/vision payloads
+    const hasImage = messages?.some(
+      (m) => Array.isArray(m?.content) && m.content.some((c) => c?.type === "image_url" || c?.image_url)
+    );
+
+    let modelsToTry = preferredModel
+      ? [preferredModel, ...this.models.filter((m) => m !== preferredModel)]
+      : [...this.models];
+
+    if (hasImage && !preferredModel) {
+      // Prioritize flagship 120B Vision-Language model for image reasoning
+      modelsToTry = [
+        "nvidia/nemotron-3.5-super-vl-120b-a12b",
+        ...this.models.filter((m) => m !== "nvidia/nemotron-3.5-super-vl-120b-a12b"),
+      ];
+    }
+
+    const effectiveMaxTokens = Math.max(Math.min(Number(maxTokens) || 4096, 4096), hasImage ? 2048 : 512);
     const PER_MODEL_TIMEOUT_MS = 25_000;
     let lastError = null;
 
