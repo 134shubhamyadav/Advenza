@@ -20,11 +20,16 @@ export class OSRMRoutingService {
    * @returns {Promise<Object|null>}
    */
   async calculateDrivingRoute({ origin, destination }) {
-    if (!origin?.lat || !origin?.lon || !destination?.lat || !destination?.lon) {
+    const oLat = origin?.lat != null ? Number(origin.lat) : null;
+    const oLon = origin?.lon != null ? Number(origin.lon) : origin?.lng != null ? Number(origin.lng) : null;
+    const dLat = destination?.lat != null ? Number(destination.lat) : null;
+    const dLon = destination?.lon != null ? Number(destination.lon) : destination?.lng != null ? Number(destination.lng) : null;
+
+    if (oLat == null || oLon == null || dLat == null || dLon == null) {
       return null;
     }
 
-    const cacheKey = `${origin.lat.toFixed(4)},${origin.lon.toFixed(4)}->${destination.lat.toFixed(4)},${destination.lon.toFixed(4)}`;
+    const cacheKey = `${oLat.toFixed(4)},${oLon.toFixed(4)}->${dLat.toFixed(4)},${dLon.toFixed(4)}`;
     if (this.cache.has(cacheKey)) {
       const entry = this.cache.get(cacheKey);
       if (Date.now() - entry.timestamp < this.CACHE_TTL) {
@@ -32,7 +37,7 @@ export class OSRMRoutingService {
       }
     }
 
-    const url = `${this.baseUrl}/${origin.lon},${origin.lat};${destination.lon},${destination.lat}?overview=false`;
+    const url = `${this.baseUrl}/${oLon},${oLat};${dLon},${dLat}?overview=false`;
 
     try {
       logger.info(`[OSRMRoutingService] Querying real road routing: (${origin.lat}, ${origin.lon}) → (${destination.lat}, ${destination.lon})`);

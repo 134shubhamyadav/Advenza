@@ -2,10 +2,14 @@ import { logger } from "../../../utils/logger.js";
 import { z } from "zod";
 
 export const ACCOMMODATION_TYPES = {
-  OWN_HOME: "OWN_HOME", // Own residence / relative's home: ₹0
+  HOTEL: "HOTEL", // Hotel / Resort
+  RESORT: "RESORT", // Luxury Resort / 5-Star / Heritage
+  HOSTEL: "HOSTEL", // Hostel / Homestay / Guesthouse
+  OWN_HOME: "OWN_HOME", // Own residence / home: ₹0
+  NATIVE_HOME: "NATIVE_HOME", // Native village / Hometown: ₹0
+  RELATIVES_HOME: "RELATIVES_HOME", // Relatives' home / Family: ₹0
+  OTHER: "OTHER", // Other accommodation
   BUDGET: "BUDGET", // Hostels, homestays, guesthouses
-  HOTEL: "HOTEL", // Standard 3-4 star hotel
-  RESORT: "RESORT", // Luxury resort, 5-star, boutique heritage stay
   AI_RECOMMENDED: "AI_RECOMMENDED", // Best value balanced selection
 };
 
@@ -44,24 +48,39 @@ export class AccommodationAgent {
     const normPref = String(preference || "").toUpperCase().replace(/[\s-]/g, "_");
     logger.info(`[${this.name}] Calculating stay for "${rawDest}": ${normPref}, ${effectiveNights} nights, ${effectiveTravelers} pax (${roomsNeeded} rooms)`);
 
-    // 1. Own Home / Relative's Home -> Guaranteed ₹0
+    // 1. Own Home / Native Village / Relative's Home -> Guaranteed ₹0
     if (
       normPref.includes("OWN") ||
+      normPref.includes("NATIVE") ||
+      normPref.includes("VILLAGE") ||
+      normPref.includes("HOMETOWN") ||
       normPref.includes("RELATIVE") ||
       normPref.includes("FAMILY") ||
       normPref.includes("HOME") ||
-      normPref === ACCOMMODATION_TYPES.OWN_HOME
+      normPref === ACCOMMODATION_TYPES.OWN_HOME ||
+      normPref === ACCOMMODATION_TYPES.NATIVE_HOME ||
+      normPref === ACCOMMODATION_TYPES.RELATIVES_HOME
     ) {
+      const typeLabel = normPref.includes("NATIVE") || normPref.includes("VILLAGE") || normPref.includes("HOMETOWN")
+        ? "Native Village / Hometown"
+        : normPref.includes("RELATIVE") || normPref.includes("FAMILY")
+        ? "Relatives' Home"
+        : "Own Residence";
+
       return AccommodationResultSchema.parse({
-        preference: ACCOMMODATION_TYPES.OWN_HOME,
+        preference: normPref.includes("NATIVE") || normPref.includes("VILLAGE")
+          ? ACCOMMODATION_TYPES.NATIVE_HOME
+          : normPref.includes("RELATIVE")
+          ? ACCOMMODATION_TYPES.RELATIVES_HOME
+          : ACCOMMODATION_TYPES.OWN_HOME,
         isFreeAccommodation: true,
         costPerNightINR: 0,
         numberOfNights: effectiveNights,
         roomsNeeded: 0,
         totalAccommodationCostINR: 0,
-        tierDescription: "Own Residence / Relative's Home (Zero commercial lodging expense)",
+        tierDescription: `${typeLabel} (Zero commercial lodging expense)`,
         suggestedAreas: ["Host Residence Area"],
-        notes: "No accommodation expense charged as you are staying at your own place or with family/relatives.",
+        notes: `No accommodation expense charged as you are staying at your ${typeLabel.toLowerCase()} (₹0 stay).`,
       });
     }
 

@@ -91,31 +91,52 @@ interface BudgetFeasibilityData {
 
 const ACCOMMODATION_OPTIONS = [
   {
-    id: "OWN_HOME",
-    title: "Own Home / Relative's Home",
-    desc: "Staying with family, friends, or own residence (₹0 lodging expense)",
-    icon: "🏡",
-    isFree: true,
-  },
-  {
-    id: "BUDGET",
-    title: "Budget Accommodation",
-    desc: "Hostels, homestays, and guesthouses (Economical)",
-    icon: "🛏️",
-    isFree: false,
-  },
-  {
     id: "HOTEL",
-    title: "Hotel (Standard 3-4 Star)",
+    title: "Hotel / Resort",
     desc: "Comfortable private room with standard amenities & breakfast",
     icon: "🏨",
     isFree: false,
   },
   {
     id: "RESORT",
-    title: "Resort / Premium Stay",
-    desc: "Luxury 5-star resort, heritage property, or boutique villa",
+    title: "Luxury Resort / Heritage",
+    desc: "5-star resort, heritage property, or boutique villa",
     icon: "✨",
+    isFree: false,
+  },
+  {
+    id: "HOSTEL",
+    title: "Hostel / Homestay",
+    desc: "Backpackers hostels, verified homestays, and guesthouses",
+    icon: "🛏️",
+    isFree: false,
+  },
+  {
+    id: "OWN_HOME",
+    title: "Own Home",
+    desc: "Staying at your own residence or vacation home (₹0 lodging)",
+    icon: "🏡",
+    isFree: true,
+  },
+  {
+    id: "NATIVE_HOME",
+    title: "Native Village / Hometown",
+    desc: "Staying at your ancestral village or hometown (₹0 lodging)",
+    icon: "🌾",
+    isFree: true,
+  },
+  {
+    id: "RELATIVES_HOME",
+    title: "Relatives' Home",
+    desc: "Staying with family, relatives, or close friends (₹0 lodging)",
+    icon: "🤝",
+    isFree: true,
+  },
+  {
+    id: "OTHER",
+    title: "Other Stay",
+    desc: "Campsite, farmstay, caravan, or unique local stay",
+    icon: "⛺",
     isFree: false,
   },
   {
@@ -691,11 +712,11 @@ function NewTrip() {
                       </button>
                     ))}
                   </div>
-                  {accommodation === "OWN_HOME" && (
+                  {(accommodation === "OWN_HOME" || accommodation === "NATIVE_HOME" || accommodation === "RELATIVES_HOME") && (
                     <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
                       <span>🏡</span>
                       <span>
-                        <strong>Zero Lodging Expense:</strong> Staying with family, relatives, or at your own home incurs ₹0 accommodation fees. Your budget will be reserved for travel, dining, and activities.
+                        <strong>Zero Lodging Expense:</strong> Staying with family, relatives, or at your own / native home incurs ₹0 accommodation fees. Your budget will be reserved for travel, dining, and activities.
                       </span>
                     </div>
                   )}
@@ -1748,11 +1769,11 @@ function NewTrip() {
                       </button>
                     ))}
                   </div>
-                  {accommodation === "OWN_HOME" && (
+                  {(accommodation === "OWN_HOME" || accommodation === "NATIVE_HOME" || accommodation === "RELATIVES_HOME") && (
                     <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
                       <span>🏡</span>
                       <span>
-                        <strong>Zero Lodging Expense:</strong> Staying with family, relatives, or at your own home incurs ₹0 accommodation fees. Your budget will be reserved for travel, dining, and activities.
+                        <strong>Zero Lodging Expense:</strong> Staying with family, relatives, or at your own / native home incurs ₹0 accommodation fees. Your budget will be reserved for travel, dining, and activities.
                       </span>
                     </div>
                   )}

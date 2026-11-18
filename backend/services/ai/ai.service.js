@@ -10,9 +10,11 @@ import { evaluateRiskEngine } from "../travel/risk-engine.service.js";
 import { hotelProvider } from "../travel/providers/hotel.provider.js";
 import { flightProvider } from "../travel/providers/flight.provider.js";
 import { computeJourneys } from "../travel/journey-engine.service.js";
+import { enrichTripWithInterstopRouting } from "../travel/interstop-routing.service.js";
 import { fetchDestinationImage } from "../media/destination-image.service.js";
 import { placeDiscoveryService } from "../places/place-discovery.service.js";
 import { destinationDurationService } from "../places/destination-duration.service.js";
+import { finalAIJudgeAgent } from "./orchestrator/final-judge.agent.js";
 import { conversationalAIService } from "./conversational-ai.service.js";
 import { NotFoundError, ValidationError } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
@@ -230,7 +232,7 @@ export class AIService {
       arrivalLocation: arrivalHub || destination || "",
       departureDate: startDate || "",
       departureTime: departureTime || "",
-      arrivalDate: startDate || "",
+      arrivalDate: body.arrivalDate || body.outboundJourney?.arrivalDate || "",
       arrivalTime: arrivalTime || "",
       durationMinutes: null,
       durationSource: "USER_SPECIFIED",
@@ -247,7 +249,7 @@ export class AIService {
       arrivalLocation: rawReturn.arrivalLocation || departureHub || origin || "",
       departureDate: rawReturn.departureDate || rawReturn.date || endDate || "",
       departureTime: rawReturn.departureTime || rawReturn.time || "",
-      arrivalDate: rawReturn.arrivalDate || rawReturn.date || endDate || "",
+      arrivalDate: rawReturn.arrivalDate || rawReturn.date || "",
       arrivalTime: rawReturn.arrivalTime || "",
       durationMinutes: rawReturn.durationMinutes ?? null,
       durationSource: rawReturn.durationSource || "USER_SPECIFIED",
@@ -417,6 +419,30 @@ export class AIService {
       verifiedPlaces,
     });
 
+    try {
+      sanitized.days = await enrichTripWithInterstopRouting(sanitized.days, {
+        destination,
+        hotelName,
+        hotelLocation,
+        accommodation,
+      });
+    } catch (routeErr) {
+      logger.warn(`[AIService] Interstop routing enrichment note: ${routeErr.message}`);
+    }
+
+    // Final Judge validation of railway & itinerary timeline
+    let railwayValidation = null;
+    try {
+      railwayValidation = finalAIJudgeAgent.validateItineraryAgainstRailwayTimeline({
+        itinerary: sanitized,
+        outboundJourney: computedJourneys.outboundJourney,
+        returnJourney: computedJourneys.returnJourney,
+        tripTiming: computedJourneys.tripTiming,
+      });
+    } catch (judgeErr) {
+      logger.warn(`[AIService] Final Judge railway validation note: ${judgeErr.message}`);
+    }
+
     const tripData = {
       ...sanitized,
       destination: destination || sanitized?.destination || "",
@@ -430,6 +456,7 @@ export class AIService {
       hotelLocation: hotelLocation || "",
       travelers: travelersNum,
       style: style || "Balanced",
+      railwayValidation,
       startDate,
       endDate,
       duration: body.duration ? Number(body.duration) : numDays,
@@ -646,6 +673,17 @@ export class AIService {
       interests,
       verifiedPlaces,
     });
+
+    try {
+      sanitized.days = await enrichTripWithInterstopRouting(sanitized.days, {
+        destination,
+        hotelName: hotelName || trip.hotelName || "",
+        hotelLocation: hotelLocation || trip.hotelLocation || "",
+        accommodation: accommodation || trip.accommodation || "",
+      });
+    } catch (routeErr) {
+      logger.warn(`[AIService] Interstop routing enrichment note during regenerate: ${routeErr.message}`);
+    }
 
     trip.title = sanitized.title || trip.title;
     trip.origin = origin || trip.origin || "";

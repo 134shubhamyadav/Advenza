@@ -42,6 +42,7 @@ import {
   calculateInclusiveDays
 } from "@/lib/utils";
 import { BudgetEstimateCard } from "@/components/budget/budget-estimate-card";
+import { RailwayTimelineCard } from "@/components/travel/railway-timeline-card";
 import type { TripSummary, DayTimingWindow, JourneyLeg } from "@/services/tripService";
 import { toast } from "sonner";
 import {
@@ -424,6 +425,118 @@ function Itinerary() {
               </div>
             </div>
 
+            {/* 5 Journey Milestones Timeline Banner (Goal 1 & Goal 8) */}
+            <div className="rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-background p-4 sm:p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                  <Compass className="h-4 w-4" /> 5 Journey Milestones Timeline
+                </span>
+                {timing?.timingConflict?.hasConflict && (
+                  <Badge variant="destructive" className="text-[10px] uppercase font-bold tracking-wide">
+                    ⚠️ Duration Advisory
+                  </Badge>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                {/* Milestone 1: Home City Departure */}
+                <div className="rounded-xl border border-border/70 bg-background/80 p-2.5 space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
+                    <span>🏠</span>
+                    <span>1. Home Departure</span>
+                  </div>
+                  <p className="font-semibold text-xs text-foreground truncate">
+                    {trip.origin || outboundLeg?.departureLocation || "Home City"}
+                  </p>
+                  <p className="font-mono text-[11px] text-primary">
+                    {timing?.homeCityDepartureDateTime ? timing.homeCityDepartureDateTime.replace("T", " · ") : `${outboundLeg?.departureDate || trip.startDate} · ${outboundLeg?.departureTime || "07:00"}`}
+                  </p>
+                </div>
+
+                {/* Milestone 2: Destination Arrival */}
+                <div className="rounded-xl border border-border/70 bg-background/80 p-2.5 space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
+                    <span>📍</span>
+                    <span>2. Destination Arrival</span>
+                  </div>
+                  <p className="font-semibold text-xs text-foreground truncate">
+                    {trip.destination || outboundLeg?.arrivalLocation}
+                  </p>
+                  <p className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                    {timing?.destinationArrivalDateTime ? timing.destinationArrivalDateTime.replace("T", " · ") : `${outboundLeg?.arrivalDate || trip.startDate} · ${outboundLeg?.arrivalTime || "12:00"}`}
+                  </p>
+                </div>
+
+                {/* Milestone 3: Sightseeing Window */}
+                <div className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 space-y-0.5 sm:col-span-2 lg:col-span-1">
+                  <div className="flex items-center gap-1.5 text-primary text-[10px] font-semibold uppercase tracking-wider">
+                    <span>🗓️</span>
+                    <span>3. Sightseeing Dates</span>
+                  </div>
+                  <p className="font-bold text-xs text-foreground truncate">
+                    {timing?.sightseeingStartDate || trip.startDate} → {timing?.sightseeingEndDate || trip.endDate}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {totalUsableHours != null ? `${totalUsableHours} usable hours` : `${days.length} days planned`}
+                  </p>
+                </div>
+
+                {/* Milestone 4: Return Departure */}
+                <div className="rounded-xl border border-border/70 bg-background/80 p-2.5 space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
+                    <span>🛫</span>
+                    <span>4. Return Departure</span>
+                  </div>
+                  <p className="font-semibold text-xs text-foreground truncate">
+                    {trip.destination || returnLeg?.departureLocation}
+                  </p>
+                  <p className="font-mono text-[11px] text-amber-600 dark:text-amber-400">
+                    {timing?.returnDepartureDateTime ? timing.returnDepartureDateTime.replace("T", " · ") : `${returnLeg?.departureDate || trip.endDate} · ${returnLeg?.departureTime || "18:00"}`}
+                  </p>
+                </div>
+
+                {/* Milestone 5: Home City Arrival */}
+                <div className="rounded-xl border border-border/70 bg-background/80 p-2.5 space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
+                    <span>🏡</span>
+                    <span>5. Home City Arrival</span>
+                  </div>
+                  <p className="font-semibold text-xs text-foreground truncate">
+                    {trip.origin || returnLeg?.arrivalLocation || "Home City"}
+                  </p>
+                  <p className="font-mono text-[11px] text-foreground/80">
+                    {timing?.homeCityArrivalDateTime ? timing.homeCityArrivalDateTime.replace("T", " · ") : `${returnLeg?.arrivalDate || trip.endDate} · ${returnLeg?.arrivalTime || "23:00"}`}
+                  </p>
+                </div>
+              </div>
+
+              {/* Timing Conflict Advisory Alert */}
+              {timing?.timingConflict?.hasConflict && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <span>⚠️</span>
+                    <span>Journey Duration Advisory: {timing.timingConflict.message}</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                    Recommended duration: <strong>{timing.timingConflict.recommendedDays} days</strong> (Suggested return: {timing.timingConflict.suggestedEndDate}). Note: Advenza never silently modifies your requested dates.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Verified Indian Railways Timeline & Live Tracking Card (Section 12) */}
+            {outboundLeg?.railwayTimeline && (
+              <RailwayTimelineCard
+                timeline={outboundLeg.railwayTimeline}
+                title="Outbound Railway Timeline & Stoppages"
+              />
+            )}
+            {returnLeg?.railwayTimeline && (
+              <RailwayTimelineCard
+                timeline={returnLeg.railwayTimeline}
+                title="Return Railway Timeline & Stoppages"
+              />
+            )}
+
             {/* Travel Intelligence & Usable Sightseeing Time Strip */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 border-t border-border/50 pt-4">
               {/* Outbound Travel Leg */}
@@ -622,6 +735,43 @@ function Itinerary() {
                               )}
                             </div>
                             <div className="min-w-0 flex-1 pb-3">
+                              {/* Inter-stop Transit Card (Goal 2 & Goal 7) */}
+                              {item.startLocation && (item.travelDistanceKm != null || item.travelDurationMinutes != null) && (
+                                <div className="mb-2 rounded-lg border border-border/70 bg-muted/30 px-2.5 py-1.5 flex items-center justify-between flex-wrap gap-2 text-[11px]">
+                                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                                    <span>{item.travelMode === "Walk" ? "🚶" : "🚗"}</span>
+                                    <span className="font-semibold text-foreground">
+                                      {item.travelMode || "Cab"} · {item.travelDurationMinutes} min{item.travelDurationMinutes !== 1 ? "s" : ""} ({item.travelDistanceKm} km)
+                                    </span>
+                                    <span className="text-muted-foreground/80">
+                                      from {item.startLocation}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    {item.departureTime && item.arrivalTime && (
+                                      <span className="font-mono text-[10px] text-muted-foreground">
+                                        {item.departureTime} → {item.arrivalTime}
+                                      </span>
+                                    )}
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[9px] px-1.5 py-0 ${
+                                        item.dataClassification === "LIVE_VERIFIED"
+                                          ? "border-emerald-500/40 text-emerald-600 bg-emerald-500/10"
+                                          : item.dataClassification === "CURATED_VERIFIED"
+                                          ? "border-blue-500/40 text-blue-600 bg-blue-500/10"
+                                          : "border-amber-500/40 text-amber-600 bg-amber-500/10"
+                                      }`}
+                                    >
+                                      {item.dataClassification === "LIVE_VERIFIED"
+                                        ? "OSRM Verified"
+                                        : item.dataClassification === "CURATED_VERIFIED"
+                                        ? "Curated Route"
+                                        : "Indicative Estimate"}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              )}
                               <p className="text-sm font-medium leading-relaxed">{item.description}</p>
                               {item.interestTags && item.interestTags.length > 0 && (
                                 <div className="mt-1.5 flex flex-wrap gap-1.5">

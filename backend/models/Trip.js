@@ -24,6 +24,18 @@ const ActivitySchema = new mongoose.Schema({
   mapLink: { type: String, default: "" },
   matchReason: { type: String, default: "" },
   isFutureScheduleUnconfirmed: { type: Boolean, default: false },
+  // ── Inter-Stop Journey & Proximity Details ──
+  startLocation: { type: String, default: "" },
+  endLocation: { type: String, default: "" },
+  travelDistanceKm: { type: Number, default: null },
+  travelDurationMinutes: { type: Number, default: null },
+  travelDurationText: { type: String, default: "" },
+  travelMode: { type: String, default: "" },
+  departureTime: { type: String, default: "" },
+  arrivalTime: { type: String, default: "" },
+  nearbyLandmark: { type: String, default: "" },
+  proximityDescription: { type: String, default: "" },
+  dataClassification: { type: String, default: "INDICATIVE_RESEARCH" },
 });
 
 const DayPlanSchema = new mongoose.Schema({
@@ -75,6 +87,11 @@ const JourneyLegSchema = new mongoose.Schema(
     status: { type: String, default: "ESTIMATED" }, // "ESTIMATED", "CONFIRMED", "NOT_CONFIGURED"
     booked: { type: Boolean, default: false },
     ticketRef: { type: String, default: "" },
+    // Verified Railway Engine Timeline & Live Tracking
+    railwayTimeline: { type: mongoose.Schema.Types.Mixed, default: null },
+    stops: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    liveTracking: { type: mongoose.Schema.Types.Mixed, default: null },
+    dataClassification: { type: String, default: "" }, // "SCHEDULED_VERIFIED", "LIVE_VERIFIED", "CROSS_CHECKED"
   },
   { _id: false }
 );
@@ -118,6 +135,19 @@ const TripTimingSchema = new mongoose.Schema(
       isOvernight: { type: Boolean, default: false },
       travelDaysCount: { type: Number, default: 0 },
       departureDateTime: { type: String, default: "" },
+    },
+    // Distinct journey milestones
+    homeCityDepartureDateTime: { type: String, default: "" },
+    destinationArrivalDateTime: { type: String, default: "" },
+    sightseeingStartDate: { type: String, default: "" },
+    sightseeingEndDate: { type: String, default: "" },
+    returnDepartureDateTime: { type: String, default: "" },
+    homeCityArrivalDateTime: { type: String, default: "" },
+    timingConflict: {
+      hasConflict: { type: Boolean, default: false },
+      message: { type: String, default: "" },
+      recommendedDays: { type: Number, default: 0 },
+      suggestedEndDate: { type: String, default: "" },
     },
   },
   { _id: false }
@@ -190,6 +220,9 @@ const TripSchema = new mongoose.Schema({
   // Group planning embedded in trip
   members: [MemberSchema],
   voteOptions: [VoteOptionSchema],
+
+  // Final Judge Railway & Timeline Verification Audit
+  railwayValidation: { type: mongoose.Schema.Types.Mixed, default: null },
 
   // Commander event acceptance tracking
   acceptedCommanderEvents: [

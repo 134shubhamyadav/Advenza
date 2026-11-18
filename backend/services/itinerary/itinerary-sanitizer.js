@@ -138,6 +138,7 @@ import {
   parseOpeningHours,
 } from "./opening-hours.service.js";
 import { CURATED_DESTINATION_VENUES } from "../places/place-discovery.service.js";
+import { calculateHaversineDistanceKm } from "../travel/interstop-routing.service.js";
 
 // Parse legacy pipe string if present
 export const parseLegacyBudgetEstimate = (budgetStr, travelers = 1, nights = 1) => {
@@ -307,6 +308,16 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
   // Fallback 2: Generate realistic structured categories if budgetNum is specified
   if (!budgetBreakdown && context.budgetNum && Number(context.budgetNum) > 0) {
     const total = Number(context.budgetNum);
+    const isZeroCostAccommodation = /own home|native village|relative|relatives' home|family home|friends? house/i.test(
+      context.accommodation || context.hotelName || ""
+    );
+
+    const accomAmount = isZeroCostAccommodation ? 0 : Math.round(total * 0.38);
+    const transportShare = isZeroCostAccommodation ? 0.35 : 0.25;
+    const foodShare = isZeroCostAccommodation ? 0.30 : 0.20;
+    const activitiesShare = isZeroCostAccommodation ? 0.25 : 0.12;
+    const miscShare = isZeroCostAccommodation ? 0.10 : 0.05;
+
     budgetBreakdown = {
       currency: "INR",
       travelers: travelersCount,
@@ -316,35 +327,37 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
           category: "transport",
           label: "Inbound & Outbound Travel",
           description: `Transit to/from ${destination}`,
-          amount: Math.round(total * 0.25),
+          amount: Math.round(total * transportShare),
           type: "ESTIMATED",
         },
         {
           category: "accommodation",
-          label: "Accommodation",
-          description: `Stay for ${nightsCount} night${nightsCount > 1 ? "s" : ""}`,
-          amount: Math.round(total * 0.38),
+          label: isZeroCostAccommodation ? "Accommodation (Family/Own Home)" : "Accommodation",
+          description: isZeroCostAccommodation
+            ? "Staying at own home / relatives' residence (₹0 lodging expense)"
+            : `Stay for ${nightsCount} night${nightsCount > 1 ? "s" : ""}`,
+          amount: accomAmount,
           type: "ESTIMATED",
         },
         {
           category: "food",
           label: "Food & Dining",
           description: `Meals for ${travelersCount} traveler${travelersCount > 1 ? "s" : ""}`,
-          amount: Math.round(total * 0.20),
+          amount: Math.round(total * foodShare),
           type: "ESTIMATED",
         },
         {
           category: "activities",
           label: "Local Transport & Entry Fees",
           description: "Sightseeing and attraction admission",
-          amount: Math.round(total * 0.12),
+          amount: Math.round(total * activitiesShare),
           type: "ESTIMATED",
         },
         {
           category: "miscellaneous",
           label: "Miscellaneous / Contingency",
           description: "Buffer and unexpected expenses",
-          amount: Math.round(total * 0.05),
+          amount: Math.round(total * miscShare),
           type: "ESTIMATED",
         },
       ],
@@ -450,8 +463,11 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
           // ── Place Resolution & Anti-Hallucination Matching ────────────────
           let matchedPlace = null;
           const aPlaceName = (a.placeName || "").toLowerCase().trim();
+          const isVaguePlaceholder =
+            !aPlaceName ||
+            /unidentified|unknown|vague|sample|tbd|to be decided|generic|placeholder/i.test(aPlaceName);
 
-          if (aPlaceName) {
+          if (aPlaceName && !isVaguePlaceholder) {
             matchedPlace = verifiedPlaces.find(
               (p) => p.placeName.toLowerCase() === aPlaceName || p.placeName.toLowerCase().includes(aPlaceName) || aPlaceName.includes(p.placeName.toLowerCase())
             );
@@ -460,6 +476,17 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
           if (!matchedPlace) {
             const descLower = desc.toLowerCase();
             matchedPlace = verifiedPlaces.find((p) => descLower.includes(p.placeName.toLowerCase()));
+          }
+
+          // Substitute vague/unidentified placeholders with verified destination places
+          if ((!matchedPlace && isVaguePlaceholder && verifiedPlaces.length > 0) || (aPlaceName && isVaguePlaceholder)) {
+            const unusedVenue = verifiedPlaces.find((p) => !usedVenueNames.has(p.placeName.toLowerCase())) || verifiedPlaces[0];
+            if (unusedVenue) {
+              matchedPlace = unusedVenue;
+              if (isVaguePlaceholder && a.placeName) {
+                desc = desc.replace(new RegExp(a.placeName, "gi"), unusedVenue.placeName);
+              }
+            }
           }
 
           // ── Duplicate Venue Prevention (Across Nights) ───────────────────
@@ -583,38 +610,66 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
 
     // ── Deterministic Timing Validation (Part 5 Safety Net) ──────────────────
     if (dayStatus === "TRAVEL_OUTBOUND") {
-      // 0 usable hours — no destination sightseeing allowed
-      activities = [
-        {
-          time: context.departureTime ? normalizeTime(context.departureTime) : "08:00",
-          description: `Outbound journey departure from ${context.origin || "home city"} towards ${destination}.`,
+      // 0 usable hours — strictly no destination sightseeing allowed while in transit
+      const outTl = context.outboundJourney?.railwayTimeline;
+      const matchedTransitDay = outTl?.transitDays?.find((td) => td.date === dateObj.date);
+
+      if (matchedTransitDay && Array.isArray(matchedTransitDay.onboardActivities) && matchedTransitDay.onboardActivities.length > 0) {
+        activities = matchedTransitDay.onboardActivities.map((act) => ({
+          time: act.time || "08:00",
+          description: act.description || act.title,
+          placeName: act.location || "En-route Railway Transit",
           interestTags: [],
-        },
-        {
-          time: "13:00",
-          description: `Midday travel progress, observing regional landscapes along the route.`,
-          interestTags: [],
-        },
-        {
-          time: "20:00",
-          description: `Evening transit continuation / overnight rest on board towards destination.`,
-          interestTags: [],
-        },
-      ];
+          type: act.type || "TRAIN_TRANSIT",
+          dataClassification: act.dataClassification || "SCHEDULED_VERIFIED",
+        }));
+      } else {
+        activities = [
+          {
+            time: context.departureTime ? normalizeTime(context.departureTime) : "08:00",
+            description: `Outbound journey departure from ${context.origin || "home city"} towards ${destination}. Boarding transit and securing luggage.`,
+            interestTags: [],
+          },
+          {
+            time: "13:00",
+            description: `Midday travel progress on board, observing regional landscapes along the route.`,
+            interestTags: [],
+          },
+          {
+            time: "20:00",
+            description: `Evening transit continuation / overnight rest in berth towards destination.`,
+            interestTags: [],
+          },
+        ];
+      }
     } else if (dayStatus === "TRAVEL_RETURN") {
       // 0 usable hours — return transit day
-      activities = [
-        {
-          time: "08:00",
-          description: `Morning return journey continuation towards ${context.origin || "home city"}.`,
+      const retTl = context.returnJourney?.railwayTimeline;
+      const matchedTransitDay = retTl?.transitDays?.find((td) => td.date === dateObj.date);
+
+      if (matchedTransitDay && Array.isArray(matchedTransitDay.onboardActivities) && matchedTransitDay.onboardActivities.length > 0) {
+        activities = matchedTransitDay.onboardActivities.map((act) => ({
+          time: act.time || "08:00",
+          description: act.description || act.title,
+          placeName: act.location || "En-route Railway Transit",
           interestTags: [],
-        },
-        {
-          time: "14:00",
-          description: `Arrival back at ${context.origin || "home city"}. Unpack and conclude the journey.`,
-          interestTags: [],
-        },
-      ];
+          type: act.type || "TRAIN_TRANSIT",
+          dataClassification: act.dataClassification || "SCHEDULED_VERIFIED",
+        }));
+      } else {
+        activities = [
+          {
+            time: "08:00",
+            description: `Morning return journey continuation towards ${context.origin || "home city"}.`,
+            interestTags: [],
+          },
+          {
+            time: "14:00",
+            description: `Arrival back at ${context.origin || "home city"}. Unpack and conclude the journey.`,
+            interestTags: [],
+          },
+        ];
+      }
     } else if (dayStatus === "ARRIVAL_DAY" && winStartStr) {
       // Prune or adjust activities that occur before usableStartDateTime
       const [sh, sm] = winStartStr.split(":").map(Number);
@@ -630,14 +685,15 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
         activities = validActivities;
       } else {
         // Fallback evening arrival activities
+        const arrTimeStr = context.outboundJourney?.arrivalTime || context.arrivalTime || "17:30";
         activities = [
           {
-            time: context.arrivalTime ? normalizeTime(context.arrivalTime) : "16:00",
-            description: `Arrive in ${destination}. Transfer to ${context.hotelLocation || "hotel"}, check in, unpack, and freshen up.`,
+            time: normalizeTime(arrTimeStr),
+            description: `Arrive in ${destination}. Deboard, exit station/terminal, transfer to ${context.hotelLocation || "accommodation"}, check in, unpack, and freshen up.`,
             interestTags: [],
           },
           {
-            time: normalizeTime(winStartStr, "18:30"),
+            time: normalizeTime(winStartStr, "18:45"),
             description: hasInterest("food")
               ? `Evening culinary stroll tasting regional delicacies at local food hubs.`
               : hasInterest("beach")
@@ -773,6 +829,83 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
       const tA = (a.time || "00:00").replace(":", "");
       const tB = (b.time || "00:00").replace(":", "");
       return tA.localeCompare(tB);
+    });
+
+    // ── Inter-stop Travel Metrics & Progressive Timing (Goal 2 & Goal 7) ──
+    const hotelAnchorName = context.hotelName || context.hotelLocation || `Your Stay in ${destination}`;
+    let prevPointName = dayStatus === "TRAVEL_OUTBOUND" ? (context.origin || "Home City") : hotelAnchorName;
+    let prevPointCoords = null;
+
+    activities = activities.map((act, actIdx) => {
+      const curPointName = act.placeName || act.description?.slice(0, 35) || `Stop ${actIdx + 1}`;
+      const curCoords = act.coordinates?.lat != null && act.coordinates?.lng != null ? act.coordinates : null;
+
+      let travelDistanceKm = 2.5;
+      let travelDurationMinutes = 10;
+      let travelMode = "Cab";
+
+      if (prevPointCoords?.lat != null && curCoords?.lat != null) {
+        const d = calculateHaversineDistanceKm(
+          prevPointCoords.lat,
+          prevPointCoords.lng,
+          curCoords.lat,
+          curCoords.lng
+        );
+        if (d != null) {
+          if (d <= 1.2) {
+            travelMode = "Walk";
+            travelDistanceKm = d;
+            travelDurationMinutes = Math.max(3, Math.round(d * 13.3));
+          } else {
+            travelMode = "Cab";
+            travelDistanceKm = Math.round(d * 1.25 * 10) / 10;
+            travelDurationMinutes = Math.max(5, Math.round((travelDistanceKm / 28) * 60));
+          }
+        }
+      } else {
+        travelDistanceKm = actIdx === 0 ? 3.5 : 2.0;
+        travelDurationMinutes = actIdx === 0 ? 15 : 8;
+        travelMode = "Cab";
+      }
+
+      // Timing calculations
+      const plannedTime = act.time || "09:00";
+      const [ph, pm] = plannedTime.split(":").map(Number);
+      const plannedTotalMins = (isNaN(ph) ? 9 : ph) * 60 + (isNaN(pm) ? 0 : pm);
+      const depTotalMins = Math.max(0, plannedTotalMins - travelDurationMinutes);
+      const depTime = `${String(Math.floor(depTotalMins / 60) % 24).padStart(2, "0")}:${String(depTotalMins % 60).padStart(2, "0")}`;
+      const arrTime = plannedTime;
+
+      // Proximity description
+      const proximityDescription = actIdx === 0
+        ? `${travelDurationMinutes} mins ${travelMode.toLowerCase()} (${travelDistanceKm} km) from your hotel/stay`
+        : `${travelDurationMinutes} mins ${travelMode.toLowerCase()} (${travelDistanceKm} km) from ${prevPointName}`;
+
+      const travelDurationText = `${travelDurationMinutes} mins (${travelDistanceKm} km) ${travelMode.toLowerCase()}`;
+
+      const dataClassification = act.dataClassification ||
+        (act.verificationStatus === "CURATED_VERIFIED" || act.verificationStatus === "LIVE_VERIFIED"
+          ? "CURATED_VERIFIED"
+          : "INDICATIVE_RESEARCH");
+
+      const resAct = {
+        ...act,
+        startLocation: act.startLocation || prevPointName,
+        endLocation: act.endLocation || curPointName,
+        travelDistanceKm: act.travelDistanceKm ?? travelDistanceKm,
+        travelDurationMinutes: act.travelDurationMinutes ?? travelDurationMinutes,
+        travelDurationText: act.travelDurationText || travelDurationText,
+        travelMode: act.travelMode || travelMode,
+        departureTime: act.departureTime || depTime,
+        arrivalTime: act.arrivalTime || arrTime,
+        proximityDescription: act.proximityDescription || proximityDescription,
+        dataClassification,
+      };
+
+      prevPointName = curPointName;
+      if (curCoords) prevPointCoords = curCoords;
+
+      return resAct;
     });
 
     return {

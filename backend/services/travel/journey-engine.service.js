@@ -21,6 +21,7 @@
 import { transportProvider } from "./providers/transport.provider.js";
 import { flightProvider, resolveAirportCode } from "./providers/flight.provider.js";
 import { railcoreProvider } from "../ai/providers/railcore.provider.js";
+import { railwayTimelineService } from "./railway-timeline.service.js";
 import { travelCacheService, CACHE_TTLS } from "./travel-cache.service.js";
 import { calculateDestinationWindows } from "./destination-window.service.js";
 import { logger } from "../../utils/logger.js";
@@ -105,11 +106,21 @@ export async function calculateJourneyLeg(leg, options = {}) {
   };
 
   try {
-    // ── STEP 1: User-provided full timestamps take absolute priority ────────
+    const mode = (result.transportType || "").toLowerCase().trim();
+    const isTrainMode = mode === "train" || mode === "rail";
+    const depLoc = result.departureLocation || options.origin || "";
+    const arrLoc = result.arrivalLocation || options.destination || "";
+
+    // ── STEP 1: User-provided full timestamps ──────────────────────────────
+    // Note: For train journeys where arrivalDate equals departureDate, we verify
+    // the railway schedule first rather than naively assuming same-day arrival.
     const departureDt = buildDateTime(result.departureDate, result.departureTime);
     const arrivalDt = buildDateTime(result.arrivalDate, result.arrivalTime);
 
-    if (departureDt && arrivalDt) {
+    const isSuspiciousSameDayTrain =
+      isTrainMode && result.departureDate && result.arrivalDate && result.departureDate === result.arrivalDate;
+
+    if (!isSuspiciousSameDayTrain && departureDt && arrivalDt) {
       const userDuration = durationBetween(departureDt, arrivalDt);
       if (userDuration != null && userDuration >= 0) {
         result.durationMinutes = userDuration;
@@ -118,22 +129,38 @@ export async function calculateJourneyLeg(leg, options = {}) {
         if (result.booked || result.transitRef) {
           result.status = "CONFIRMED";
         }
+        if (isTrainMode && depLoc && arrLoc) {
+          // Enrich with stops and live tracking if train
+          try {
+            const tl = await railwayTimelineService.buildRailwayTimeline({
+              trainNumber: result.transitRef,
+              fromStation: depLoc,
+              toStation: arrLoc,
+              journeyDate: result.departureDate,
+              departureTime: result.departureTime,
+              arrivalTime: result.arrivalTime,
+              fallbackDurationMinutes: result.durationMinutes,
+            });
+            if (tl) {
+              result.railwayTimeline = tl;
+              result.stops = tl.stops;
+              result.liveTracking = tl.liveTracking;
+              result.dataClassification = tl.dataClassification;
+            }
+          } catch {}
+        }
         return result;
       }
     }
 
     // ── STEP 2: Partial user data — departure date+time only ────────────────
-    if (departureDt && !arrivalDt && result.durationMinutes != null) {
+    if (!isTrainMode && departureDt && !arrivalDt && result.durationMinutes != null) {
       // User gave duration but not arrival — keep as-is
       result.durationSource = result.durationSource || "USER_SPECIFIED";
       return result;
     }
 
     // ── STEP 3: Provider-based calculation based on transport type ───────────
-    const mode = (result.transportType || "").toLowerCase().trim();
-    const depLoc = result.departureLocation || options.origin || "";
-    const arrLoc = result.arrivalLocation || options.destination || "";
-
     if (!depLoc || !arrLoc) {
       result.durationSource = result.durationSource || "UNAVAILABLE";
       result.status = "ESTIMATED";
@@ -142,31 +169,37 @@ export async function calculateJourneyLeg(leg, options = {}) {
 
     // ── 3a: Car / Road ──────────────────────────────────────────────────────
     if (mode === "car" || mode === "driving" || mode === "road" || mode === "self-drive") {
-      return await _calculateRoadJourney(result, depLoc, arrLoc);
+      await _calculateRoadJourney(result, depLoc, arrLoc);
+    } else if (mode === "flight" || mode === "air" || mode === "airplane") {
+      await _calculateFlightJourney(result, depLoc, arrLoc);
+    } else if (isTrainMode) {
+      await _calculateScheduleBasedJourney(result, depLoc, arrLoc, "train");
+    } else if (mode === "bus" || mode === "coach") {
+      await _calculateScheduleBasedJourney(result, depLoc, arrLoc, "bus");
+    } else if (mode === "ferry" || mode === "boat" || mode === "ship") {
+      await _calculateScheduleBasedJourney(result, depLoc, arrLoc, "ferry");
+    } else if (depLoc && arrLoc) {
+      await _calculateRoadJourney(result, depLoc, arrLoc);
     }
 
-    // ── 3b: Flight ──────────────────────────────────────────────────────────
-    if (mode === "flight" || mode === "air" || mode === "airplane") {
-      return await _calculateFlightJourney(result, depLoc, arrLoc);
-    }
-
-    // ── 3c: Train / Bus / Ferry — no schedule fabrication ───────────────────
-    // These modes do NOT have reliable live providers in the current architecture.
-    // We can still provide a road-distance based estimate for rough guidance,
-    // but must clearly label it as such.
-    if (mode === "train" || mode === "rail") {
-      return await _calculateScheduleBasedJourney(result, depLoc, arrLoc, "train");
-    }
-    if (mode === "bus" || mode === "coach") {
-      return await _calculateScheduleBasedJourney(result, depLoc, arrLoc, "bus");
-    }
-    if (mode === "ferry" || mode === "boat" || mode === "ship") {
-      return await _calculateScheduleBasedJourney(result, depLoc, arrLoc, "ferry");
-    }
-
-    // ── 3d: Unknown / unspecified — try road estimate as baseline ────────────
-    if (depLoc && arrLoc) {
-      return await _calculateRoadJourney(result, depLoc, arrLoc);
+    // ── STEP 4: Accurate Destination Arrival Date & Time Derivation ────────
+    if (result.departureDate && result.durationMinutes != null && result.durationMinutes > 0) {
+      if (!result.departureTime) {
+        result.departureTime = mode.includes("flight") ? "08:00" : "07:00";
+      }
+      const depDtCalc = buildDateTime(result.departureDate, result.departureTime);
+      if (depDtCalc) {
+        const arrDtCalc = new Date(depDtCalc.getTime() + result.durationMinutes * 60000);
+        const derivedDate = arrDtCalc.toISOString().split("T")[0];
+        const derivedTime = `${String(arrDtCalc.getUTCHours()).padStart(2, "0")}:${String(arrDtCalc.getUTCMinutes()).padStart(2, "0")}`;
+        // If arrival date was unset or was naively set to departure date for an overnight journey
+        if (!result.arrivalDate || (result.arrivalDate === result.departureDate && derivedDate !== result.departureDate)) {
+          result.arrivalDate = derivedDate;
+        }
+        if (!result.arrivalTime) {
+          result.arrivalTime = derivedTime;
+        }
+      }
     }
   } catch (err) {
     logger.warn(`[JourneyEngine] Error calculating leg: ${err.message}`);
@@ -336,32 +369,70 @@ async function _estimateFlightDuration(result, origin, destination) {
  * These are NOT presented as live data. They are clearly labelled ESTIMATED_HAVERSINE.
  */
 async function _calculateScheduleBasedJourney(result, origin, destination, mode) {
-  // If Indian train mode and RailCore is configured, use live IRCTC schedule data
-  if (mode === "train" && railcoreProvider.isConfigured()) {
+  // If Indian train mode, use centralized railwayTimelineService (RailKit + IRCTC cross-check)
+  if (mode === "train" || mode === "rail") {
     try {
-      const railData = await railcoreProvider.resolveRailwayRoute({
-        origin,
-        destination,
+      const tl = await railwayTimelineService.buildRailwayTimeline({
+        trainNumber: result.transitRef,
+        fromStation: origin,
+        toStation: destination,
         journeyDate: result.departureDate,
+        departureTime: result.departureTime,
+        arrivalTime: result.arrivalTime,
+        fallbackDurationMinutes: result.durationMinutes,
       });
-      if (railData?.status === "SUCCESS" && railData?.recommendedTrain) {
-        const train = railData.recommendedTrain;
-        result.durationMinutes = train.durationMinutes;
-        result.durationSource = "SCHEDULED";
+
+      if (tl && tl.totalDurationMinutes > 0) {
+        result.durationMinutes = tl.totalDurationMinutes;
+        result.durationSource = tl.dataClassification || "SCHEDULED_VERIFIED";
         result.status = result.booked ? "CONFIRMED" : "SCHEDULED";
         if (!result.transitRef) {
-          result.transitRef = `${train.trainNumber} - ${train.trainName}`;
+          result.transitRef = `${tl.trainNumber} - ${tl.trainName}`;
         }
-        if (!result.departureTime && train.departureTime) {
-          result.departureTime = train.departureTime;
+        if (tl.fromStation?.departureTime) {
+          result.departureTime = tl.fromStation.departureTime;
         }
-        if (!result.arrivalTime && train.arrivalTime) {
-          result.arrivalTime = train.arrivalTime;
+        result.arrivalDate = tl.destinationArrivalDate;
+        if (tl.toStation?.arrivalTime) {
+          result.arrivalTime = tl.toStation.arrivalTime;
         }
+        result.railwayTimeline = tl;
+        result.stops = tl.stops;
+        result.liveTracking = tl.liveTracking;
+        result.dataClassification = tl.dataClassification;
         return result;
       }
     } catch (railErr) {
-      logger.warn(`[JourneyEngine] RailCore train lookup failed: ${railErr.message}`);
+      logger.warn(`[JourneyEngine] railwayTimelineService calculation note: ${railErr.message}`);
+    }
+
+    // Secondary fallback: RailCore provider if configured
+    if (railcoreProvider.isConfigured()) {
+      try {
+        const railData = await railcoreProvider.resolveRailwayRoute({
+          origin,
+          destination,
+          journeyDate: result.departureDate,
+        });
+        if (railData?.status === "SUCCESS" && railData?.recommendedTrain) {
+          const train = railData.recommendedTrain;
+          result.durationMinutes = train.durationMinutes;
+          result.durationSource = "SCHEDULED";
+          result.status = result.booked ? "CONFIRMED" : "SCHEDULED";
+          if (!result.transitRef) {
+            result.transitRef = `${train.trainNumber} - ${train.trainName}`;
+          }
+          if (!result.departureTime && train.departureTime) {
+            result.departureTime = train.departureTime;
+          }
+          if (!result.arrivalTime && train.arrivalTime) {
+            result.arrivalTime = train.arrivalTime;
+          }
+          return result;
+        }
+      } catch (rcErr) {
+        logger.warn(`[JourneyEngine] RailCore train lookup failed: ${rcErr.message}`);
+      }
     }
   }
 
@@ -414,6 +485,19 @@ export function calculateTripTiming(outboundLeg, returnLeg, options = {}) {
       travelDaysCount: 0,
       departureDateTime: "",
     },
+    // Distinct journey milestones
+    homeCityDepartureDateTime: "",
+    destinationArrivalDateTime: "",
+    sightseeingStartDate: "",
+    sightseeingEndDate: "",
+    returnDepartureDateTime: "",
+    homeCityArrivalDateTime: "",
+    timingConflict: {
+      hasConflict: false,
+      message: "",
+      recommendedDays: 0,
+      suggestedEndDate: "",
+    },
   };
 
   // ── Outbound ──
@@ -439,6 +523,13 @@ export function calculateTripTiming(outboundLeg, returnLeg, options = {}) {
         timing.outbound.arrivalDateTime = `${outboundLeg.arrivalDate}T${outboundLeg.arrivalTime}`;
       }
     }
+
+    if (outboundLeg.departureDate) {
+      timing.homeCityDepartureDateTime = `${outboundLeg.departureDate}T${outboundLeg.departureTime || "07:00"}`;
+    }
+    if (outboundLeg.arrivalDate) {
+      timing.destinationArrivalDateTime = `${outboundLeg.arrivalDate}T${outboundLeg.arrivalTime || "12:00"}`;
+    }
   }
 
   // ── Return ──
@@ -458,8 +549,12 @@ export function calculateTripTiming(outboundLeg, returnLeg, options = {}) {
       timing.return.travelDaysCount = 1;
     }
 
-    if (returnLeg.departureDate && returnLeg.departureTime) {
-      timing.return.departureDateTime = `${returnLeg.departureDate}T${returnLeg.departureTime}`;
+    if (returnLeg.departureDate) {
+      timing.return.departureDateTime = `${returnLeg.departureDate}T${returnLeg.departureTime || "18:00"}`;
+      timing.returnDepartureDateTime = timing.return.departureDateTime;
+    }
+    if (returnLeg.arrivalDate) {
+      timing.homeCityArrivalDateTime = `${returnLeg.arrivalDate}T${returnLeg.arrivalTime || "23:00"}`;
     }
   }
 
@@ -478,8 +573,66 @@ export function calculateTripTiming(outboundLeg, returnLeg, options = {}) {
     });
 
     timing.destination = destWindows;
+
+    // Determine actual sightseeing dates
+    const activeDays = (destWindows.days || []).filter((d) => d.availableHours > 0);
+    if (activeDays.length > 0) {
+      timing.sightseeingStartDate = activeDays[0].date;
+      timing.sightseeingEndDate = activeDays[activeDays.length - 1].date;
+    } else {
+      timing.sightseeingStartDate = outboundLeg?.arrivalDate || options.startDate || "";
+      timing.sightseeingEndDate = returnLeg?.departureDate || options.endDate || "";
+    }
   } catch (destErr) {
     logger.warn(`[JourneyEngine] Destination window calculation failed (non-fatal): ${destErr.message}`);
+    timing.sightseeingStartDate = outboundLeg?.arrivalDate || options.startDate || "";
+    timing.sightseeingEndDate = returnLeg?.departureDate || options.endDate || "";
+  }
+
+  // ── Timing Conflict Detection (Goal 1) ──
+  try {
+    const startDate = options.startDate || outboundLeg?.departureDate || "";
+    const endDate = options.endDate || returnLeg?.departureDate || "";
+    const destination = options.destination || "your destination";
+
+    const outboundHours = Math.round(((outboundLeg?.durationMinutes || 0) / 60) * 10) / 10;
+    const returnHours = Math.round(((returnLeg?.durationMinutes || 0) / 60) * 10) / 10;
+    const roundTripTransitHours = outboundHours + returnHours;
+    const totalTripDays = calendarDaysBetween(startDate, endDate);
+    const usableHours = timing.destination.totalUsableHours != null ? timing.destination.totalUsableHours : 0;
+
+    // Conflict criteria:
+    // 1. Usable destination exploration hours are < 6 hours despite significant travel (>= 6h transit)
+    // 2. Round-trip transit is >= 14 hours and total calendar days <= 2
+    // 3. Round-trip transit is >= 24 hours and total calendar days <= 3
+    const hasConflict =
+      (roundTripTransitHours >= 14 && totalTripDays <= 2) ||
+      (roundTripTransitHours >= 24 && totalTripDays <= 3) ||
+      (usableHours < 6 && roundTripTransitHours >= 6);
+
+    if (hasConflict) {
+      const recommendedDays = Math.max(
+        totalTripDays + 1,
+        Math.ceil((roundTripTransitHours + 16) / 10)
+      );
+
+      let suggestedEndDate = endDate;
+      if (startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        const [sy, sm, sd] = startDate.split("-").map(Number);
+        const sDt = new Date(Date.UTC(sy, sm - 1, sd));
+        sDt.setUTCDate(sDt.getUTCDate() + (recommendedDays - 1));
+        suggestedEndDate = sDt.toISOString().split("T")[0];
+      }
+
+      timing.timingConflict = {
+        hasConflict: true,
+        message: `Outbound journey takes ~${outboundHours}h and return takes ~${returnHours}h (${Math.round(roundTripTransitHours)}h total in transit). A ${totalTripDays}-day trip leaves insufficient time for sightseeing and rest in ${destination}. We recommend at least ${recommendedDays} days.`,
+        recommendedDays,
+        suggestedEndDate,
+      };
+    }
+  } catch (conflictErr) {
+    logger.debug(`[JourneyEngine] Conflict evaluation note: ${conflictErr.message}`);
   }
 
   return timing;
@@ -509,7 +662,7 @@ export async function computeJourneys(tripData) {
     arrivalLocation: rawOutbound.arrivalLocation || tripData.arrivalHub || destination,
     departureDate: rawOutbound.departureDate || tripData.startDate || "",
     departureTime: rawOutbound.departureTime || tripData.departureTime || "",
-    arrivalDate: rawOutbound.arrivalDate || tripData.startDate || "",
+    arrivalDate: rawOutbound.arrivalDate || "",
     arrivalTime: rawOutbound.arrivalTime || tripData.arrivalTime || "",
     durationMinutes: rawOutbound.durationMinutes ?? null,
     durationSource: rawOutbound.durationSource || "",
@@ -525,7 +678,7 @@ export async function computeJourneys(tripData) {
     arrivalLocation: rawReturn.arrivalLocation || tripData.departureHub || origin,
     departureDate: rawReturn.departureDate || rawReturn.date || tripData.endDate || "",
     departureTime: rawReturn.departureTime || rawReturn.time || "",
-    arrivalDate: rawReturn.arrivalDate || rawReturn.date || tripData.endDate || "",
+    arrivalDate: rawReturn.arrivalDate || rawReturn.date || "",
     arrivalTime: rawReturn.arrivalTime || "",
     durationMinutes: rawReturn.durationMinutes ?? null,
     durationSource: rawReturn.durationSource || "",

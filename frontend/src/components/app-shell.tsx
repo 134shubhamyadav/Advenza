@@ -63,7 +63,7 @@ export function AppShell({
   const displayName = profile?.displayName || user?.displayName || user?.email || "User";
   const photoURL = profile?.photoURL || user?.photoURL;
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
+    <div className="relative h-screen w-full overflow-hidden bg-background">
       {/* ============ Cinematic backdrop ============ */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         {/* Faint Indian scenic — Udaipur palace on lake */}
@@ -88,9 +88,9 @@ export function AppShell({
         <div className="absolute inset-0 opacity-[0.05] mix-blend-overlay [background-image:radial-gradient(rgba(0,0,0,0.4)_1px,transparent_1px)] [background-size:3px_3px]" />
       </div>
 
-      <div className="mx-auto flex w-full max-w-[1440px]">
-        {/* ============ Sidebar ============ */}
-        <aside className="glass-panel sticky top-0 hidden h-screen w-64 shrink-0 flex-col rounded-none border-l-0 border-t-0 border-b-0 px-4 py-6 md:flex">
+      <div className="mx-auto flex h-full w-full max-w-[1440px] overflow-hidden">
+        {/* ============ Sidebar (Fixed / Non-scrolling with main content) ============ */}
+        <aside className="glass-panel hidden h-full w-64 shrink-0 flex-col overflow-y-auto rounded-none border-l-0 border-t-0 border-b-0 px-4 py-6 md:flex">
           <BrandLogo />
           <nav className="mt-8 flex flex-1 flex-col gap-1">
             {nav.map((item) => {
@@ -143,8 +143,8 @@ export function AppShell({
           </div>
         </aside>
 
-        {/* ============ Main ============ */}
-        <div className="min-w-0 flex-1">
+        {/* ============ Main (Scrollable independently from fixed sidebar) ============ */}
+        <div className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto">
           <header className="sticky top-0 z-30 border-b border-white/40 bg-white/40 backdrop-blur-xl">
             <div className="flex h-16 items-center gap-3 px-5 md:px-8">
               <div className="md:hidden">

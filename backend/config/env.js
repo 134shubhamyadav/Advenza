@@ -70,7 +70,8 @@ const envSchema = z.object({
   BREVO_SENDER_EMAIL: z.string().email().optional().default("advenzaaa@gmail.com"),
   BREVO_SENDER_NAME: z.string().optional().default("Advenza Travel Companion"),
 
-  // RailCore Indian Railways API Provider
+  // RailKit & RailCore Indian Railways API Providers
+  RAILKIT_API_KEY: z.string().optional(),
   RAILCORE_API_KEY: z.string().optional(),
   RAILCORE_BASE_URL: z.string().default("https://ir.railcore.tech/v1"),
 });
