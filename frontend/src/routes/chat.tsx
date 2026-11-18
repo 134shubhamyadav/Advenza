@@ -79,6 +79,27 @@ interface OpeningHoursCard {
   reason?: string;
 }
 
+export interface ConversationState {
+  activeDestination?: {
+    name?: string;
+    city?: string;
+    locality?: string;
+    region?: string;
+  };
+  previousDestinations?: Array<{ name: string; city?: string; locality?: string }>;
+  accommodation?: {
+    name?: string;
+    location?: string;
+  };
+  preferences?: {
+    cuisine?: string[];
+    foodRestrictions?: string[];
+    budgetPerPerson?: number | null;
+    preferredRadiusKm?: number | null;
+    transportMode?: string;
+  };
+}
+
 interface ChatMessage {
   role: "assistant" | "user";
   text: string;
@@ -102,6 +123,8 @@ function Chat() {
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState<string>("");
+  const [conversationId, setConversationId] = useState<string>(() => `conv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
+  const [conversationState, setConversationState] = useState<ConversationState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Fetch user's saved trips for optional context linking
@@ -116,6 +139,17 @@ function Chat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, typing]);
 
+  const resetConversation = () => {
+    setConversationId(`conv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
+    setConversationState(null);
+    setMessages([
+      {
+        role: "assistant",
+        text: "Context refreshed. Where would you like to explore next?",
+      },
+    ]);
+  };
+
   const send = async (text: string) => {
     if (!text.trim() || typing) return;
     const userMsg: ChatMessage = { role: "user", text };
@@ -128,11 +162,16 @@ function Chat() {
         method: "POST",
         body: JSON.stringify({
           messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.text })),
+          conversationId,
+          conversationState: conversationState || undefined,
           tripId: selectedTripId || undefined,
           destination: activeTrip?.destination || undefined,
           hotelLocation: activeTrip?.hotelLocation || activeTrip?.hotelName || undefined,
         }),
       });
+
+      if (data.conversationId) setConversationId(data.conversationId);
+      if (data.conversationState) setConversationState(data.conversationState);
 
       setMessages((m) => [
         ...m,
@@ -203,6 +242,59 @@ function Chat() {
             </div>
           )}
         </div>
+
+        {/* Active Context Ribbon (Persistent Multi-turn Intelligence) */}
+        {conversationState?.activeDestination?.name && (
+          <div className="flex flex-wrap items-center justify-between gap-2 py-2 px-1 text-xs border-b border-border/40 bg-muted/20 rounded-lg my-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-muted-foreground font-medium flex items-center gap-1 text-[11px]">
+                <Compass className="h-3 w-3 text-primary" /> Active Context:
+              </span>
+              <Badge variant="secondary" className="gap-1 font-medium bg-primary/10 text-primary border-primary/20 text-[11px]">
+                <MapPin className="h-3 w-3" />
+                {conversationState.activeDestination.name}
+                {conversationState.activeDestination.city && conversationState.activeDestination.city !== conversationState.activeDestination.name
+                  ? `, ${conversationState.activeDestination.city}`
+                  : ""}
+              </Badge>
+
+              {conversationState.preferences?.cuisine && conversationState.preferences.cuisine.length > 0 && (
+                <Badge variant="outline" className="gap-1 font-normal border-amber-500/30 text-amber-600 dark:text-amber-400 text-[11px]">
+                  <Utensils className="h-3 w-3" />
+                  {conversationState.preferences.cuisine.join(", ")}
+                </Badge>
+              )}
+
+              {conversationState.preferences?.budgetPerPerson && (
+                <Badge variant="outline" className="gap-1 font-normal border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[11px]">
+                  ₹{conversationState.preferences.budgetPerPerson} / person
+                </Badge>
+              )}
+
+              {conversationState.accommodation?.name && (
+                <Badge variant="outline" className="gap-1 font-normal border-blue-500/30 text-blue-600 dark:text-blue-400 text-[11px]">
+                  🏨 {conversationState.accommodation.name}
+                </Badge>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {conversationState.previousDestinations && conversationState.previousDestinations.length > 0 && (
+                <span className="text-[10px] text-muted-foreground hidden sm:inline">
+                  History: {conversationState.previousDestinations.map((d) => d.name).join(" → ")}
+                </span>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetConversation}
+                className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                Clear Context
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Message Thread Scroll Area */}
         <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto py-5 pr-1">

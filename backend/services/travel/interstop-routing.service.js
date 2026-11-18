@@ -2,6 +2,7 @@ import { osrmRoutingService } from "./osrm-routing.service.js";
 import { apiClient } from "../../utils/apiClient.js";
 import { logger } from "../../utils/logger.js";
 import { CURATED_DESTINATION_VENUES } from "../places/place-discovery.service.js";
+import { geographicIntelligenceService } from "../places/geographic-intelligence.service.js";
 
 // In-memory geocode cache: query -> { lat, lng, displayName, timestamp }
 const geocodeCache = new Map();
@@ -86,7 +87,24 @@ export async function geocodeLocation(query, destinationContext = "") {
     logger.debug(`[InterstopRouting] Open-Meteo geocode failed for "${cleanQuery}": ${err.message}`);
   }
 
-  // 3. Nominatim OpenStreetMap Search
+  // 3. Geographic Intelligence Service (Nominatim with locality hierarchy & spatial scoping)
+  try {
+    const geo = await geographicIntelligenceService.resolveLocationHierarchy(fullQuery, { city: destinationContext });
+    if (geo?.coordinates?.lat != null && geo?.coordinates?.lng != null) {
+      const result = {
+        lat: geo.coordinates.lat,
+        lng: geo.coordinates.lng,
+        displayName: geo.hierarchyString || geo.displayName || fullQuery,
+        source: "GEOGRAPHIC_INTELLIGENCE",
+      };
+      geocodeCache.set(cacheKey, { ...result, timestamp: Date.now() });
+      return result;
+    }
+  } catch (err) {
+    logger.debug(`[InterstopRouting] Geographic Intelligence geocode failed for "${fullQuery}": ${err.message}`);
+  }
+
+  // 4. Raw Nominatim Fallback
   try {
     const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullQuery)}&limit=1`;
     const res = await apiClient.request(nomUrl, {
@@ -225,6 +243,40 @@ export function optimizeActivitySequence(activities, anchorCoords) {
         currentPoint = { lat: nextItem.lat, lng: nextItem.lng };
       }
     }
+    // 2-Opt Local Search (OR-Tools TSP Heuristic to untangle crossed paths)
+    if (ordered.length >= 4) {
+      let improved = true;
+      let count = 0;
+      while (improved && count < 15) {
+        improved = false;
+        count++;
+        for (let i = 0; i < ordered.length - 2; i++) {
+          for (let k = i + 1; k < ordered.length - 1; k++) {
+            if (ordered[i].isLocked || ordered[k].isLocked) continue;
+            const p1 = i === 0 && startPoint ? startPoint : ordered[i];
+            const p2 = ordered[i + 1];
+            const p3 = ordered[k];
+            const p4 = ordered[k + 1];
+            if (p1.lat != null && p2.lat != null && p3.lat != null && p4.lat != null) {
+              const currentDist =
+                (calculateHaversineDistanceKm(p1.lat, p1.lng, p2.lat, p2.lng) || 0) +
+                (calculateHaversineDistanceKm(p3.lat, p3.lng, p4.lat, p4.lng) || 0);
+              const newDist =
+                (calculateHaversineDistanceKm(p1.lat, p1.lng, p3.lat, p3.lng) || 0) +
+                (calculateHaversineDistanceKm(p2.lat, p2.lng, p4.lat, p4.lng) || 0);
+              if (newDist < currentDist - 0.05) {
+                const reversed = ordered.slice(i + 1, k + 1).reverse();
+                ordered.splice(i + 1, reversed.length, ...reversed);
+                improved = true;
+                break;
+              }
+            }
+          }
+          if (improved) break;
+        }
+      }
+    }
+
     return ordered;
   };
 

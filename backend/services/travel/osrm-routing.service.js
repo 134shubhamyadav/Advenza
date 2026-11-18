@@ -88,6 +88,47 @@ export class OSRMRoutingService {
   }
 
   /**
+   * Calculates all-to-all driving distance and duration matrix for multiple points via OSRM Table API.
+   * @param {Array<{ lat: number, lon?: number, lng?: number }>} points
+   * @returns {Promise<{ durations: number[][], distances: number[][] }|null>}
+   */
+  async calculateDistanceMatrix(points) {
+    if (!Array.isArray(points) || points.length < 2) return null;
+
+    const coords = points
+      .map((p) => {
+        const lat = p.lat != null ? Number(p.lat) : null;
+        const lon = p.lon != null ? Number(p.lon) : p.lng != null ? Number(p.lng) : null;
+        return lat != null && lon != null ? `${lon.toFixed(5)},${lat.toFixed(5)}` : null;
+      })
+      .filter(Boolean);
+
+    if (coords.length < 2) return null;
+
+    const tableUrl = `http://router.project-osrm.org/table/v1/driving/${coords.join(";")}?annotations=duration,distance`;
+
+    try {
+      const res = await apiClient.request(tableUrl, {
+        provider: "OSRM-TableMatrix",
+        timeoutMs: 6000,
+        maxRetries: 1,
+        headers: { "User-Agent": "AdvenzaTravelIntelligence/1.0" },
+      });
+
+      const data = await res.json();
+      if (data.code === "Ok" && Array.isArray(data.durations)) {
+        return {
+          durations: data.durations, // duration in seconds
+          distances: data.distances || [], // distance in meters
+        };
+      }
+    } catch (err) {
+      logger.debug(`[OSRMRoutingService] Table matrix query failed: ${err.message}`);
+    }
+    return null;
+  }
+
+  /**
    * Discovers nearest railway station and commercial airport via Nominatim
    * @param {string} destination
    * @param {Object} centerCoords - { lat, lon }

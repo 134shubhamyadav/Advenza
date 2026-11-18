@@ -22,6 +22,7 @@
 
 import { railkitProvider } from "./railkit.provider.js";
 import { railcoreProvider } from "../ai/providers/railcore.provider.js";
+import { dateFnsService } from "./date-fns.service.js";
 import { logger } from "../../utils/logger.js";
 
 // Common Indian Railway station mappings (City Name / Alias -> Primary Station Code & Name)
@@ -195,7 +196,8 @@ export class RailwayTimelineService {
     }
 
     // ── 2. If Train Number is Not Known: Search Direct Trains on Corridor ───
-    if (!trainInfo && fromCode && toCode && railkitProvider.isConfigured()) {
+    const hasExplicitSchedule = !trainNumber && fallbackDurationMinutes && userDepTime;
+    if (!hasExplicitSchedule && !trainInfo && fromCode && toCode && railkitProvider.isConfigured()) {
       try {
         const availableTrains = await railkitProvider.searchTrainsBetweenStations({
           from: fromCode,
@@ -462,7 +464,7 @@ export class RailwayTimelineService {
     let dayCrossings = Math.floor(durMin / 1440);
     if ((depM + (durMin % 1440)) >= 1440) {
       // Crossed an extra midnight
-      dayCrossings = Math.max(1, dayCrossings);
+      dayCrossings += 1;
     }
 
     const departureDate = journeyDate;
@@ -730,10 +732,7 @@ export class RailwayTimelineService {
   // ─── Helper Functions ──────────────────────────────────────────────────────
 
   _addDays(dateStr, days) {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    const dt = new Date(Date.UTC(y, m - 1, d));
-    dt.setUTCDate(dt.getUTCDate() + days);
-    return dt.toISOString().split("T")[0];
+    return dateFnsService.addDaysToDate(dateStr, days);
   }
 
   _buildDateTime(dateStr, timeStr) {

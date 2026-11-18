@@ -24,13 +24,15 @@ export const planB = asyncHandler(async (req, res) => {
 });
 
 export const chat = asyncHandler(async (req, res) => {
-  const { messages, tripId, destination, hotelLocation, context } = req.body;
+  const { messages, tripId, destination, hotelLocation, context, conversationId, conversationState } = req.body;
   const result = await aiService.chatWithTravelAI({
     messages,
     tripId,
     destination,
     hotelLocation,
     context,
+    conversationId,
+    conversationState,
     userId: req.uid,
   });
   res.json(result);
