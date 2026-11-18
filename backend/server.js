@@ -135,6 +135,7 @@ const server = app.listen(PORT, () => {
   // Redacted configuration sanity check
   const providers = [
     "GROQ_API_KEY",
+    "NVIDIA_API_KEY",
     "OPENROUTER_API_KEY",
     "GEMINI_API_KEY",
     "COHERE_API_KEY",

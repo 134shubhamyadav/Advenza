@@ -105,6 +105,7 @@ router.get("/detailed", async (req, res) => {
     aiProviders: {
       status: aiStatus,
       groq: providerConfig.ai.groq ? "CONFIGURED" : "NOT_CONFIGURED",
+      nvidia: providerConfig.ai.nvidia ? "CONFIGURED" : "NOT_CONFIGURED",
       openrouter: providerConfig.ai.openrouter ? "CONFIGURED" : "NOT_CONFIGURED",
       gemini: providerConfig.ai.gemini ? "CONFIGURED" : "NOT_CONFIGURED",
       cohere: providerConfig.ai.cohere ? "CONFIGURED" : "NOT_CONFIGURED",

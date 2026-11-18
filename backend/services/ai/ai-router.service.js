@@ -1,4 +1,5 @@
 import groqProvider from "./providers/groq.provider.js";
+import nvidiaProvider from "./providers/nvidia.provider.js";
 import openRouterProvider from "./providers/openrouter.provider.js";
 import geminiProvider from "./providers/gemini.provider.js";
 import mistralProvider from "./providers/mistral.provider.js";
@@ -15,6 +16,7 @@ export class AIRouterService {
   constructor() {
     this.providers = [
       groqProvider,
+      nvidiaProvider,
       openRouterProvider,
       geminiProvider,
       mistralProvider,

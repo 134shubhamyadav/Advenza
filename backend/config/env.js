@@ -50,6 +50,7 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   COHERE_API_KEY: z.string().optional(),
   MISTRAL_API_KEY: z.string().optional(),
+  NVIDIA_API_KEY: z.string().optional(),
   AI_TIMEOUT_MS: z.coerce.number().default(30000),
   AI_MAX_RETRIES: z.coerce.number().default(2),
 
@@ -135,6 +136,7 @@ export function getProviderConfigStatus() {
       gemini: Boolean(env.GEMINI_API_KEY),
       cohere: Boolean(env.COHERE_API_KEY),
       mistral: Boolean(env.MISTRAL_API_KEY),
+      nvidia: Boolean(env.NVIDIA_API_KEY),
       together: Boolean(env.TOGETHER_API_KEY),
       cerebras: Boolean(env.CEREBRAS_API_KEY),
       openai: Boolean(env.OPENAI_API_KEY),
@@ -144,6 +146,7 @@ export function getProviderConfigStatus() {
         env.GEMINI_API_KEY ||
         env.COHERE_API_KEY ||
         env.MISTRAL_API_KEY ||
+        env.NVIDIA_API_KEY ||
         env.TOGETHER_API_KEY ||
         env.CEREBRAS_API_KEY ||
         env.OPENAI_API_KEY
@@ -154,6 +157,7 @@ export function getProviderConfigStatus() {
         env.GEMINI_API_KEY ||
         env.COHERE_API_KEY ||
         env.MISTRAL_API_KEY ||
+        env.NVIDIA_API_KEY ||
         env.TOGETHER_API_KEY ||
         env.CEREBRAS_API_KEY ||
         env.OPENAI_API_KEY
