@@ -33,6 +33,7 @@ import { collageWorker } from "./services/collage/collage-worker.js";
 import { initReelQueue, closeReelQueue } from "./services/queue/reel-queue.js";
 import { startPriceWatchScheduler, stopPriceWatchScheduler } from "./services/price-watch/price-watch.worker.js";
 import { runStartupMigrations } from "./services/database/migration.service.js";
+import { railwaySyncWorker } from "./services/travel/railway-sync.worker.js";
 
 // Optional DNS override if explicitly specified in environment
 if (process.env.CUSTOM_DNS) {
@@ -148,6 +149,13 @@ const server = app.listen(PORT, () => {
     const isSet = Boolean(process.env[k]);
     logger.info(`🔑 ${k}: ${isSet ? "✅ configured" : "⚠️  not set"}`);
   }
+
+  // Initialize parallel 6-hour Indian Railways background synchronization
+  try {
+    railwaySyncWorker.init();
+  } catch (syncErr) {
+    logger.warn(`Could not start railway sync worker: ${syncErr.message}`);
+  }
 });
 
 // ─── Graceful Shutdown ─────────────────────────────────────────────────────────
@@ -156,6 +164,7 @@ const gracefulShutdown = (signal) => {
   server.close(async () => {
     logger.info("HTTP server closed.");
     try {
+      railwaySyncWorker.stop();
       stopPriceWatchScheduler();
       await closeReelQueue();
       await mongoose.connection.close(false);

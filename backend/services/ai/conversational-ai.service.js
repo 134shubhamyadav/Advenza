@@ -654,9 +654,17 @@ export class ConversationalAIService {
         const openCheck = isVenueOpenAt({ parsedHours: parsedH, dateStr: new Date().toISOString().split("T")[0] });
 
         let distStr = null;
-        if (hotelLocation) {
-          distStr = this.calculateEstimatedDistance(hotelLocation, p);
-        } else if (currentState.activeDestination?.coordinates?.lat && p.coordinates?.lat) {
+        const hotelCoords = currentState.hotelCoordinates || currentState.activeDestination?.hotelCoordinates || null;
+        if (hotelCoords && p.coordinates?.lat != null && p.coordinates?.lng != null && (p.coordinates.lat !== 0 || p.coordinates.lng !== 0)) {
+          const d = calculateHaversineDistanceKm(hotelCoords.lat, hotelCoords.lng, p.coordinates.lat, p.coordinates.lng);
+          if (d != null) {
+            distStr = d <= 1.2
+              ? `${d.toFixed(1)} km (~${Math.max(3, Math.round(d * 13))} mins walk from hotel)`
+              : `${d.toFixed(1)} km (~${Math.max(5, Math.round((d / 28) * 60))} mins drive from hotel)`;
+          }
+        } else if (hotelLocation) {
+          distStr = this.calculateEstimatedDistance(hotelLocation, p, hotelCoords);
+        } else if (currentState.activeDestination?.coordinates?.lat && p.coordinates?.lat && (p.coordinates.lat !== 0 || p.coordinates.lng !== 0)) {
           const d = calculateHaversineDistanceKm(
             currentState.activeDestination.coordinates.lat,
             currentState.activeDestination.coordinates.lng,
@@ -664,6 +672,8 @@ export class ConversationalAIService {
             p.coordinates.lng
           );
           if (d != null) distStr = `${d.toFixed(1)} km (~${Math.round(d * 2.5)} mins drive)`;
+        } else {
+          distStr = "Distance unavailable";
         }
 
         return {
@@ -881,27 +891,34 @@ export class ConversationalAIService {
   }
 
   /**
-   * Helper to estimate distance between stay and candidate place based on location strings.
+   * Helper to estimate distance between stay and candidate place based on genuine coordinates.
+   * Never invents distances or travel times.
    */
-  calculateEstimatedDistance(hotelLocation, place) {
-    if (!hotelLocation || !place) return "Nearby (~10-15 mins)";
-    const hLower = hotelLocation.toLowerCase();
-    const pAddrLower = (place.address || "").toLowerCase();
+  calculateEstimatedDistance(hotelLocation, place, hotelCoords = null) {
+    if (!place || !place.coordinates) return "Distance unavailable";
 
-    if (hLower.includes("mulund") && pAddrLower.includes("mulund")) {
-      return "1.2 km (~4 mins drive / walking distance)";
-    }
-    if (hLower.includes("assagao")) {
-      if (pAddrLower.includes("assagao")) return "0.8 km (~3 mins drive)";
-      if (pAddrLower.includes("arpora")) return "5.4 km (~12 mins drive)";
-      if (pAddrLower.includes("calangute")) return "7.8 km (~18 mins drive)";
-    }
-    if (hLower.includes("candolim")) {
-      if (pAddrLower.includes("candolim")) return "0.9 km (~3 mins drive)";
-      if (pAddrLower.includes("calangute")) return "4.2 km (~9 mins drive)";
+    const pLat = place.coordinates.lat != null ? Number(place.coordinates.lat) : null;
+    const pLng = place.coordinates.lng != null ? Number(place.coordinates.lng) : null;
+
+    if (pLat == null || pLng == null || (pLat === 0 && pLng === 0)) {
+      return "Distance unavailable";
     }
 
-    return "Approx. 4–8 km (~12–20 mins drive)";
+    const hCoords = hotelCoords || (typeof hotelLocation === "object" ? hotelLocation?.coordinates : null);
+    const hLat = hCoords?.lat != null ? Number(hCoords.lat) : null;
+    const hLng = hCoords?.lng != null ? Number(hCoords.lng) : null;
+
+    if (hLat != null && hLng != null && (hLat !== 0 || hLng !== 0)) {
+      const d = calculateHaversineDistanceKm(hLat, hLng, pLat, pLng);
+      if (d != null) {
+        if (d <= 1.2) {
+          return `${d.toFixed(1)} km (~${Math.max(3, Math.round(d * 13))} mins walk)`;
+        }
+        return `${d.toFixed(1)} km (~${Math.max(5, Math.round((d / 28) * 60))} mins drive)`;
+      }
+    }
+
+    return "Distance unavailable";
   }
 
   /**

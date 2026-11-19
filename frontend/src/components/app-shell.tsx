@@ -26,20 +26,43 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-const nav = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/commander", label: "Trip Commander", icon: Radar },
-  { to: "/simulator", label: "Plan B", icon: SlidersHorizontal },
-  { to: "/consensus", label: "Consensus", icon: Users2 },
-  { to: "/risk", label: "Risk Radar", icon: ShieldAlert },
-  { to: "/memory", label: "Memories", icon: Album },
-  { to: "/packing", label: "Packing", icon: Backpack },
-  { to: "/trips/new", label: "New trip", icon: Plus },
-  { to: "/itinerary", label: "Itinerary", icon: CalendarDays },
-  { to: "/chat", label: "Advenza AI", icon: MessageCircle },
-  { to: "/budget", label: "Budget", icon: Wallet },
-  { to: "/profile", label: "Profile", icon: User },
+const navSections = [
+  {
+    title: "Trip Planning",
+    items: [
+      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { to: "/trips/new", label: "New trip", icon: Plus },
+      { to: "/itinerary", label: "Itinerary", icon: CalendarDays },
+      { to: "/budget", label: "Budget", icon: Wallet },
+      { to: "/packing", label: "Packing", icon: Backpack },
+      { to: "/consensus", label: "Consensus", icon: Users2 },
+    ],
+  },
+  {
+    title: "Live Operations",
+    items: [
+      { to: "/commander", label: "Trip Commander", icon: Radar },
+      { to: "/risk", label: "Risk Radar", icon: ShieldAlert },
+      { to: "/simulator", label: "Plan B", icon: SlidersHorizontal },
+    ],
+  },
+  {
+    title: "Intelligence & Memories",
+    items: [
+      { to: "/chat", label: "Advenza AI", icon: MessageCircle },
+      { to: "/memory", label: "Memories", icon: Album },
+    ],
+  },
+  {
+    title: "Account",
+    items: [
+      { to: "/profile", label: "Profile", icon: User },
+    ],
+  },
 ] as const;
+
+// Flat navigation list
+const nav = navSections.flatMap((s) => s.items);
 
 // A scenic, low-opacity Indian palette photo drifts behind the aurora — evocative but never noisy.
 const BACKDROP_IMG =
@@ -92,40 +115,51 @@ export function AppShell({
         {/* ============ Sidebar (Fixed / Non-scrolling with main content) ============ */}
         <aside className="glass-panel hidden h-full w-64 shrink-0 flex-col overflow-y-auto rounded-none border-l-0 border-t-0 border-b-0 px-4 py-6 md:flex">
           <BrandLogo />
-          <nav className="mt-8 flex flex-1 flex-col gap-1">
-            {nav.map((item) => {
-              const active =
-                item.to === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(item.to);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={cn(
-                    "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-300",
-                    active
-                      ? "bg-gradient-to-r from-primary/15 to-accent/10 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
-                      : "text-muted-foreground hover:bg-white/40 hover:text-foreground",
-                  )}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="nav-active"
-                      className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-primary to-accent"
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                    />
-                  )}
-                  <Icon
-                    className={cn(
-                      "h-4.5 w-4.5 shrink-0 transition-transform duration-300 group-hover:scale-110",
-                      active && "text-primary",
-                    )}
-                    strokeWidth={2}
-                  />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
+          <nav className="mt-6 flex flex-1 flex-col gap-4">
+            {navSections.map((section) => (
+              <div key={section.title} className="space-y-1">
+                <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 select-none">
+                  {section.title}
+                </p>
+                <div className="flex flex-col gap-0.5">
+                  {section.items.map((item) => {
+                    const active =
+                      item.to === "/dashboard"
+                        ? pathname === "/dashboard"
+                        : pathname.startsWith(item.to);
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        className={cn(
+                          "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-200",
+                          active
+                            ? "bg-gradient-to-r from-primary/15 to-accent/10 text-primary font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+                            : "text-muted-foreground hover:bg-white/40 hover:text-foreground",
+                        )}
+                      >
+                        {active && (
+                          <motion.span
+                            layoutId="nav-active"
+                            className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-primary to-accent"
+                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                          />
+                        )}
+                        <Icon
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110",
+                            active && "text-primary",
+                          )}
+                          strokeWidth={2}
+                        />
+                        <span>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
           <div className="glass-panel sheen-on-hover mt-4 rounded-2xl p-4">
             <p className="flex items-center gap-1.5 text-xs font-medium text-primary">

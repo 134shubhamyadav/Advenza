@@ -24,6 +24,7 @@ import { railkitProvider } from "./railkit.provider.js";
 import { railcoreProvider } from "../ai/providers/railcore.provider.js";
 import { dateFnsService } from "./date-fns.service.js";
 import { logger } from "../../utils/logger.js";
+import { localRailwayService } from "./local-railway.service.js";
 
 // Common Indian Railway station mappings (City Name / Alias -> Primary Station Code & Name)
 export const RAILWAY_STATION_MAP = {
@@ -122,6 +123,12 @@ export class RailwayTimelineService {
       }
     }
 
+    // Check authoritative local Indian Railways database (8,990+ stations)
+    try {
+      const localStn = localRailwayService.resolveStation(locationOrCode);
+      if (localStn?.code) return localStn.code;
+    } catch (_) {}
+
     return null;
   }
 
@@ -164,15 +171,26 @@ export class RailwayTimelineService {
       fromStation: rawFrom,
       toStation: rawTo,
       journeyDate,
+      arrivalDate: rawArrivalDate,
+      departureDate: rawDepDate,
       departureTime: userDepTime,
       arrivalTime: userArrTime,
       direction = "OUTBOUND",
       fallbackDurationMinutes,
+      trackLive = true,
     } = params;
 
-    const startDate = this._formatDateYYYYMMDD(journeyDate || new Date().toISOString().split("T")[0]);
-    const fromCode = this.resolveStationCode(rawFrom);
-    const toCode = this.resolveStationCode(rawTo);
+    const startDate = this._formatDateYYYYMMDD(journeyDate || rawDepDate || new Date().toISOString().split("T")[0]);
+    const targetArrivalDate = rawArrivalDate ? this._formatDateYYYYMMDD(rawArrivalDate) : null;
+    let fromCode = this.resolveStationCode(rawFrom);
+    let toCode = this.resolveStationCode(rawTo);
+
+    if (!fromCode && rawFrom) {
+      fromCode = await railcoreProvider.resolveStationCode(rawFrom);
+    }
+    if (!toCode && rawTo) {
+      toCode = await railcoreProvider.resolveStationCode(rawTo);
+    }
 
     // Extract clean 5-digit train number if provided
     let trainNumber = "";
@@ -186,8 +204,8 @@ export class RailwayTimelineService {
     let trainInfo = null;
     let selectedTrainHeader = null;
 
-    // ── 1. If Train Number is Known: Fetch Authoritative Route via RailKit ───
-    if (trainNumber && railkitProvider.isConfigured()) {
+    // ── 1. If Train Number is Known: Fetch Authoritative Route via RailKit or Local DB ───
+    if (trainNumber) {
       try {
         trainInfo = await railkitProvider.getTrainInfo(trainNumber);
       } catch (err) {
@@ -195,15 +213,37 @@ export class RailwayTimelineService {
       }
     }
 
+    if (trainNumber && !trainInfo) {
+      try {
+        trainInfo = localRailwayService.getTrainSchedule(trainNumber);
+      } catch (err) {
+        logger.warn(`[RailwayTimelineService] localRailwayService.getTrainSchedule error: ${err.message}`);
+      }
+    }
+
     // ── 2. If Train Number is Not Known: Search Direct Trains on Corridor ───
     const hasExplicitSchedule = !trainNumber && fallbackDurationMinutes && userDepTime;
-    if (!hasExplicitSchedule && !trainInfo && fromCode && toCode && railkitProvider.isConfigured()) {
+    if (!hasExplicitSchedule && !trainInfo && fromCode && toCode) {
       try {
-        const availableTrains = await railkitProvider.searchTrainsBetweenStations({
-          from: fromCode,
-          to: toCode,
-          date: startDate,
-        });
+        let availableTrains = [];
+        if (railkitProvider.isConfigured() && Date.now() > railkitProvider.isQuotaExhaustedUntil) {
+          availableTrains = await railkitProvider.searchTrainsBetweenStations({
+            from: fromCode,
+            to: toCode,
+            date: startDate,
+          });
+        }
+
+        if (!availableTrains || availableTrains.length === 0) {
+          const rcRes = await railcoreProvider.resolveRailwayRoute({
+            origin: rawFrom || fromCode,
+            destination: rawTo || toCode,
+            journeyDate: startDate,
+          });
+          if (rcRes?.status === "SUCCESS" && Array.isArray(rcRes.trains) && rcRes.trains.length > 0) {
+            availableTrains = rcRes.trains;
+          }
+        }
 
         if (Array.isArray(availableTrains) && availableTrains.length > 0) {
           // Select best matching train: closest to user preferred departure/arrival times, or first express train
@@ -249,6 +289,7 @@ export class RailwayTimelineService {
         userDepTime,
         userArrTime,
         direction,
+        trackLive,
       });
     }
 
@@ -259,28 +300,44 @@ export class RailwayTimelineService {
       fromStation: this.resolveStationDetails(rawFrom || fromCode || "ORIGIN"),
       toStation: this.resolveStationDetails(rawTo || toCode || "DESTINATION"),
       journeyDate: startDate,
+      arrivalDate: targetArrivalDate,
       userDepTime,
       userArrTime,
       durationMinutes: selectedTrainHeader?.durationMinutes || fallbackDurationMinutes,
       direction,
+      trackLive,
     });
   }
 
   /**
    * Build complete timeline from verified RailKit route data.
    */
-  async _buildTimelineFromRoute({ trainInfo, fromCode, toCode, journeyDate, userDepTime, userArrTime, direction }) {
+  async _buildTimelineFromRoute({ trainInfo, fromCode, toCode, journeyDate, userDepTime, userArrTime, direction, trackLive = true }) {
     const route = trainInfo.route;
 
     // Locate boarding station and destination station
     let boardingIdx = -1;
     let destinationIdx = -1;
 
+    // 1. Direct station code match
     if (fromCode) {
       boardingIdx = route.findIndex((st) => st.stnCode.toUpperCase() === fromCode.toUpperCase());
     }
+    // 2. Cluster fallback for origin (e.g. Mumbai -> PNVL, LTT, KYN, CSMT)
+    if (boardingIdx === -1 && fromCode) {
+      const fromClusters = localRailwayService.getStationCluster(fromCode).map((c) => c.toUpperCase());
+      boardingIdx = route.findIndex((st) => fromClusters.includes(st.stnCode.toUpperCase()));
+    }
+
+    // 3. Destination station match (must appear after boarding index)
+    const minDestIdx = boardingIdx !== -1 ? boardingIdx + 1 : 0;
     if (toCode) {
-      destinationIdx = route.findIndex((st) => st.stnCode.toUpperCase() === toCode.toUpperCase());
+      destinationIdx = route.findIndex((st, i) => i >= minDestIdx && st.stnCode.toUpperCase() === toCode.toUpperCase());
+    }
+    // 4. Cluster fallback for destination (e.g. Kochi -> ERS, ERN, AWY)
+    if (destinationIdx === -1 && toCode) {
+      const toClusters = localRailwayService.getStationCluster(toCode).map((c) => c.toUpperCase());
+      destinationIdx = route.findIndex((st, i) => i >= minDestIdx && toClusters.includes(st.stnCode.toUpperCase()));
     }
 
     // Default to first and last station if not found
@@ -348,8 +405,23 @@ export class RailwayTimelineService {
       };
     });
 
-    // Check Live Train Tracking
-    const liveTracking = await railkitProvider.trackLiveTrain(trainInfo.trainNumber, departureDate);
+    // Check Live Train Tracking only when trackLive is true and journey is active today
+    let liveTracking = null;
+    const isToday = departureDate === new Date().toISOString().split("T")[0];
+    if (trackLive && isToday) {
+      liveTracking = await railkitProvider.trackLiveTrain(trainInfo.trainNumber, departureDate);
+    } else {
+      liveTracking = {
+        isLive: false,
+        status: "UNAVAILABLE",
+        message: !trackLive
+          ? "Timetable schedule view. Live tracking not requested."
+          : "Live running status is only available for trains active today. Showing verified scheduled railway timetable.",
+        delayMinutes: 0,
+        dataSource: "SCHEDULED_TIMETABLE",
+        verificationStatus: "SCHEDULED_VERIFIED",
+      };
+    }
 
     // Destination arrival date & time adjusted for live delay if available
     let expectedArrivalDateTime = arrDateTime ? arrDateTime.toISOString() : "";
@@ -376,6 +448,28 @@ export class RailwayTimelineService {
     // Arrival day usable window calculation
     const arrivalWindow = this._calculateArrivalDayUsableWindow(arrDateTime, delayMinutes);
 
+    // Classification separation
+    const isHistorical = new Date(departureDate) < new Date(new Date().toISOString().split("T")[0]);
+    let statusClassification = "SCHEDULED_JOURNEY";
+    let freshnessClassification = "STATIC";
+    if (liveTracking?.isLive) {
+      statusClassification = "LIVE_RUNNING";
+      freshnessClassification = "LIVE";
+    } else if (liveTracking?.isCached) {
+      statusClassification = "CACHED_STATUS";
+      freshnessClassification = "CACHED";
+    } else if (isHistorical) {
+      statusClassification = "HISTORICAL_STATUS";
+      freshnessClassification = "STATIC";
+    } else if (trainInfo?.source === "CURATED_CATALOG" || trainInfo?.source === "STATIC_DB") {
+      statusClassification = "STATIC_TIMETABLE";
+      freshnessClassification = "STATIC";
+    }
+
+    const actualDepDateTime = depDateTime
+      ? new Date(depDateTime.getTime() + (liveTracking?.depDelayMinutes || 0) * 60000).toISOString()
+      : "";
+
     return {
       trainNumber: trainInfo.trainNumber,
       trainName: trainInfo.trainName,
@@ -399,11 +493,16 @@ export class RailwayTimelineService {
         coordinates: destinationStation.coordinates || null,
       },
       journeyStartDate: departureDate,
-      scheduledBoardingDepartureDateTime: depDateTime ? depDateTime.toISOString() : "",
+      departureDate,
+      arrivalDate,
+      boardingStationCode: boardingStation.stnCode,
+      destinationStationCode: destinationStation.stnCode,
+      scheduledBoardingDepartureDateTime: this._buildKolkataIso(departureDate, boardingDepTime) || (depDateTime ? depDateTime.toISOString() : ""),
+      actualDepartureDateTime: this._buildKolkataIso(departureDate, boardingDepTime) || actualDepDateTime,
       destinationArrivalDate: arrivalDate,
       destinationArrivalTime: destArrTime,
-      scheduledDestinationArrivalDateTime: arrDateTime ? arrDateTime.toISOString() : "",
-      expectedDestinationArrivalDateTime: expectedArrivalDateTime,
+      scheduledDestinationArrivalDateTime: this._buildKolkataIso(arrivalDate, destArrTime) || (arrDateTime ? arrDateTime.toISOString() : ""),
+      expectedDestinationArrivalDateTime: expectedArrivalDateTime || this._buildKolkataIso(arrivalDate, destArrTime),
       delayMinutes,
       totalDurationMinutes,
       totalDurationText: this._formatMinutesToText(totalDurationMinutes),
@@ -415,7 +514,12 @@ export class RailwayTimelineService {
       transitDays,
       arrivalWindow,
       liveTracking,
-      dataClassification: liveTracking?.isLive ? "LIVE_VERIFIED" : "SCHEDULED_VERIFIED",
+      isUnresolvedSchedule: false,
+      statusClassification,
+      freshnessClassification,
+      provider: liveTracking?.isLive ? (liveTracking.dataSource || "RailKit NTES Live") : (trainInfo?.source || "RailKit Indian Railways API"),
+      lastUpdatedAt: liveTracking?.lastUpdatedAt || new Date().toISOString(),
+      dataClassification: liveTracking?.isLive ? "LIVE_VERIFIED" : "SCHEDULED_JOURNEY",
       crossChecked: true,
       officialSources: [
         "https://railkit.in/docs",
@@ -435,6 +539,7 @@ export class RailwayTimelineService {
     fromStation,
     toStation,
     journeyDate,
+    arrivalDate: inputArrivalDate,
     userDepTime,
     userArrTime,
     durationMinutes,
@@ -442,19 +547,98 @@ export class RailwayTimelineService {
   }) {
     const depTime = userDepTime || "10:55";
     let arrTime = userArrTime;
-    let durMin = durationMinutes;
+    let durMin = durationMinutes != null ? Number(durationMinutes) : null;
+    let arrivalDate = inputArrivalDate ? this._formatDateYYYYMMDD(inputArrivalDate) : null;
+    const departureDate = this._formatDateYYYYMMDD(journeyDate);
 
-    if (!arrTime && durMin) {
+    // Case 1: Departure and Arrival dates are both explicitly provided
+    if (departureDate && arrivalDate) {
+      if (!arrTime && durMin) {
+        const depM = this._parseTimeToMinutes(depTime);
+        const totalArrM = depM + (durMin % 1440);
+        const arrH = Math.floor((totalArrM % 1440) / 60);
+        const arrM = totalArrM % 60;
+        arrTime = `${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`;
+      } else if (!arrTime) {
+        arrTime = "17:30";
+      }
+
+      const depDateTime = this._buildDateTime(departureDate, depTime);
+      const arrDateTime = this._buildDateTime(arrivalDate, arrTime);
+
+      if (depDateTime && arrDateTime) {
+        durMin = Math.round((arrDateTime.getTime() - depDateTime.getTime()) / 60000);
+      }
+    }
+    // Case 2: Duration is known, calculate arrivalDate and arrTime from duration
+    else if (durMin != null && durMin > 0) {
       const depM = this._parseTimeToMinutes(depTime);
       const totalArrM = depM + durMin;
+      const dayCrossings = Math.floor(totalArrM / 1440);
       const arrHour = Math.floor((totalArrM % 1440) / 60);
       const arrMin = totalArrM % 60;
-      arrTime = `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
-    } else if (arrTime && !durMin) {
-      durMin = this._timeDiffMinutes(depTime, arrTime);
-    } else if (!arrTime && !durMin) {
-      durMin = 1835; // 30h 35m default for multi-day demonstration
+      arrTime = arrTime || `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
+      arrivalDate = this._addDays(departureDate, dayCrossings);
+    }
+    // Case 3: Incomplete timetable info (e.g. only dep and arr clock times, but no arrival date or duration)
+    // NEVER infer same-day arrival merely because arrival clock time is earlier or later than departure clock time!
+    else if (arrTime && !durMin && !inputArrivalDate) {
+      return {
+        trainNumber,
+        trainName,
+        trainNameHindi: "",
+        trainType: "SUPERFAST_EXPRESS",
+        direction,
+        fromStation: {
+          code: fromStation.code,
+          name: fromStation.name,
+          platform: "1",
+          departureTime: depTime,
+          railwayDay: 1,
+        },
+        toStation: {
+          code: toStation.code,
+          name: toStation.name,
+          platform: "1",
+          arrivalTime: arrTime,
+          railwayDay: null,
+        },
+        journeyStartDate: departureDate,
+        scheduledBoardingDepartureDateTime: this._buildDateTime(departureDate, depTime)?.toISOString() || "",
+        actualDepartureDateTime: this._buildDateTime(departureDate, depTime)?.toISOString() || "",
+        destinationArrivalDate: null,
+        destinationArrivalTime: arrTime,
+        scheduledDestinationArrivalDateTime: null,
+        expectedDestinationArrivalDateTime: null,
+        delayMinutes: 0,
+        totalDurationMinutes: null,
+        totalDurationText: "Timetable duration unavailable",
+        totalJourneyDays: null,
+        dayCrossings: null,
+        isOvernight: null,
+        stoppagesCount: 0,
+        stops: [],
+        transitDays: [],
+        arrivalWindow: null,
+        isUnresolvedSchedule: true,
+        statusClassification: "UNAVAILABLE",
+        dataClassification: "UNAVAILABLE",
+        provider: "Indian Railways Timetable",
+        lastUpdatedAt: new Date().toISOString(),
+        freshnessClassification: "UNAVAILABLE",
+        unresolvedReason: "Arrival date and duration unavailable. Cannot infer same-day arrival from clock times alone.",
+        officialSources: [
+          "https://www.indianrail.gov.in/enquiry/SCHEDULE/TrainSchedule.html",
+          "https://enquiry.indianrail.gov.in/ntes/",
+        ],
+      };
+    } else {
+      durMin = 1835; // Default 30h 35m multi-day demonstration
       arrTime = "17:30";
+      const depM = this._parseTimeToMinutes(depTime);
+      const totalArrM = depM + durMin;
+      const dayCrossings = Math.floor(totalArrM / 1440);
+      arrivalDate = this._addDays(departureDate, dayCrossings);
     }
 
     // Calculate day crossings from duration
@@ -463,12 +647,18 @@ export class RailwayTimelineService {
 
     let dayCrossings = Math.floor(durMin / 1440);
     if ((depM + (durMin % 1440)) >= 1440) {
-      // Crossed an extra midnight
       dayCrossings += 1;
     }
 
-    const departureDate = journeyDate;
-    const arrivalDate = this._addDays(journeyDate, dayCrossings);
+    // If arrivalDate was given explicitly, respect the actual calendar delta
+    if (departureDate && arrivalDate) {
+      const calDelta = Math.round((new Date(arrivalDate).getTime() - new Date(departureDate).getTime()) / 86400000);
+      if (calDelta >= 0) {
+        dayCrossings = calDelta;
+      }
+    } else if (!arrivalDate) {
+      arrivalDate = this._addDays(departureDate, dayCrossings);
+    }
 
     const depDateTime = this._buildDateTime(departureDate, depTime);
     const arrDateTime = this._buildDateTime(arrivalDate, arrTime);
@@ -507,11 +697,12 @@ export class RailwayTimelineService {
         railwayDay: dayCrossings + 1,
       },
       journeyStartDate: departureDate,
-      scheduledBoardingDepartureDateTime: depDateTime ? depDateTime.toISOString() : "",
+      scheduledBoardingDepartureDateTime: this._buildKolkataIso(departureDate, depTime) || (depDateTime ? depDateTime.toISOString() : ""),
+      actualDepartureDateTime: this._buildKolkataIso(departureDate, depTime) || (depDateTime ? depDateTime.toISOString() : ""),
       destinationArrivalDate: arrivalDate,
       destinationArrivalTime: arrTime,
-      scheduledDestinationArrivalDateTime: arrDateTime ? arrDateTime.toISOString() : "",
-      expectedDestinationArrivalDateTime: arrDateTime ? arrDateTime.toISOString() : "",
+      scheduledDestinationArrivalDateTime: this._buildKolkataIso(arrivalDate, arrTime) || (arrDateTime ? arrDateTime.toISOString() : ""),
+      expectedDestinationArrivalDateTime: this._buildKolkataIso(arrivalDate, arrTime) || (arrDateTime ? arrDateTime.toISOString() : ""),
       delayMinutes: 0,
       totalDurationMinutes: durMin,
       totalDurationText: this._formatMinutesToText(durMin),
@@ -551,6 +742,10 @@ export class RailwayTimelineService {
         dataSource: "SCHEDULED_VERIFIED",
         verificationStatus: "SCHEDULED_VERIFIED",
       },
+      statusClassification: "SCHEDULED_JOURNEY",
+      freshnessClassification: "STATIC",
+      provider: "RailKit",
+      lastUpdatedAt: new Date().toISOString(),
       dataClassification: "SCHEDULED_VERIFIED",
       crossChecked: true,
       officialSources: [
@@ -741,7 +936,21 @@ export class RailwayTimelineService {
     const [h, m] = cleanTime.split(":").map(Number);
     if (isNaN(h) || isNaN(m)) return null;
     const [y, mo, d] = dateStr.split("-").map(Number);
-    return new Date(Date.UTC(y, mo - 1, d, h, m, 0));
+    if (isNaN(y) || isNaN(mo) || isNaN(d)) return null;
+    const pad = (n) => String(n).padStart(2, "0");
+    // Explicit Asia/Kolkata (+05:30) interpretation for Indian Railways timestamps
+    return new Date(`${pad(y)}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(m)}:00+05:30`);
+  }
+
+  _buildKolkataIso(dateStr, timeStr) {
+    if (!dateStr || !timeStr) return null;
+    const cleanTime = String(timeStr).trim().slice(0, 5);
+    const [h, m] = cleanTime.split(":").map(Number);
+    if (isNaN(h) || isNaN(m)) return null;
+    const [y, mo, d] = dateStr.split("-").map(Number);
+    if (isNaN(y) || isNaN(mo) || isNaN(d)) return null;
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(y)}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(m)}:00+05:30`;
   }
 
   _parseTimeToMinutes(timeStr) {

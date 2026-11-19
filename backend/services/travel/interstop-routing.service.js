@@ -326,13 +326,27 @@ export async function enrichTripWithInterstopRouting(days, options = {}) {
   const hotelName = options.hotelName || options.hotelLocation || "";
   const accommodationType = options.accommodation || "HOTEL";
 
+  const isHomeStay =
+    accommodationType.includes("OWN") ||
+    accommodationType.includes("RELATIVE") ||
+    accommodationType.includes("NATIVE");
+
   // Resolve accommodation anchor coordinates
+  // Scenario C Mandate: If staying at home/relatives and address is unknown, DO NOT assume destination-center coordinates
   let accommodationAnchor = null;
-  const accommodationQuery = hotelName ? `${hotelName}, ${destination}` : `${destination} Center`;
-  try {
-    accommodationAnchor = await geocodeLocation(accommodationQuery, destination);
-  } catch (err) {
-    logger.debug(`[InterstopRouting] Could not geocode accommodation anchor: ${err.message}`);
+  let accommodationNeedsAddress = false;
+
+  if (isHomeStay && !hotelName) {
+    accommodationAnchor = null;
+    accommodationNeedsAddress = true;
+    logger.info(`[InterstopRouting] Home / Relative accommodation specified without address: leaving coordinates unanchored (no destination-center assumption).`);
+  } else {
+    const accommodationQuery = hotelName ? `${hotelName}, ${destination}` : `${destination} Center`;
+    try {
+      accommodationAnchor = await geocodeLocation(accommodationQuery, destination);
+    } catch (err) {
+      logger.debug(`[InterstopRouting] Could not geocode accommodation anchor: ${err.message}`);
+    }
   }
 
   const accommodationLabel = hotelName

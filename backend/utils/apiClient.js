@@ -95,12 +95,28 @@ export async function apiRequest(url, options = {}) {
         let retryAfterMs = (parseInt(retryAfterHeader, 10) || 1) * 1000;
         if (isNaN(retryAfterMs) || retryAfterMs <= 0) retryAfterMs = 1500;
 
+        // If provider indicates a long cooldown (>10s, e.g. daily/quota exhaustion), do not retry; fail fast.
+        if (retryAfterMs > 10000) {
+          logger.warn(
+            `[ApiClient][${provider}] Daily/quota rate limit (429) encountered on ${sanitizedUrl} (retry-after: ${retryAfterMs}ms). Failing fast to activate fallback. [reqId: ${requestId}]`
+          );
+          throw new ExternalApiError({
+            message: `[${provider}] Daily/quota rate limit (429) exceeded on ${sanitizedUrl}`,
+            provider,
+            statusCode: 429,
+            endpoint: sanitizedUrl,
+            requestId,
+            isTransient: false,
+          });
+        }
+
         if (attempt < maxRetries) {
           attempt++;
+          const waitTime = Math.min(retryAfterMs, 3000);
           logger.warn(
-            `[ApiClient][${provider}] Rate limit encountered (429) on ${sanitizedUrl}. Retrying in ${retryAfterMs}ms (attempt ${attempt}/${maxRetries}). [reqId: ${requestId}]`
+            `[ApiClient][${provider}] Transient rate limit (429) on ${sanitizedUrl}. Retrying in ${waitTime}ms (attempt ${attempt}/${maxRetries}). [reqId: ${requestId}]`
           );
-          await new Promise((r) => setTimeout(r, Math.min(retryAfterMs, 5000)));
+          await new Promise((r) => setTimeout(r, waitTime));
           continue;
         }
       }

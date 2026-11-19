@@ -65,4 +65,14 @@ tmp/
 *.tmp
 audit_test_results.json
 
+# Railway Datasets, SQLite Databases, and Large Binary Caches
+data/
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+
 

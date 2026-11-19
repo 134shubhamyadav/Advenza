@@ -178,7 +178,7 @@ export class DestinationDisambiguationService {
           stateOrRegion: parts.length > 2 ? parts[1] : "",
           district: "",
           country: parts[parts.length - 1],
-          coordinates: { lat: 0, lng: 0 },
+          coordinates: null,
           type: "city",
           importance: 0.8,
         },
@@ -234,8 +234,13 @@ export class DestinationDisambiguationService {
       stateOrRegion: "",
       district: "",
       country: raw.includes(",") ? raw.split(",").pop().trim() : "",
-      coordinates: { lat: 0, lng: 0 },
+      coordinates: null,
     };
+
+    const resolvedCoords =
+      top.coordinates && (top.coordinates.lat !== 0 || top.coordinates.lng !== 0)
+        ? top.coordinates
+        : null;
 
     const resolvedCountry = top.country || (raw.includes(",") ? raw.split(",").pop().trim() : "");
     const resolved = {
@@ -244,7 +249,8 @@ export class DestinationDisambiguationService {
       district: top.district,
       country: resolvedCountry,
       fullName: resolvedCountry ? `${top.name}${top.stateOrRegion ? `, ${top.stateOrRegion}` : ""}, ${resolvedCountry}` : top.name,
-      coordinates: top.coordinates,
+      coordinates: resolvedCoords,
+      isCoordinatesUnresolved: resolvedCoords === null,
     };
 
     const result = {

@@ -27,15 +27,30 @@ import {
   ChevronUp,
   Gem,
   Star,
-  Info
+  Info,
+  Radio
 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DatePicker } from "@/components/ui/date-picker";
+import { StationCombobox } from "@/components/travel/station-combobox";
+import { TripGenerationLoader } from "@/components/travel/trip-generation-loader";
 import { cn, normalizeTimeTo24h, calculateInclusiveDays } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import { fetchDestinationOverview, type DestinationOverview } from "@/services/tripService";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
-export const Route = createFileRoute("/trips/new")({ component: NewTrip });
+export const Route = createFileRoute("/trips/new")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    destination:
+      typeof search.destination === "string"
+        ? search.destination
+        : typeof search.dest === "string"
+          ? search.dest
+          : "",
+  }),
+  component: NewTrip,
+});
 
 const steps = [
   "Destination",
@@ -150,6 +165,7 @@ const ACCOMMODATION_OPTIONS = [
 
 function NewTrip() {
   const nav = useNavigate();
+  const search = Route.useSearch();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
@@ -161,11 +177,17 @@ function NewTrip() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // ── Step 0: Destination ────────────────────────────────────────────────────
-  const [destination, setDestination] = useState("");
+  const [destination, setDestination] = useState(search?.destination || "");
   const [originCity, setOriginCity] = useState("");
   const [disambiguationCandidates, setDisambiguationCandidates] = useState<DisambiguationCandidate[]>([]);
   const [isCheckingDisambiguation, setIsCheckingDisambiguation] = useState(false);
   const [disambiguationWarning, setDisambiguationWarning] = useState("");
+
+  useEffect(() => {
+    if (search?.destination && search.destination !== destination) {
+      setDestination(search.destination);
+    }
+  }, [search?.destination]);
 
   // ── Budget Feasibility State ───────────────────────────────────────────────
   const [budgetFeasibility, setBudgetFeasibility] = useState<BudgetFeasibilityData | null>(null);
@@ -242,6 +264,20 @@ function NewTrip() {
   const [isFetchingTrains, setIsFetchingTrains] = useState(false);
   const [selectedTrain, setSelectedTrain] = useState<any | null>(null);
   const [selectedTrainClass, setSelectedTrainClass] = useState<string>("3A");
+  const [liveTrackingData, setLiveTrackingData] = useState<any | null>(null);
+  const [isFetchingLiveTracking, setIsFetchingLiveTracking] = useState(false);
+
+  const fetchLiveTracking = async (trainNumber: string) => {
+    setIsFetchingLiveTracking(true);
+    try {
+      const res = await apiFetch(`/api/ai/trains/live/${trainNumber}`);
+      setLiveTrackingData(res);
+    } catch (err) {
+      console.warn("Live NTES tracking error:", err);
+    } finally {
+      setIsFetchingLiveTracking(false);
+    }
+  };
 
   const fetchLiveTrains = async (originParam?: string, destParam?: string, dateParam?: string, classParam?: string) => {
     const o = (originParam || originCity || "").trim();
@@ -762,7 +798,7 @@ function NewTrip() {
                             Live Indian Railways
                           </span>
                           <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium py-0 h-4">
-                            ● Live RailCore
+                            ● 16,000+ Trains & CRIS NTES Live
                           </Badge>
                         </div>
                         <button
@@ -772,20 +808,38 @@ function NewTrip() {
                           className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1 cursor-pointer"
                         >
                           <RotateCcw className={cn("h-3 w-3", isFetchingTrains && "animate-spin")} />
-                          {isFetchingTrains ? "Checking..." : "Refresh Trains"}
+                          {isFetchingTrains ? "Searching..." : "Refresh Trains"}
                         </button>
                       </div>
 
                       {railcoreData?.fromStation && railcoreData?.toStation && (
                         <p className="text-[11px] text-muted-foreground">
-                          Route: <strong>{railcoreData.fromStation}</strong> → <strong>{railcoreData.toStation}</strong> on {startDate || "upcoming journey"} ({railcoreData.totalTrainsFound || 0} scheduled trains)
+                          Corridor: <strong>{railcoreData.fromStation}</strong> → <strong>{railcoreData.toStation}</strong> on {startDate || "upcoming journey"} ({railcoreData.totalTrainsFound || 0} scheduled trains)
                         </p>
+                      )}
+
+                      {/* Nearby Destination Junctions Pills */}
+                      {railcoreData?.nearbyDestinationStations && railcoreData.nearbyDestinationStations.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5 text-[11px] text-muted-foreground">
+                          <span className="font-medium text-foreground/80">Nearby Junctions:</span>
+                          {railcoreData.nearbyDestinationStations.map((stn: any) => (
+                            <button
+                              key={stn.code}
+                              type="button"
+                              onClick={() => fetchLiveTrains(originCity, stn.name)}
+                              className="rounded-md border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                              title={`Search trains to ${stn.name} (${stn.distanceKm} km from ${destination})`}
+                            >
+                              {stn.name} ({stn.distanceKm} km)
+                            </button>
+                          ))}
+                        </div>
                       )}
 
                       {isFetchingTrains && (
                         <div className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
                           <RotateCcw className="h-3.5 w-3.5 animate-spin text-primary" />
-                          Searching RailCore for live schedules, class-wise fares & seat availability...
+                          Searching full Indian Railways network (Express, Superfast, Mail, MEMU, Local) & live tracking...
                         </div>
                       )}
 
@@ -809,10 +863,13 @@ function NewTrip() {
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <span className="font-bold text-xs text-foreground">
                                         #{train.trainNumber} {train.trainName}
                                       </span>
+                                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 font-normal border-border/80">
+                                        {train.trainType || "EXPRESS"}
+                                      </Badge>
                                       <Badge
                                         variant="outline"
                                         className={cn(
@@ -831,15 +888,27 @@ function NewTrip() {
                                       {train.fromStationCode || train.fromStationName} ({train.departureTime}) → {train.toStationCode || train.toStationName} ({train.arrivalTime}) · {train.durationHours}h {train.distanceKm ? `(${train.distanceKm} km)` : ""}
                                     </p>
                                   </div>
-                                  <Button
-                                    size="sm"
-                                    type="button"
-                                    variant={isTrainSelected ? "default" : "outline"}
-                                    className="h-7 text-xs px-2.5"
-                                    onClick={() => handleSelectTrain(train, selectedTrainClass)}
-                                  >
-                                    {isTrainSelected ? "Selected" : "Select"}
-                                  </Button>
+                                  <div className="flex items-center gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                      className="h-7 text-[11px] px-2 text-primary hover:bg-primary/10"
+                                      onClick={() => fetchLiveTracking(train.trainNumber)}
+                                    >
+                                      <Radio className="h-3 w-3 mr-1 text-emerald-600 animate-pulse" />
+                                      Live NTES
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      type="button"
+                                      variant={isTrainSelected ? "default" : "outline"}
+                                      className="h-7 text-xs px-2.5"
+                                      onClick={() => handleSelectTrain(train, selectedTrainClass)}
+                                    >
+                                      {isTrainSelected ? "Selected" : "Select"}
+                                    </Button>
+                                  </div>
                                 </div>
 
                                 {/* Class chips with live fares */}
@@ -871,11 +940,74 @@ function NewTrip() {
                       )}
 
                       {!isFetchingTrains && (!railcoreData || railcoreData.status === "NO_DIRECT_TRAINS" || railcoreData.trains?.length === 0) && (
-                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300">
-                          <p className="font-medium">No direct scheduled train found between {originCity || "Origin"} and {destination}.</p>
-                          <p className="text-[11px] opacity-80 mt-0.5">
-                            Connecting train legs or regional road transfers can be used. Try searching with a nearby major railway junction.
-                          </p>
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-3">
+                          <div>
+                            <p className="font-semibold text-amber-950 dark:text-amber-100 flex items-center gap-1.5">
+                              <span>⚠️</span> No direct scheduled train found between {originCity || "Origin"} and {destination}.
+                            </p>
+                            <p className="text-[11px] opacity-90 mt-0.5">
+                              Direct railway connectivity is available through nearby major junctions or connecting rail hubs:
+                            </p>
+                          </div>
+
+                          {/* Nearby Junctions */}
+                          {railcoreData?.nearbyDestinationStations && railcoreData.nearbyDestinationStations.length > 0 && (
+                            <div className="space-y-1.5 pt-1 border-t border-amber-500/20">
+                              <span className="font-semibold text-[11px] text-amber-950 dark:text-amber-100">
+                                Recommended Nearby Railway Junctions (with road transfers):
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                                {railcoreData.nearbyDestinationStations.map((stn: any) => (
+                                  <div key={stn.code} className="flex items-center justify-between p-2 rounded-lg bg-background/80 border border-border/60 text-foreground">
+                                    <div>
+                                      <p className="font-medium text-xs">{stn.name} ({stn.code})</p>
+                                      <p className="text-[10px] text-muted-foreground">{stn.distanceKm} km · ~{stn.roadTransferMin}m transfer</p>
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 text-[10px] px-2"
+                                      onClick={() => fetchLiveTrains(originCity, stn.name)}
+                                    >
+                                      Search
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Suggested Connecting Rail Routes */}
+                          {railcoreData?.suggestedNearbyRoutes && railcoreData.suggestedNearbyRoutes.length > 0 && (
+                            <div className="space-y-2 pt-1 border-t border-amber-500/20">
+                              <span className="font-semibold text-[11px] text-amber-950 dark:text-amber-100">
+                                Suggested Connecting Rail Routes:
+                              </span>
+                              {railcoreData.suggestedNearbyRoutes.map((route: any, rIdx: number) => (
+                                <div key={rIdx} className="p-2.5 rounded-lg bg-background/90 border border-border/70 text-foreground space-y-1.5">
+                                  <p className="text-xs font-medium text-primary">{route.summary}</p>
+                                  {route.leg1?.trains?.[0] && route.leg2?.trains?.[0] && (
+                                    <div className="flex items-center justify-between pt-1">
+                                      <div className="text-[11px] text-muted-foreground">
+                                        Leg 1: #{route.leg1.trains[0].trainNumber} ({route.leg1.trains[0].departureTime}) → Leg 2: #{route.leg2.trains[0].trainNumber} ({route.leg2.trains[0].departureTime})
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        variant="default"
+                                        className="h-6 text-[10px] px-2"
+                                        onClick={() => {
+                                          handleSelectTrain(route.leg1.trains[0]);
+                                          setTransitRef(`${route.leg1.trains[0].trainNumber} + ${route.leg2.trains[0].trainNumber}`);
+                                        }}
+                                      >
+                                        Use Route
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1112,17 +1244,16 @@ function NewTrip() {
                               <Calendar className="h-4 w-4 text-primary shrink-0" />
                               <span>Trip Start Date (Departure):</span>
                             </div>
-                            <Input
-                              type="date"
+                            <DatePicker
                               value={startDate}
-                              onChange={(e) => {
-                                const newStart = e.target.value;
+                              onChange={(newStart) => {
                                 setStartDate(newStart);
                                 if (selectedDaysCount && newStart) {
                                   setEndDate(addDaysToDate(newStart, selectedDaysCount - 1));
                                 }
                               }}
-                              className="h-9 w-full sm:w-44 rounded-lg text-xs"
+                              placeholder="Pick departure date"
+                              className="w-full sm:w-48"
                             />
                           </div>
 
@@ -1248,21 +1379,20 @@ function NewTrip() {
                           <div className="grid gap-4 sm:grid-cols-2">
                             <div>
                               <Label className="text-xs font-medium">Trip Start Date</Label>
-                              <Input
-                                type="date"
+                              <DatePicker
                                 value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                className="mt-1.5 h-11 rounded-xl text-xs font-medium"
+                                onChange={setStartDate}
+                                placeholder="Select start date"
+                                className="mt-1.5 h-11 rounded-xl"
                               />
                             </div>
                             <div>
                               <Label className="text-xs font-medium">Trip End Date</Label>
-                              <Input
-                                type="date"
+                              <DatePicker
                                 value={endDate}
-                                min={startDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                className="mt-1.5 h-11 rounded-xl text-xs font-medium"
+                                onChange={setEndDate}
+                                placeholder="Select end date"
+                                className="mt-1.5 h-11 rounded-xl"
                               />
                             </div>
                           </div>
@@ -1474,26 +1604,25 @@ function NewTrip() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <Label className="text-xs font-medium">Start date</Label>
-                    <Input
-                      type="date"
+                    <DatePicker
                       value={startDate}
-                      onChange={(e) => {
-                        setStartDate(e.target.value);
+                      onChange={(newStart) => {
+                        setStartDate(newStart);
                         setDurationMode("CUSTOM");
                       }}
+                      placeholder="Start date"
                       className="mt-1.5 h-12 rounded-xl"
                     />
                   </div>
                   <div>
                     <Label className="text-xs font-medium">End date</Label>
-                    <Input
-                      type="date"
+                    <DatePicker
                       value={endDate}
-                      min={startDate}
-                      onChange={(e) => {
-                        setEndDate(e.target.value);
+                      onChange={(newEnd) => {
+                        setEndDate(newEnd);
                         setDurationMode("CUSTOM");
                       }}
+                      placeholder="End date"
                       className="mt-1.5 h-12 rounded-xl"
                     />
                   </div>
@@ -1819,7 +1948,7 @@ function NewTrip() {
                             Live Indian Railways
                           </span>
                           <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium py-0 h-4">
-                            ● Live RailCore
+                            ● 16,000+ Trains & CRIS NTES Live
                           </Badge>
                         </div>
                         <button
@@ -1829,20 +1958,38 @@ function NewTrip() {
                           className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1 cursor-pointer"
                         >
                           <RotateCcw className={cn("h-3 w-3", isFetchingTrains && "animate-spin")} />
-                          {isFetchingTrains ? "Checking..." : "Refresh Trains"}
+                          {isFetchingTrains ? "Searching..." : "Refresh Trains"}
                         </button>
                       </div>
 
                       {railcoreData?.fromStation && railcoreData?.toStation && (
                         <p className="text-[11px] text-muted-foreground">
-                          Route: <strong>{railcoreData.fromStation}</strong> → <strong>{railcoreData.toStation}</strong> on {startDate || "upcoming journey"} ({railcoreData.totalTrainsFound || 0} scheduled trains)
+                          Corridor: <strong>{railcoreData.fromStation}</strong> → <strong>{railcoreData.toStation}</strong> on {startDate || "upcoming journey"} ({railcoreData.totalTrainsFound || 0} scheduled trains)
                         </p>
+                      )}
+
+                      {/* Nearby Destination Junctions Pills */}
+                      {railcoreData?.nearbyDestinationStations && railcoreData.nearbyDestinationStations.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5 text-[11px] text-muted-foreground">
+                          <span className="font-medium text-foreground/80">Nearby Junctions:</span>
+                          {railcoreData.nearbyDestinationStations.map((stn: any) => (
+                            <button
+                              key={stn.code}
+                              type="button"
+                              onClick={() => fetchLiveTrains(originCity, stn.name)}
+                              className="rounded-md border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                              title={`Search trains to ${stn.name} (${stn.distanceKm} km from ${destination})`}
+                            >
+                              {stn.name} ({stn.distanceKm} km)
+                            </button>
+                          ))}
+                        </div>
                       )}
 
                       {isFetchingTrains && (
                         <div className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
                           <RotateCcw className="h-3.5 w-3.5 animate-spin text-primary" />
-                          Searching RailCore for live schedules, class-wise fares & seat availability...
+                          Searching full Indian Railways network (Express, Superfast, Mail, MEMU, Local) & live tracking...
                         </div>
                       )}
 
@@ -1866,10 +2013,13 @@ function NewTrip() {
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <span className="font-bold text-xs text-foreground">
                                         #{train.trainNumber} {train.trainName}
                                       </span>
+                                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 font-normal border-border/80">
+                                        {train.trainType || "EXPRESS"}
+                                      </Badge>
                                       <Badge
                                         variant="outline"
                                         className={cn(
@@ -1888,15 +2038,27 @@ function NewTrip() {
                                       {train.fromStationCode || train.fromStationName} ({train.departureTime}) → {train.toStationCode || train.toStationName} ({train.arrivalTime}) · {train.durationHours}h {train.distanceKm ? `(${train.distanceKm} km)` : ""}
                                     </p>
                                   </div>
-                                  <Button
-                                    size="sm"
-                                    type="button"
-                                    variant={isTrainSelected ? "default" : "outline"}
-                                    className="h-7 text-xs px-2.5"
-                                    onClick={() => handleSelectTrain(train, selectedTrainClass)}
-                                  >
-                                    {isTrainSelected ? "Selected" : "Select"}
-                                  </Button>
+                                  <div className="flex items-center gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                      className="h-7 text-[11px] px-2 text-primary hover:bg-primary/10"
+                                      onClick={() => fetchLiveTracking(train.trainNumber)}
+                                    >
+                                      <Radio className="h-3 w-3 mr-1 text-emerald-600 animate-pulse" />
+                                      Live NTES
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      type="button"
+                                      variant={isTrainSelected ? "default" : "outline"}
+                                      className="h-7 text-xs px-2.5"
+                                      onClick={() => handleSelectTrain(train, selectedTrainClass)}
+                                    >
+                                      {isTrainSelected ? "Selected" : "Select"}
+                                    </Button>
+                                  </div>
                                 </div>
 
                                 {/* Class chips with live fares */}
@@ -1928,11 +2090,74 @@ function NewTrip() {
                       )}
 
                       {!isFetchingTrains && (!railcoreData || railcoreData.status === "NO_DIRECT_TRAINS" || railcoreData.trains?.length === 0) && (
-                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300">
-                          <p className="font-medium">No direct scheduled train found between {originCity || "Origin"} and {destination}.</p>
-                          <p className="text-[11px] opacity-80 mt-0.5">
-                            Connecting train legs or regional road transfers can be used. Try searching with a nearby major railway junction.
-                          </p>
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-3">
+                          <div>
+                            <p className="font-semibold text-amber-950 dark:text-amber-100 flex items-center gap-1.5">
+                              <span>⚠️</span> No direct scheduled train found between {originCity || "Origin"} and {destination}.
+                            </p>
+                            <p className="text-[11px] opacity-90 mt-0.5">
+                              Direct railway connectivity is available through nearby major junctions or connecting rail hubs:
+                            </p>
+                          </div>
+
+                          {/* Nearby Junctions */}
+                          {railcoreData?.nearbyDestinationStations && railcoreData.nearbyDestinationStations.length > 0 && (
+                            <div className="space-y-1.5 pt-1 border-t border-amber-500/20">
+                              <span className="font-semibold text-[11px] text-amber-950 dark:text-amber-100">
+                                Recommended Nearby Railway Junctions (with road transfers):
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                                {railcoreData.nearbyDestinationStations.map((stn: any) => (
+                                  <div key={stn.code} className="flex items-center justify-between p-2 rounded-lg bg-background/80 border border-border/60 text-foreground">
+                                    <div>
+                                      <p className="font-medium text-xs">{stn.name} ({stn.code})</p>
+                                      <p className="text-[10px] text-muted-foreground">{stn.distanceKm} km · ~{stn.roadTransferMin}m transfer</p>
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 text-[10px] px-2"
+                                      onClick={() => fetchLiveTrains(originCity, stn.name)}
+                                    >
+                                      Search
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Suggested Connecting Rail Routes */}
+                          {railcoreData?.suggestedNearbyRoutes && railcoreData.suggestedNearbyRoutes.length > 0 && (
+                            <div className="space-y-2 pt-1 border-t border-amber-500/20">
+                              <span className="font-semibold text-[11px] text-amber-950 dark:text-amber-100">
+                                Suggested Connecting Rail Routes:
+                              </span>
+                              {railcoreData.suggestedNearbyRoutes.map((route: any, rIdx: number) => (
+                                <div key={rIdx} className="p-2.5 rounded-lg bg-background/90 border border-border/70 text-foreground space-y-1.5">
+                                  <p className="text-xs font-medium text-primary">{route.summary}</p>
+                                  {route.leg1?.trains?.[0] && route.leg2?.trains?.[0] && (
+                                    <div className="flex items-center justify-between pt-1">
+                                      <div className="text-[11px] text-muted-foreground">
+                                        Leg 1: #{route.leg1.trains[0].trainNumber} ({route.leg1.trains[0].departureTime}) → Leg 2: #{route.leg2.trains[0].trainNumber} ({route.leg2.trains[0].departureTime})
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        variant="default"
+                                        className="h-6 text-[10px] px-2"
+                                        onClick={() => {
+                                          handleSelectTrain(route.leg1.trains[0]);
+                                          setTransitRef(`${route.leg1.trains[0].trainNumber} + ${route.leg2.trains[0].trainNumber}`);
+                                        }}
+                                      >
+                                        Use Route
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2038,20 +2263,24 @@ function NewTrip() {
                           <div className="grid gap-4 sm:grid-cols-2">
                             <div>
                               <Label className="text-xs">{hubs.dep}</Label>
-                              <Input
+                              <StationCombobox
                                 value={departureHub}
-                                onChange={(e) => setDepartureHub(e.target.value)}
-                                className="mt-1 h-9 rounded-lg text-xs"
+                                onChange={setDepartureHub}
+                                valueType="both"
+                                icon="train"
                                 placeholder={originCity ? `e.g. ${originCity} Hub` : "e.g. BOM / CSMT"}
+                                className="mt-1"
                               />
                             </div>
                             <div>
                               <Label className="text-xs">{hubs.arr}</Label>
-                              <Input
+                              <StationCombobox
                                 value={arrivalHub}
-                                onChange={(e) => setArrivalHub(e.target.value)}
-                                className="mt-1 h-9 rounded-lg text-xs"
+                                onChange={setArrivalHub}
+                                valueType="both"
+                                icon="train"
                                 placeholder={`e.g. ${destination} Hub`}
+                                className="mt-1"
                               />
                             </div>
                           </div>
@@ -2292,7 +2521,7 @@ function NewTrip() {
                       )}
                       {travelMode === "Train" && (
                         <Badge variant="outline" className="mt-1 border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] py-0 h-4">
-                          ● Live RailCore IRCTC Verified
+                          ● Live Indian Railways Verified
                         </Badge>
                       )}
                     </div>
@@ -2356,15 +2585,12 @@ function NewTrip() {
                 )}
 
                 {loading ? (
-                  <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 text-center space-y-3">
-                    <div className="inline-block h-8 w-8 animate-spin rounded-full border-3 border-primary border-t-transparent" />
-                    <p className="text-sm font-semibold text-foreground animate-pulse">
-                      {LOADING_MESSAGES[loadingStepIndex]}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Advenza is computing travel hours, hotel settling buffers, and tailoring every day to your pace.
-                    </p>
-                  </div>
+                  <TripGenerationLoader
+                    loading={loading}
+                    origin={departureHub || originCity || "Your Origin"}
+                    destination={arrivalHub || destination || "Destination"}
+                    travelMode={travelMode || "Train"}
+                  />
                 ) : (
                   <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5 flex items-center gap-2.5 text-xs text-muted-foreground">
                     <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
@@ -2409,6 +2635,56 @@ function NewTrip() {
           </div>
         </div>
       </div>
+
+      {/* Live NTES Train Tracking Modal */}
+      <Dialog open={Boolean(liveTrackingData)} onOpenChange={(open) => !open && setLiveTrackingData(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+              <Radio className="h-4 w-4 text-emerald-500 animate-pulse" />
+              CRIS NTES Live Train Status
+            </DialogTitle>
+          </DialogHeader>
+          {liveTrackingData && (
+            <div className="space-y-3 text-xs pt-1">
+              <div className="p-3.5 rounded-xl bg-muted/40 border border-border/70 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-foreground">
+                    #{liveTrackingData.trainNumber} {liveTrackingData.trainName}
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[10px] font-semibold",
+                      liveTrackingData.delayMinutes > 0
+                        ? "border-amber-500/40 text-amber-700 bg-amber-500/10"
+                        : "border-emerald-500/40 text-emerald-700 bg-emerald-500/10"
+                    )}
+                  >
+                    {liveTrackingData.delayMinutes > 0
+                      ? `Delayed by ${liveTrackingData.delayMinutes}m`
+                      : "Right Time / On Schedule"}
+                  </Badge>
+                </div>
+                <div className="text-muted-foreground space-y-0.5">
+                  <p>Current Station: <strong className="text-foreground">{liveTrackingData.currentStation || "En Route"}</strong></p>
+                  {liveTrackingData.status && <p>Status: <strong className="text-foreground">{liveTrackingData.status}</strong></p>}
+                  {liveTrackingData.platform && <p>Platform: <strong className="text-foreground">{liveTrackingData.platform}</strong></p>}
+                  {liveTrackingData.lastUpdated && (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Last Updated: {liveTrackingData.lastUpdated}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="text-[10px] text-muted-foreground flex items-center justify-between px-1">
+                <span>Data Source: <strong>Official Indian Railways CRIS NTES</strong></span>
+                <span className="text-emerald-600 font-semibold">● Free & Unlimited</span>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

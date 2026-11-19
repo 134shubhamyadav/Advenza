@@ -130,7 +130,7 @@ export const createTrip = asyncHandler(async (req, res) => {
   const tripData = {
     ...req.body,
     heroImage: heroImage || undefined,
-    createdBy: req.uid || req.body.createdBy || "guest",
+    createdBy: req.uid,
     voteOptions:
       req.body.voteOptions && req.body.voteOptions.length > 0
         ? req.body.voteOptions

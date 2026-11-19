@@ -19,53 +19,66 @@ const initAdmin = () => {
       admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
       console.log(`🔐 Firebase Admin initialized for project: ${serviceAccount.project_id}`);
     } else {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("FATAL: FIREBASE_SERVICE_ACCOUNT_JSON is required in production environment.");
+      }
       // No service account — run in dev bypass mode (no token verification)
       console.warn(
-        "⚠️  FIREBASE_SERVICE_ACCOUNT_JSON not set. Auth middleware will run in BYPASS mode.",
+        "⚠️  FIREBASE_SERVICE_ACCOUNT_JSON not set. Auth middleware will run in gated DEV BYPASS mode.",
       );
       admin.initializeApp({ projectId: "advenzaa7" });
     }
     adminInitialized = true;
   } catch (e) {
     console.error("Firebase Admin init error:", e.message);
+    if (process.env.NODE_ENV === "production") {
+      throw e;
+    }
   }
 };
 
 export const verifyToken = async (req, res, next) => {
-  // If Firebase Admin isn't configured, allow requests through (dev mode)
+  // Production security gate: Never permit development bypass in production
+  if (process.env.NODE_ENV === "production" && !process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    return res.status(500).json({
+      error: "Authentication service misconfiguration: Firebase service account required in production.",
+    });
+  }
+
+  // Development-only bypass: explicitly gated to non-production environments when service account is absent
   if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    req.uid = req.headers["x-user-id"] || "guest";
-    req.userEmail = req.headers["x-user-email"] ? req.headers["x-user-email"].toLowerCase().trim() : "";
-    return next();
+    const isDevEnv = process.env.NODE_ENV !== "production";
+    const isDevBypassAllowed = process.env.DEV_AUTH_BYPASS === "true" || isDevEnv;
+
+    if (isDevBypassAllowed) {
+      req.uid = req.headers["x-user-id"] || "dev-guest";
+      req.userEmail = req.headers["x-user-email"] ? req.headers["x-user-email"].toLowerCase().trim() : "dev@advenza.travel";
+      req.isDevBypass = true;
+      return next();
+    }
+    return res.status(401).json({ error: "Unauthorized: Valid authentication credentials required." });
   }
 
   initAdmin();
   const header = req.headers.authorization;
 
+  // Strict Token Enforcement: No unauthenticated header bypass when authentication provider is configured
   if (!header || !header.startsWith("Bearer ")) {
-    if (req.headers["x-user-id"]) {
-      req.uid = req.headers["x-user-id"];
-      req.userEmail = req.headers["x-user-email"] ? req.headers["x-user-email"].toLowerCase().trim() : "";
-      return next();
-    }
     return res.status(401).json({ error: "Unauthorized: No token provided." });
   }
 
   const token = header.split("Bearer ")[1];
   try {
     const decoded = await admin.auth().verifyIdToken(token);
+    // Identity comes EXCLUSIVELY from the cryptographically verified token
     req.uid = decoded.uid;
     req.user = decoded;
-    req.userEmail = (decoded.email || req.headers["x-user-email"] || "").toLowerCase().trim();
+    req.userEmail = (decoded.email || "").toLowerCase().trim();
+    req.isDevBypass = false;
     next();
   } catch (err) {
-    // Log the exact Firebase error for easier debugging
+    // Log verification failure server-side without falling back to arbitrary headers
     console.error("Token verification failed:", err.code, err.message);
-    if (req.headers["x-user-id"]) {
-      req.uid = req.headers["x-user-id"];
-      req.userEmail = req.headers["x-user-email"] ? req.headers["x-user-email"].toLowerCase().trim() : "";
-      return next();
-    }
     return res.status(403).json({ error: "Forbidden: Invalid or expired token." });
   }
 };

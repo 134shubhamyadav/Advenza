@@ -12,6 +12,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DatePicker } from "@/components/ui/date-picker";
+import { StationCombobox } from "@/components/travel/station-combobox";
+import {
   Plane,
   Building2,
   Bell,
@@ -28,6 +37,10 @@ import {
   ShieldCheck,
   Info,
   Check,
+  Users,
+  Calendar,
+  Sparkles,
+  MapPin,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
@@ -77,8 +90,15 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
   useEffect(() => {
     if (activeTrip) {
       if (activeTrip.destination) {
-        setFlightDestination(activeTrip.destination.split(",")[0].trim());
-        setHotelDestination(activeTrip.destination.split(",")[0].trim());
+        let dest = activeTrip.destination;
+        if (dest.includes(" - ")) {
+          const parts = dest.split(" - ");
+          dest = parts[parts.length - 1].trim();
+        } else if (dest.includes(",")) {
+          dest = dest.split(",")[0].trim();
+        }
+        setFlightDestination(dest);
+        setHotelDestination(dest);
       }
       if (activeTrip.departureHub) {
         setFlightOrigin(activeTrip.departureHub);
@@ -148,13 +168,30 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
   };
 
   const handleSearchHotels = async () => {
+    if (!hotelDestination?.trim()) {
+      toast.info("Please enter a destination city to search accommodations.");
+      return;
+    }
     setSearchingHotels(true);
     try {
+      // Normalize dates to YYYY-MM-DD if entered in DD-MM-YYYY format
+      let cleanCheckIn = hotelCheckIn;
+      if (cleanCheckIn && /^\d{1,2}[-/]\d{1,2}[-/]\d{4}$/.test(cleanCheckIn)) {
+        const [d, m, y] = cleanCheckIn.split(/[-/]/);
+        cleanCheckIn = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+      }
+      let cleanCheckOut = hotelCheckOut;
+      if (cleanCheckOut && /^\d{1,2}[-/]\d{1,2}[-/]\d{4}$/.test(cleanCheckOut)) {
+        const [d, m, y] = cleanCheckOut.split(/[-/]/);
+        cleanCheckOut = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+      }
+
       const q = new URLSearchParams({
-        destination: hotelDestination,
-        checkIn: hotelCheckIn,
-        checkOut: hotelCheckOut,
-        guests: String(hotelGuests),
+        destination: hotelDestination.trim(),
+        ...(cleanCheckIn ? { checkIn: cleanCheckIn } : {}),
+        ...(cleanCheckOut ? { checkOut: cleanCheckOut } : {}),
+        guests: String(hotelGuests || 2),
+        allowSyntheticFallback: "true",
       });
 
       const res: any = await apiFetch(`/api/travel/hotels/search?${q.toString()}`);
@@ -169,7 +206,11 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
       if (res.results) {
         setHotelResults(res.results);
         setHotelProviderName(res.provider || "Curated Stays");
-        toast.success(`Loaded ${res.results.length} accommodations`);
+        if (res.results.length > 0) {
+          toast.success(`Loaded ${res.results.length} accommodations in ${hotelDestination.trim()}`);
+        } else {
+          toast.info(`No accommodations found for "${hotelDestination.trim()}".`);
+        }
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to search hotels");
@@ -252,29 +293,29 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[760px] max-h-[92vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[780px] max-h-[92vh] overflow-y-auto rounded-2xl border-border/70 bg-card/95 backdrop-blur-xl shadow-2xl p-6">
           <DialogHeader className="border-b border-border/40 pb-3">
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <ShieldCheck className="h-5 w-5 text-emerald-500" />
+            <DialogTitle className="flex items-center gap-2 text-xl font-serif">
+              <ShieldCheck className="h-5 w-5 text-emerald-500 shrink-0" />
               Verified Travel Radar & Price Watcher
             </DialogTitle>
-            <DialogDescription className="text-xs">
+            <DialogDescription className="text-xs text-muted-foreground">
               Real-time flight timetables, verified stay rates, and automated price monitoring without AI hallucinations.
             </DialogDescription>
           </DialogHeader>
 
           {/* Tab Selector */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
-            <TabsList className="grid grid-cols-3 w-full">
-              <TabsTrigger value="flights" className="flex items-center gap-1.5 text-xs">
+            <TabsList className="grid grid-cols-3 w-full rounded-xl bg-muted/40 p-1">
+              <TabsTrigger value="flights" className="flex items-center gap-1.5 text-xs rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-xs">
                 <Plane className="h-3.5 w-3.5" />
                 Flights
               </TabsTrigger>
-              <TabsTrigger value="hotels" className="flex items-center gap-1.5 text-xs">
+              <TabsTrigger value="hotels" className="flex items-center gap-1.5 text-xs rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-xs">
                 <Building2 className="h-3.5 w-3.5" />
                 Stays & Hotels
               </TabsTrigger>
-              <TabsTrigger value="watches" className="flex items-center gap-1.5 text-xs">
+              <TabsTrigger value="watches" className="flex items-center gap-1.5 text-xs rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-xs">
                 <Bell className="h-3.5 w-3.5" />
                 My Watches ({watches.length})
               </TabsTrigger>
@@ -282,43 +323,83 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
 
             {/* TAB 1: FLIGHT SEARCH */}
             <TabsContent value="flights" className="space-y-4 pt-3">
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 p-3 rounded-xl border border-border/60 bg-muted/20">
-                <div>
-                  <Label className="text-[11px] text-muted-foreground uppercase font-semibold">Origin (IATA)</Label>
-                  <Input
-                    value={flightOrigin}
-                    onChange={(e) => setFlightOrigin(e.target.value.toUpperCase())}
-                    placeholder="e.g. BOM"
-                    className="h-8 text-xs font-mono font-bold"
-                  />
+              <div className="p-4 rounded-2xl border border-border/70 bg-card/60 backdrop-blur-md shadow-xs space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
+                      <Plane className="h-3 w-3 text-primary" />
+                      Origin Hub / Station
+                    </Label>
+                    <StationCombobox
+                      value={flightOrigin}
+                      onChange={(code) => setFlightOrigin(code.toUpperCase())}
+                      valueType="code"
+                      icon="train"
+                      placeholder="Origin station / airport (e.g. BOM)"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
+                      <MapPin className="h-3 w-3 text-primary" />
+                      Destination Hub / Station
+                    </Label>
+                    <StationCombobox
+                      value={flightDestination}
+                      onChange={(code) => setFlightDestination(code.toUpperCase())}
+                      valueType="code"
+                      icon="train"
+                      placeholder="Destination station / airport (e.g. GOI)"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-[11px] text-muted-foreground uppercase font-semibold">Destination (IATA)</Label>
-                  <Input
-                    value={flightDestination}
-                    onChange={(e) => setFlightDestination(e.target.value.toUpperCase())}
-                    placeholder="e.g. GOI"
-                    className="h-8 text-xs font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <Label className="text-[11px] text-muted-foreground uppercase font-semibold">Departure Date</Label>
-                  <Input
-                    type="date"
-                    value={flightDate}
-                    onChange={(e) => setFlightDate(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    onClick={handleSearchFlights}
-                    disabled={searchingFlights}
-                    className="w-full h-8 text-xs font-semibold gap-1.5"
-                  >
-                    {searchingFlights ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                    Search
-                  </Button>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                  <div className="sm:col-span-5">
+                    <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
+                      <Calendar className="h-3 w-3 text-primary" />
+                      Departure Date
+                    </Label>
+                    <DatePicker
+                      value={flightDate}
+                      onChange={setFlightDate}
+                      placeholder="Select departure date"
+                    />
+                  </div>
+                  <div className="sm:col-span-4">
+                    <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
+                      <Users className="h-3 w-3 text-primary" />
+                      Travelers
+                    </Label>
+                    <Select
+                      value={String(flightPassengers)}
+                      onValueChange={(val) => setFlightPassengers(Number(val))}
+                    >
+                      <SelectTrigger className="h-9 text-xs rounded-xl border-border/70 bg-background/80">
+                        <SelectValue placeholder="Passengers" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl border-border/70 bg-card/95 backdrop-blur-xl">
+                        <SelectItem value="1">1 Passenger</SelectItem>
+                        <SelectItem value="2">2 Passengers</SelectItem>
+                        <SelectItem value="3">3 Passengers</SelectItem>
+                        <SelectItem value="4">4 Passengers</SelectItem>
+                        <SelectItem value="5">5+ Passengers</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-3">
+                    <Button
+                      onClick={handleSearchFlights}
+                      disabled={searchingFlights}
+                      className="w-full h-9 text-xs font-semibold gap-1.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                    >
+                      {searchingFlights ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Search className="h-3.5 w-3.5" />
+                      )}
+                      Scan Flights
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -396,51 +477,98 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
 
             {/* TAB 2: HOTEL SEARCH */}
             <TabsContent value="hotels" className="space-y-4 pt-3">
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 p-3 rounded-xl border border-border/60 bg-muted/20">
+              <div className="p-4 rounded-2xl border border-border/70 bg-card/60 backdrop-blur-md shadow-xs space-y-3">
                 <div>
-                  <Label className="text-[11px] text-muted-foreground uppercase font-semibold">Destination City</Label>
-                  <Input
+                  <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
+                    <MapPin className="h-3 w-3 text-primary" />
+                    Destination City or Railhead
+                  </Label>
+                  <StationCombobox
                     value={hotelDestination}
-                    onChange={(e) => setHotelDestination(e.target.value)}
-                    placeholder="e.g. Goa"
-                    className="h-8 text-xs font-semibold"
+                    onChange={(dest) => setHotelDestination(dest)}
+                    valueType="name"
+                    icon="pin"
+                    placeholder="Search destination, city, or station (e.g. Ayodhya, Goa, Manali...)"
                   />
                 </div>
-                <div>
-                  <Label className="text-[11px] text-muted-foreground uppercase font-semibold">Check-In</Label>
-                  <Input
-                    type="date"
-                    value={hotelCheckIn}
-                    onChange={(e) => setHotelCheckIn(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-[11px] text-muted-foreground uppercase font-semibold">Check-Out</Label>
-                  <Input
-                    type="date"
-                    value={hotelCheckOut}
-                    onChange={(e) => setHotelCheckOut(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    onClick={handleSearchHotels}
-                    disabled={searchingHotels}
-                    className="w-full h-8 text-xs font-semibold gap-1.5"
-                  >
-                    {searchingHotels ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                    Search
-                  </Button>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                  <div className="sm:col-span-4">
+                    <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
+                      <Calendar className="h-3 w-3 text-primary" />
+                      Check-In Date
+                    </Label>
+                    <DatePicker
+                      value={hotelCheckIn}
+                      onChange={setHotelCheckIn}
+                      placeholder="Check-in date"
+                    />
+                  </div>
+                  <div className="sm:col-span-4">
+                    <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
+                      <Calendar className="h-3 w-3 text-primary" />
+                      Check-Out Date
+                    </Label>
+                    <DatePicker
+                      value={hotelCheckOut}
+                      onChange={setHotelCheckOut}
+                      placeholder="Check-out date"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
+                      <Users className="h-3 w-3 text-primary" />
+                      Guests
+                    </Label>
+                    <Select
+                      value={String(hotelGuests)}
+                      onValueChange={(val) => setHotelGuests(Number(val))}
+                    >
+                      <SelectTrigger className="h-9 text-xs rounded-xl border-border/70 bg-background/80">
+                        <SelectValue placeholder="Guests" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl border-border/70 bg-card/95 backdrop-blur-xl">
+                        <SelectItem value="1">1 Guest</SelectItem>
+                        <SelectItem value="2">2 Guests</SelectItem>
+                        <SelectItem value="3">3 Guests</SelectItem>
+                        <SelectItem value="4">4 Guests</SelectItem>
+                        <SelectItem value="5">5+ Guests</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Button
+                      onClick={handleSearchHotels}
+                      disabled={searchingHotels}
+                      className="w-full h-9 text-xs font-semibold gap-1.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                    >
+                      {searchingHotels ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Search className="h-3.5 w-3.5" />
+                      )}
+                      Find Stays
+                    </Button>
+                  </div>
                 </div>
               </div>
 
               {/* Hotel Provider Notice */}
-              {!hotelConfigured && hotelResults.length > 0 && (
+              {!hotelConfigured && (
                 <div className="p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs flex items-center gap-2">
                   <Info className="h-4 w-4 shrink-0" />
-                  <span className="text-[11px] font-medium">{hotelDisclaimer}</span>
+                  <span className="text-[11px] font-medium">{hotelDisclaimer || "Live hotel provider not configured. Stays shown are curated static recommendations."}</span>
+                </div>
+              )}
+
+              {/* Hotel Empty State */}
+              {!searchingHotels && hotelResults.length === 0 && (
+                <div className="text-center py-8 rounded-xl border border-dashed border-border/60 text-xs text-muted-foreground space-y-2">
+                  <Building2 className="h-6 w-6 mx-auto opacity-40" />
+                  <p className="font-semibold text-sm text-foreground">No accommodations listed yet</p>
+                  <p className="max-w-xs mx-auto">
+                    Search a destination above to see curated recommendations or connect live Amadeus credentials in backend settings.
+                  </p>
                 </div>
               )}
 

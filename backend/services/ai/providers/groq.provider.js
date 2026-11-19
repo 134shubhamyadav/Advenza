@@ -7,9 +7,11 @@ export class GroqProvider extends BaseAIProvider {
   constructor() {
     super("Groq");
     // Verified active Groq models:
-    // 1. qwen/qwen3.8-27b: ultra-fast (~1.1s), exceptional structured JSON (OTPM capped to 900)
-    // 2. openai/gpt-oss-20b: fast (~1.7s) fallback
+    // 1. openai/gpt-oss-120b: flagship high-capacity model with broad geographic and railway knowledge
+    // 2. qwen/qwen3.8-27b: ultra-fast (~1.1s), exceptional structured JSON
+    // 3. openai/gpt-oss-20b: fast (~1.7s) fallback
     this.models = [
+      "openai/gpt-oss-120b",
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
     ];

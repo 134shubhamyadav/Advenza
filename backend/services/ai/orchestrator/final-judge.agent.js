@@ -29,10 +29,11 @@ export class FinalAIJudgeAgent {
 
     const providersList = Array.from(participatingProviders);
     const evalMatrix = verificationAudit?.providerEvaluation || {
-      overallQualityScore: 92,
-      factualAccuracy: 95,
-      sourceQuality: 90,
-      geographicCorrectness: 95,
+      overallQualityScore: verificationAudit?.auditPassed ? 85 : 50,
+      factualAccuracy: verificationAudit?.checks?.geographicValidity?.passed ? 90 : 60,
+      sourceQuality: 75,
+      geographicCorrectness: verificationAudit?.checks?.geographicValidity?.passed ? 85 : 55,
+      evidenceBasis: "Calculated strictly from verified spatial coordinates and agent audit checks",
     };
 
     logger.info(
@@ -99,12 +100,16 @@ export class FinalAIJudgeAgent {
       },
       transportation: transportData,
       accommodation: accommodationData,
+      budget: budgetData,
       budgetFeasibility: budgetData,
       safetyAndRisk: safetyData,
+      verificationAudit,
       audit: {
         isAudited: true,
-        auditedAt: verificationAudit.auditedAt,
-        flags: verificationAudit.flags,
+        auditedAt: verificationAudit?.auditedAt || new Date().toISOString(),
+        flags: verificationAudit?.flags || [],
+        checks: verificationAudit?.checks || null,
+        hallucinationWarnings: verificationAudit?.hallucinationWarnings || [],
       },
       providersParticipated: providersList,
       agentTelemetry: {

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
@@ -87,6 +87,8 @@ const heroVideos = [
 ];
 
 function Landing() {
+  const navigate = useNavigate();
+  const [heroDestination, setHeroDestination] = useState("");
   const [active, setActive] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -227,27 +229,40 @@ function Landing() {
               gentle pacing, the quiet corners guidebooks miss.
             </motion.p>
 
-            {/* Email pill */}
+            {/* Destination Search Pill */}
             <motion.form
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, delay: 0.45 }}
-              onSubmit={(e) => e.preventDefault()}
-              className="liquid-glass mt-8 flex w-full max-w-sm items-center gap-1 rounded-full p-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const clean = heroDestination.trim();
+                if (clean) {
+                  navigate({
+                    to: "/trips/new",
+                    search: { destination: clean },
+                  });
+                } else {
+                  navigate({ to: "/trips/new" });
+                }
+              }}
+              className="liquid-glass mt-8 flex w-full max-w-md items-center gap-1.5 rounded-full p-1.5 shadow-2xl backdrop-blur-xl"
             >
               <input
                 type="text"
-                placeholder="Start your trip..."
+                value={heroDestination}
+                onChange={(e) => setHeroDestination(e.target.value)}
+                placeholder="Where to? (e.g. Udaipur, Goa, Ladakh...)"
                 className={`flex-1 bg-transparent px-4 py-2 text-sm outline-none placeholder:text-white/60 ${isDark ? "text-[#182C41] placeholder:text-[#182C41]/50" : "text-white"
                   }`}
                 style={{ fontFamily: "system-ui, sans-serif" }}
               />
-              <Link
-                to="/chat"
-                className="whitespace-nowrap rounded-full bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/90"
+              <button
+                type="submit"
+                className="whitespace-nowrap rounded-full bg-white px-5 py-2 text-sm font-medium text-black transition hover:bg-white/90 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
               >
-                Chat with Advenza
-              </Link>
+                Plan Trip
+              </button>
             </motion.form>
 
             {/* Video switcher */}
@@ -514,7 +529,8 @@ function Landing() {
               >
                 <Link
                   to="/trips/new"
-                  className="group hover-lift block overflow-hidden rounded-3xl border border-border/60 bg-card"
+                  search={{ destination: d.name }}
+                  className="group hover-lift block overflow-hidden rounded-3xl border border-border/60 bg-card cursor-pointer"
                 >
                   <div className="relative aspect-[4/5] overflow-hidden">
                     <img

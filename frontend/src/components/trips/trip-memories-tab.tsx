@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { Camera, Plus, MapPin, Image as ImageIcon, Trash2, Sparkles, Film } from "lucide-react";
 import { compressImage } from "@/lib/image-utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { DatePicker } from "@/components/ui/date-picker";
 import { CollageCreator } from "./collage-creator";
 import { ReelStudio } from "@/components/reels/reel-studio";
 
@@ -503,11 +504,11 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="date">Date</Label>
-              <Input
-                id="date"
-                type="date"
+              <DatePicker
                 value={formDate}
-                onChange={(e) => setFormDate(e.target.value)}
+                onChange={setFormDate}
+                placeholder="Pick memory date"
+                className="h-10 rounded-xl"
               />
             </div>
             <div className="space-y-2">

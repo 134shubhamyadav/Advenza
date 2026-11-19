@@ -380,14 +380,14 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
   });
 
   const interestProfile = normalizeInterests(context?.interests);
-  const interestsList = interestProfile.selected.map((s) => s.toLowerCase());
-  const normalizedDomainSet = new Set(interestProfile.normalizedDomains);
+  const interestsList = (interestProfile?.selected || []).map((s) => String(s || "").toLowerCase());
+  const normalizedDomainSet = new Set(interestProfile?.normalizedDomains || []);
 
   const hasInterest = (keyword) => {
-    const k = keyword.toLowerCase();
+    const k = String(keyword || "").toLowerCase();
     if (interestsList.some((i) => i.includes(k))) return true;
     for (const d of normalizedDomainSet) {
-      if (d.toLowerCase().includes(k)) return true;
+      if (String(d || "").toLowerCase().includes(k)) return true;
     }
     return false;
   };
@@ -405,7 +405,9 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
         const isGem = p.placeType === "HIDDEN_GEM" || p.placeType === "CONFIRMED_HIDDEN_GEM";
         return {
           placeName: p.name,
+          name: p.name,
           placeCategory: p.category,
+          category: p.category,
           placeSubcategory: p.subcategory || p.category,
           placeType: isGem ? "HIDDEN_GEM" : "POPULAR_ATTRACTION",
           gemConfidence: isGem ? "CONFIRMED_HIDDEN_GEM" : "POPULAR_ATTRACTION",
@@ -423,6 +425,22 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
       });
     }
   }
+
+  // Normalize all verified places so placeName and name are ALWAYS guaranteed valid strings
+  verifiedPlaces = verifiedPlaces
+    .filter(Boolean)
+    .map((p) => {
+      const pName = String(p.placeName || p.name || "").trim();
+      const pCat = String(p.placeCategory || p.category || "attraction").trim();
+      return {
+        ...p,
+        placeName: pName,
+        name: pName,
+        placeCategory: pCat,
+        category: pCat,
+      };
+    })
+    .filter((p) => Boolean(p.placeName));
 
   const usedVenueNames = new Set();
 
@@ -462,49 +480,68 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
 
           // ── Place Resolution & Anti-Hallucination Matching ────────────────
           let matchedPlace = null;
-          const aPlaceName = (a.placeName || "").toLowerCase().trim();
+          const aPlaceName = String(a.placeName || a.name || "").toLowerCase().trim();
           const isVaguePlaceholder =
             !aPlaceName ||
             /unidentified|unknown|vague|sample|tbd|to be decided|generic|placeholder/i.test(aPlaceName);
 
           if (aPlaceName && !isVaguePlaceholder) {
-            matchedPlace = verifiedPlaces.find(
-              (p) => p.placeName.toLowerCase() === aPlaceName || p.placeName.toLowerCase().includes(aPlaceName) || aPlaceName.includes(p.placeName.toLowerCase())
-            );
+            matchedPlace = verifiedPlaces.find((p) => {
+              const pn = String(p.placeName || p.name || "").toLowerCase().trim();
+              return pn && (pn === aPlaceName || pn.includes(aPlaceName) || aPlaceName.includes(pn));
+            });
           }
 
           if (!matchedPlace) {
             const descLower = desc.toLowerCase();
-            matchedPlace = verifiedPlaces.find((p) => descLower.includes(p.placeName.toLowerCase()));
+            matchedPlace = verifiedPlaces.find((p) => {
+              const pn = String(p.placeName || p.name || "").toLowerCase().trim();
+              return pn && descLower.includes(pn);
+            });
           }
 
           // Substitute vague/unidentified placeholders with verified destination places
           if ((!matchedPlace && isVaguePlaceholder && verifiedPlaces.length > 0) || (aPlaceName && isVaguePlaceholder)) {
-            const unusedVenue = verifiedPlaces.find((p) => !usedVenueNames.has(p.placeName.toLowerCase())) || verifiedPlaces[0];
+            const unusedVenue = verifiedPlaces.find((p) => {
+              const pn = String(p.placeName || p.name || "").toLowerCase().trim();
+              return pn && !usedVenueNames.has(pn);
+            }) || verifiedPlaces[0];
+
             if (unusedVenue) {
               matchedPlace = unusedVenue;
-              if (isVaguePlaceholder && a.placeName) {
-                desc = desc.replace(new RegExp(a.placeName, "gi"), unusedVenue.placeName);
+              const uName = String(unusedVenue.placeName || unusedVenue.name || "");
+              if (isVaguePlaceholder && a.placeName && uName) {
+                desc = desc.replace(new RegExp(a.placeName, "gi"), uName);
               }
             }
           }
 
           // ── Duplicate Venue Prevention (Across Nights) ───────────────────
-          if (matchedPlace && usedVenueNames.has(matchedPlace.placeName.toLowerCase())) {
-            // Check if there is an unused verified place of the same category
-            const unusedAlt = verifiedPlaces.find(
-              (p) =>
-                p.placeCategory === matchedPlace.placeCategory &&
-                !usedVenueNames.has(p.placeName.toLowerCase())
-            );
-            if (unusedAlt) {
-              desc = desc.replace(new RegExp(matchedPlace.placeName, "gi"), unusedAlt.placeName);
-              matchedPlace = unusedAlt;
+          if (matchedPlace) {
+            const mName = String(matchedPlace.placeName || matchedPlace.name || "").toLowerCase().trim();
+            if (mName && usedVenueNames.has(mName)) {
+              // Check if there is an unused verified place of the same category
+              const unusedAlt = verifiedPlaces.find((p) => {
+                const pn = String(p.placeName || p.name || "").toLowerCase().trim();
+                return (
+                  p.placeCategory === matchedPlace.placeCategory &&
+                  pn &&
+                  !usedVenueNames.has(pn)
+                );
+              });
+              if (unusedAlt) {
+                const altName = String(unusedAlt.placeName || unusedAlt.name || "");
+                if (altName) {
+                  desc = desc.replace(new RegExp(matchedPlace.placeName || matchedPlace.name, "gi"), altName);
+                  matchedPlace = unusedAlt;
+                }
+              }
             }
           }
 
           if (matchedPlace) {
-            usedVenueNames.add(matchedPlace.placeName.toLowerCase());
+            const mName = String(matchedPlace.placeName || matchedPlace.name || "").toLowerCase().trim();
+            if (mName) usedVenueNames.add(mName);
           }
 
           // ── Time-Aware Interest Scheduling Constraints ────────────────────
@@ -718,12 +755,15 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
       }
 
       // Ensure departure entry is present at or right after cutoff
-      const hasDepEntry = activities.some((a) =>
-        a.description.toLowerCase().includes("departure") ||
-        a.description.toLowerCase().includes("return journey") ||
-        a.description.toLowerCase().includes("airport") ||
-        a.description.toLowerCase().includes("station")
-      );
+      const hasDepEntry = activities.some((a) => {
+        const d = String(a?.description || a?.title || "").toLowerCase();
+        return (
+          d.includes("departure") ||
+          d.includes("return journey") ||
+          d.includes("airport") ||
+          d.includes("station")
+        );
+      });
 
       if (!hasDepEntry) {
         activities.push({
@@ -838,13 +878,21 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
 
     activities = activities.map((act, actIdx) => {
       const curPointName = act.placeName || act.description?.slice(0, 35) || `Stop ${actIdx + 1}`;
-      const curCoords = act.coordinates?.lat != null && act.coordinates?.lng != null ? act.coordinates : null;
+      const isValidCoords = (c) =>
+        c?.lat != null &&
+        c?.lng != null &&
+        (c.lat !== 0 || c.lng !== 0) &&
+        Math.abs(Number(c.lat)) <= 90 &&
+        Math.abs(Number(c.lng)) <= 180;
 
-      let travelDistanceKm = 2.5;
-      let travelDurationMinutes = 10;
-      let travelMode = "Cab";
+      const curCoords = isValidCoords(act.coordinates) ? act.coordinates : null;
 
-      if (prevPointCoords?.lat != null && curCoords?.lat != null) {
+      let travelDistanceKm = null;
+      let travelDurationMinutes = null;
+      let travelMode = null;
+      let legDataClassification = "UNAVAILABLE";
+
+      if (isValidCoords(prevPointCoords) && isValidCoords(curCoords)) {
         const d = calculateHaversineDistanceKm(
           prevPointCoords.lat,
           prevPointCoords.lng,
@@ -861,36 +909,40 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
             travelDistanceKm = Math.round(d * 1.25 * 10) / 10;
             travelDurationMinutes = Math.max(5, Math.round((travelDistanceKm / 28) * 60));
           }
+          legDataClassification = "LIVE_VERIFIED";
         }
-      } else {
-        travelDistanceKm = actIdx === 0 ? 3.5 : 2.0;
-        travelDurationMinutes = actIdx === 0 ? 15 : 8;
-        travelMode = "Cab";
       }
 
       // Timing calculations
       const plannedTime = act.time || "09:00";
       const [ph, pm] = plannedTime.split(":").map(Number);
       const plannedTotalMins = (isNaN(ph) ? 9 : ph) * 60 + (isNaN(pm) ? 0 : pm);
-      const depTotalMins = Math.max(0, plannedTotalMins - travelDurationMinutes);
-      const depTime = `${String(Math.floor(depTotalMins / 60) % 24).padStart(2, "0")}:${String(depTotalMins % 60).padStart(2, "0")}`;
-      const arrTime = plannedTime;
 
-      // Proximity description
-      const proximityDescription = actIdx === 0
-        ? `${travelDurationMinutes} mins ${travelMode.toLowerCase()} (${travelDistanceKm} km) from your hotel/stay`
-        : `${travelDurationMinutes} mins ${travelMode.toLowerCase()} (${travelDistanceKm} km) from ${prevPointName}`;
+      let depTime = null;
+      let arrTime = plannedTime;
+      let proximityDescription = "Distance unavailable";
+      let travelDurationText = "Distance unavailable";
 
-      const travelDurationText = `${travelDurationMinutes} mins (${travelDistanceKm} km) ${travelMode.toLowerCase()}`;
+      if (travelDurationMinutes != null && travelDistanceKm != null && travelMode != null) {
+        const depTotalMins = Math.max(0, plannedTotalMins - travelDurationMinutes);
+        depTime = `${String(Math.floor(depTotalMins / 60) % 24).padStart(2, "0")}:${String(depTotalMins % 60).padStart(2, "0")}`;
+        const safeMode = String(travelMode || "drive").toLowerCase();
+        proximityDescription = actIdx === 0
+          ? `${travelDurationMinutes} mins ${safeMode} (${travelDistanceKm} km) from your hotel/stay`
+          : `${travelDurationMinutes} mins ${safeMode} (${travelDistanceKm} km) from ${prevPointName}`;
+        travelDurationText = `${travelDurationMinutes} mins (${travelDistanceKm} km) ${safeMode}`;
+      }
 
       const dataClassification = act.dataClassification ||
-        (act.verificationStatus === "CURATED_VERIFIED" || act.verificationStatus === "LIVE_VERIFIED"
+        (legDataClassification === "LIVE_VERIFIED"
+          ? "LIVE_VERIFIED"
+          : act.verificationStatus === "CURATED_VERIFIED"
           ? "CURATED_VERIFIED"
-          : "INDICATIVE_RESEARCH");
+          : "UNAVAILABLE");
 
       const resAct = {
         ...act,
-        startLocation: act.startLocation || prevPointName,
+        startLocation: act.startLocation || (travelDurationMinutes != null ? prevPointName : undefined),
         endLocation: act.endLocation || curPointName,
         travelDistanceKm: act.travelDistanceKm ?? travelDistanceKm,
         travelDurationMinutes: act.travelDurationMinutes ?? travelDurationMinutes,

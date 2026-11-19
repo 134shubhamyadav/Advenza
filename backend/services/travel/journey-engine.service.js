@@ -41,7 +41,9 @@ function buildDateTime(dateStr, timeStr) {
   const [h, m] = timePart.split(":").map(Number);
   if (h < 0 || h > 23 || m < 0 || m > 59) return null;
   const [y, mo, d] = datePart.split("-").map(Number);
-  return new Date(Date.UTC(y, mo - 1, d, h, m, 0));
+  const pad = (n) => String(n).padStart(2, "0");
+  // Timezone-aware Asia/Kolkata (+05:30) interpretation
+  return new Date(`${pad(y)}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(m)}:00+05:30`);
 }
 
 /**
@@ -137,6 +139,7 @@ export async function calculateJourneyLeg(leg, options = {}) {
               fromStation: depLoc,
               toStation: arrLoc,
               journeyDate: result.departureDate,
+              arrivalDate: result.arrivalDate,
               departureTime: result.departureTime,
               arrivalTime: result.arrivalTime,
               fallbackDurationMinutes: result.durationMinutes,
@@ -377,6 +380,7 @@ async function _calculateScheduleBasedJourney(result, origin, destination, mode)
         fromStation: origin,
         toStation: destination,
         journeyDate: result.departureDate,
+        arrivalDate: result.arrivalDate,
         departureTime: result.departureTime,
         arrivalTime: result.arrivalTime,
         fallbackDurationMinutes: result.durationMinutes,

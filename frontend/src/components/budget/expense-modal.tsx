@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DatePicker } from "@/components/ui/date-picker";
 import { apiFetch } from "@/lib/api";
 import { storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -476,11 +477,11 @@ export function ExpenseModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="text-xs font-semibold">Date</Label>
-              <Input
-                type="date"
-                className="mt-1.5 h-10 rounded-xl"
+              <DatePicker
                 value={form.date}
-                onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))}
+                onChange={(d) => setForm((p) => ({ ...p, date: d }))}
+                placeholder="Select expense date"
+                className="mt-1.5 h-10 rounded-xl"
               />
             </div>
             <div>

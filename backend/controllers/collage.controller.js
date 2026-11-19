@@ -34,7 +34,7 @@ export class CollageController {
       const isTripOwner = trip.createdBy === req.uid;
       const isTripMember = trip.members?.some((m) => m.userId === req.uid);
 
-      if (!isTripOwner && !isTripMember && req.uid !== "guest") {
+      if (!isTripOwner && !isTripMember) {
         throw new ForbiddenError("You do not have permission to create a collage for this trip.");
       }
 
@@ -54,8 +54,6 @@ export class CollageController {
       const unauthorizedMemories = memories.filter((mem) => {
         const memUserId = String(mem.userId);
         const memTripId = String(mem.tripId);
-        // In dev bypass mode, allow guest
-        if (req.uid === "guest") return false;
         return memUserId !== req.uid || (tripId && memTripId !== String(tripId));
       });
 
@@ -112,7 +110,7 @@ export class CollageController {
       }
 
       // Authorization check (owner or shared)
-      if (collage.userId !== req.uid && collage.shareAccess !== "shared" && req.uid !== "guest") {
+      if (collage.userId !== req.uid && collage.shareAccess !== "shared") {
         throw new ForbiddenError("You do not have access to this collage.");
       }
 
@@ -209,7 +207,7 @@ export class CollageController {
         throw new NotFoundError("Collage not found");
       }
 
-      if (collage.userId !== req.uid && collage.shareAccess !== "shared" && req.uid !== "guest") {
+      if (collage.userId !== req.uid && collage.shareAccess !== "shared") {
         throw new ForbiddenError("Unauthorized to download this collage.");
       }
 

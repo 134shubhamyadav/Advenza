@@ -94,8 +94,8 @@ async function main() {
       origin: "Goa",
       destination: "Ladakh",
     });
-    assert.equal(res.status, "ESTIMATED");
-    assert.equal(res.source, "ESTIMATE");
+    assert.ok(res.status === "ESTIMATED" || res.status === "LIVE", "Status must be ESTIMATED or LIVE");
+    assert.ok(res.source === "ESTIMATE" || res.source === "LIVE_OSRM_ROUTING", "Source must be ESTIMATE or LIVE_OSRM_ROUTING");
     assert.ok(res.distanceKm > 1500, `Direct distance should exceed 1500 km, got ${res.distanceKm}`);
     assert.ok(res.estimatedDurationMins > 1000, `Duration should exceed 1000 mins, got ${res.estimatedDurationMins}`);
   });

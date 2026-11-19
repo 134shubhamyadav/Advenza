@@ -14,6 +14,7 @@ import { enrichTripWithInterstopRouting } from "../travel/interstop-routing.serv
 import { fetchDestinationImage } from "../media/destination-image.service.js";
 import { placeDiscoveryService } from "../places/place-discovery.service.js";
 import { destinationDurationService } from "../places/destination-duration.service.js";
+import { orchestratorService } from "./orchestrator/orchestrator.service.js";
 import { finalAIJudgeAgent } from "./orchestrator/final-judge.agent.js";
 import { conversationalAIService } from "./conversational-ai.service.js";
 import { NotFoundError, ValidationError } from "../../utils/errors.js";
@@ -265,8 +266,9 @@ export class AIService {
     let verifiedPlaces = [];
     let durationRecommendation = null;
 
+    let researchDossier = null;
     try {
-      const [journeys, weather, img, places, destOverview] = await Promise.all([
+      const [journeys, weather, img, places, destOverview, multiAgentDossier] = await Promise.all([
         computeJourneys({
           origin,
           destination,
@@ -319,13 +321,66 @@ export class AIService {
             logger.warn(`[AIService] Destination duration overview failed (non-fatal): ${err.message}`);
             return null;
           }),
+        orchestratorService
+          .conductComprehensiveResearch({
+            destination,
+            origin,
+            interests: interests || [],
+            travelers: travelersNum,
+            durationDays: numDays,
+            userBudget: budgetNum,
+            preferredTransportMode: travelMode,
+            accommodationPreference: accommodation || "AI_RECOMMENDED",
+            customHotelName: hotelName,
+            startDate,
+            journeyDate: startDate,
+          })
+          .catch((orchErr) => {
+            logger.warn(`[AIService] Multi-agent orchestration research failed (non-fatal): ${orchErr.message}`);
+            return null;
+          }),
       ]);
 
       computedJourneys = journeys;
       weatherResult = weather;
-      heroImage = img || destOverview?.heroImage || null;
+      researchDossier = multiAgentDossier;
+      heroImage = img || multiAgentDossier?.heroImage || destOverview?.heroImage || null;
       verifiedPlaces = places || [];
-      durationRecommendation = destOverview?.durationRecommendation || null;
+      durationRecommendation = multiAgentDossier?.durationRecommendation || destOverview?.durationRecommendation || null;
+
+      // Integrate research output: enrich verifiedPlaces with verified attractions & gems
+      if (multiAgentDossier?.durationRecommendation?.popularHighlights) {
+        for (const h of multiAgentDossier.durationRecommendation.popularHighlights) {
+          if (!verifiedPlaces.some((p) => p.name?.toLowerCase() === h.name?.toLowerCase())) {
+            verifiedPlaces.push({
+              name: h.name,
+              category: h.category,
+              region: h.region,
+              coordinates: h.coordinates,
+              openingHours: h.openingHours,
+              timeRequiredMins: h.estimatedVisitingMins,
+              whySpecial: h.matchReason,
+              placeType: "POPULAR_ATTRACTION",
+            });
+          }
+        }
+      }
+      if (multiAgentDossier?.durationRecommendation?.hiddenGemHighlights) {
+        for (const g of multiAgentDossier.durationRecommendation.hiddenGemHighlights) {
+          if (!verifiedPlaces.some((p) => p.name?.toLowerCase() === g.name?.toLowerCase())) {
+            verifiedPlaces.push({
+              name: g.name,
+              category: g.category,
+              region: g.region,
+              coordinates: g.coordinates,
+              timeRequiredMins: g.estimatedVisitingMins,
+              whySpecial: g.whySpecial,
+              placeType: "HIDDEN_GEM",
+              isPlaceHiddenGem: true,
+            });
+          }
+        }
+      }
     } catch (preErr) {
       logger.warn(`[AIService] Pre-generation fetch error: ${preErr.message}`);
     }
@@ -391,6 +446,7 @@ export class AIService {
       verifiedPlaces,
       durationMode: body.durationMode === "CUSTOM" ? "CUSTOM" : "RECOMMENDED",
       durationRecommendation,
+      safetyAdvisories: researchDossier?.safetyAndRisk?.verifiedAdvisories || [],
     };
 
     const prompt = buildItineraryPrompt(promptParams, expectedDates);
@@ -457,6 +513,8 @@ export class AIService {
       travelers: travelersNum,
       style: style || "Balanced",
       railwayValidation,
+      agentAudit: researchDossier?.audit || null,
+      providerEvaluation: researchDossier?.providerEvaluation || null,
       startDate,
       endDate,
       duration: body.duration ? Number(body.duration) : numDays,
@@ -506,6 +564,7 @@ export class AIService {
     const returnJourney = body.returnJourney || trip.returnJourney || { booked: false };
     const hotelName = body.hotelName || trip.hotelName || "";
     const hotelLocation = body.hotelLocation || trip.hotelLocation || "";
+    const accommodation = body.accommodation || trip.accommodation || "";
     const checkInTime = body.checkInTime || trip.checkInTime || "";
     const checkOutTime = body.checkOutTime || trip.checkOutTime || "";
     const special = body.special || trip.special || "";
@@ -555,9 +614,10 @@ export class AIService {
     let weatherResult = { weatherData: null, weatherInfo: "" };
     let verifiedPlaces = [];
     let durationRecommendation = null;
+    let researchDossier = trip.agentAudit || null;
 
     try {
-      const [journeys, weather, places, destOverview] = await Promise.all([
+      const [journeys, weather, places, destOverview, multiAgentDossier] = await Promise.all([
         computeJourneys({
           origin,
           destination,
@@ -569,7 +629,7 @@ export class AIService {
           transitRef,
           departureTime,
           arrivalTime,
-          accommodation: trip.accommodation || "",
+          accommodation: accommodation || trip.accommodation || "",
           hotelName: hotelName || trip.hotelName || "",
           hotelLocation: hotelLocation || trip.hotelLocation || "",
           checkInTime: checkInTime || trip.checkInTime || "",
@@ -606,12 +666,33 @@ export class AIService {
             logger.warn(`[AIService] Destination duration overview failed on regen (non-fatal): ${err.message}`);
             return null;
           }),
+        orchestratorService
+          .conductComprehensiveResearch({
+            destination,
+            origin,
+            interests: interests || [],
+            travelers: travelersNum,
+            durationDays: numDays,
+            userBudget: budgetNum,
+            preferredTransportMode: travelMode,
+            accommodationPreference: accommodation || trip.accommodation || "AI_RECOMMENDED",
+            customHotelName: hotelName,
+            startDate,
+            journeyDate: startDate,
+          })
+          .catch((orchErr) => {
+            logger.warn(`[AIService] Multi-agent orchestration research failed on regen (non-fatal): ${orchErr.message}`);
+            return null;
+          }),
       ]);
 
       regenJourneys = journeys;
       weatherResult = weather;
       verifiedPlaces = places || [];
-      durationRecommendation = destOverview?.durationRecommendation || null;
+      durationRecommendation = multiAgentDossier?.durationRecommendation || destOverview?.durationRecommendation || null;
+      if (multiAgentDossier) {
+        researchDossier = multiAgentDossier;
+      }
     } catch (preErr) {
       logger.warn(`[AIService] Pre-regeneration fetch error: ${preErr.message}`);
     }
@@ -646,6 +727,7 @@ export class AIService {
       verifiedPlaces,
       durationMode: body.durationMode === "CUSTOM" ? "CUSTOM" : "RECOMMENDED",
       durationRecommendation,
+      safetyAdvisories: researchDossier?.safetyAndRisk?.verifiedAdvisories || [],
     };
 
     const prompt = buildItineraryPrompt(promptParams, expectedDates);
@@ -710,6 +792,15 @@ export class AIService {
     trip.tripTiming = regenJourneys.tripTiming;
     trip.hotelName = hotelName;
     trip.hotelLocation = hotelLocation;
+    trip.accommodation = accommodation;
+    if (researchDossier?.audit) {
+      trip.agentAudit = researchDossier.audit;
+      trip.markModified("agentAudit");
+    }
+    if (researchDossier?.providerEvaluation) {
+      trip.providerEvaluation = researchDossier.providerEvaluation;
+      trip.markModified("providerEvaluation");
+    }
     trip.updatedAt = new Date();
 
     if (destination && (!trip.heroImage?.url || !trip.heroImage?.destination || trip.heroImage.destination.toLowerCase() !== destination.toLowerCase())) {

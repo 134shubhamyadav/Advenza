@@ -20,9 +20,9 @@ const DestinationResearchSchema = z.object({
       category: z.string().default("Sightseeing"),
       description: z.string(),
       coordinates: z.object({
-        lat: z.number(),
-        lng: z.number(),
-      }).optional().default({ lat: 0, lng: 0 }),
+        lat: z.number().nullable(),
+        lng: z.number().nullable(),
+      }).nullable().optional().default(null),
       estimatedVisitingMins: z.number().default(90),
       openingHours: z.string().default("09:00 - 18:00"),
       entryFee: z.object({
@@ -41,9 +41,9 @@ const DestinationResearchSchema = z.object({
       whySpecial: z.string(),
       estimatedVisitingMins: z.number().default(60),
       coordinates: z.object({
-        lat: z.number(),
-        lng: z.number(),
-      }).optional().default({ lat: 0, lng: 0 }),
+        lat: z.number().nullable(),
+        lng: z.number().nullable(),
+      }).nullable().optional().default(null),
     })
   ).default([]),
   localDining: z.array(

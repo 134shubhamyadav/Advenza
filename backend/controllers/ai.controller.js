@@ -4,6 +4,7 @@ import { orchestratorService } from "../services/ai/orchestrator/orchestrator.se
 import { budgetIntelligenceAgent } from "../services/ai/orchestrator/budget-intelligence.agent.js";
 import { accommodationAgent } from "../services/ai/orchestrator/accommodation.agent.js";
 import { railcoreProvider } from "../services/ai/providers/railcore.provider.js";
+import { ntesLiveTrackingService } from "../services/travel/ntes-live.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 export const generate = asyncHandler(async (req, res) => {
@@ -132,4 +133,34 @@ export const searchTrains = asyncHandler(async (req, res) => {
   });
 
   res.json(result);
+});
+
+export const trackLiveTrain = asyncHandler(async (req, res) => {
+  const { trainNumber } = req.params;
+  const date = req.query.date || req.body?.date;
+
+  if (!trainNumber) {
+    return res.status(400).json({
+      success: false,
+      error: "trainNumber parameter is required.",
+    });
+  }
+
+  const liveData = await ntesLiveTrackingService.trackLiveTrain(trainNumber, date);
+  res.json(liveData);
+});
+
+export const searchStations = asyncHandler(async (req, res) => {
+  const query = req.query.q || req.query.query || "";
+  const limit = Math.min(25, Math.max(1, Number(req.query.limit) || 10));
+  if (!query || String(query).trim().length < 1) {
+    return res.json({ success: true, count: 0, results: [] });
+  }
+
+  const results = await railcoreProvider.searchStations(String(query).trim());
+  res.json({
+    success: true,
+    count: results.length,
+    results: results.slice(0, limit),
+  });
 });

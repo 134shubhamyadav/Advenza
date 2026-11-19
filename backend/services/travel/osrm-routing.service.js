@@ -29,6 +29,12 @@ export class OSRMRoutingService {
       return null;
     }
 
+    // Explicitly reject (0,0) / Null Island coordinates
+    if ((Math.abs(oLat) < 0.0001 && Math.abs(oLon) < 0.0001) || (Math.abs(dLat) < 0.0001 && Math.abs(dLon) < 0.0001)) {
+      logger.warn(`[OSRMRoutingService] Rejected invalid (0,0) coordinates.`);
+      return null;
+    }
+
     const cacheKey = `${oLat.toFixed(4)},${oLon.toFixed(4)}->${dLat.toFixed(4)},${dLon.toFixed(4)}`;
     if (this.cache.has(cacheKey)) {
       const entry = this.cache.get(cacheKey);
@@ -57,22 +63,31 @@ export class OSRMRoutingService {
         const durationMins = Math.round(primaryRoute.duration / 60);
         const durationHours = Math.round((durationMins / 60) * 10) / 10;
 
-        // Realistic fuel cost calculation based on standard passenger car (14 km/L at ~₹102/L)
+        // Internal heuristic fuel cost calculation (standard passenger car: 14 km/L at ~₹102/L)
+        // NOT sourced from OSRM — clearly attributed to internal vehicle heuristic
         const fuelCostINR = Math.round((distanceKm / 14) * 102);
 
-        // Realistic highway tolls calculation (~₹2.1 per km on national expressways/toll roads)
+        // Internal heuristic highway toll calculation (~₹2.1/km for national expressways/toll roads)
+        // NOT sourced from OSRM — clearly attributed to internal highway heuristic
         const estimatedTollsINR = distanceKm > 60 ? Math.round(distanceKm * 2.1) : 0;
 
         const result = {
           isLiveRoadRoute: true,
           provider: "Open Source Routing Machine (OSRM)",
           distanceKm,
+          roadDistanceKm: distanceKm,
+          distanceType: "road_distance",
+          distanceLabel: "road distance",
           durationMins,
           durationHours,
+          estimatedDrivingMinutes: durationMins,
+          trafficStatus: "FREE_FLOW_ESTIMATE",
+          trafficNote: "Free-flow estimated travel time without real-time congestion telemetry",
           fuelCostINR,
           estimatedTollsINR,
           totalEstimatedDriveCostINR: fuelCostINR + estimatedTollsINR,
-          priceType: "LIVE_VERIFIED",
+          fuelTollSource: "INTERNAL_HEURISTIC_ESTIMATE",
+          priceType: "ESTIMATED",
         };
 
         this.cache.set(cacheKey, { data: result, timestamp: Date.now() });

@@ -49,6 +49,13 @@ export class TransportProvider extends BaseTransportProvider {
   }
 
   /**
+   * Alias for getRouteStatus to calculate intercity transit distance and times.
+   */
+  async calculateIntercityTransit(params) {
+    return this.getRouteStatus(params);
+  }
+
+  /**
    * Get Route Status between two locations.
    * Clearly distinguishes LIVE vs ESTIMATED vs UNAVAILABLE.
    */
@@ -177,7 +184,24 @@ export class TransportProvider extends BaseTransportProvider {
         };
       }
 
-      // 2. Try Open Source Routing Machine (OSRM) for live road geometry and turn-by-turn distance
+      // Validate coordinates: Reject (0,0) / Null Island
+      if (
+        (Math.abs(origGeo.latitude) < 0.0001 && Math.abs(origGeo.longitude) < 0.0001) ||
+        (Math.abs(destGeo.latitude) < 0.0001 && Math.abs(destGeo.longitude) < 0.0001)
+      ) {
+        logger.warn(`[TransportProvider] Rejected invalid (0,0) coordinates for ${origClean} or ${destClean}`);
+        return {
+          provider: "Transit Service",
+          status: "UNAVAILABLE",
+          isLive: false,
+          source: "UNAVAILABLE",
+          origin: origClean,
+          destination: destClean,
+          disclaimer: "Invalid geographical coordinates (0,0) detected. Location coordinates must be verified.",
+        };
+      }
+
+      // 2. Try Open Source Routing Machine (OSRM) for turn-by-turn road distance
       try {
         const osrmRoute = await osrmRoutingService.calculateDrivingRoute({
           origin: { lat: origGeo.latitude, lon: origGeo.longitude },
@@ -187,21 +211,27 @@ export class TransportProvider extends BaseTransportProvider {
         if (osrmRoute) {
           return {
             provider: "Open Source Routing Machine (OSRM)",
-            status: "LIVE",
-            isLive: true,
+            status: "ESTIMATED",
+            statusClassification: "FREE_FLOW_ROUTING",
+            isLive: false, // Public OSRM provides free-flow road distance, not real-time live traffic congestion
             source: "LIVE_OSRM_ROUTING",
+            routingEngine: "OSRM_ROAD_ROUTING",
             origin: origGeo.name || origClean,
             destination: destGeo.name || destClean,
             mode,
-            distanceKm: osrmRoute.distanceKm,
+            distanceKm: osrmRoute.roadDistanceKm || osrmRoute.distanceKm,
+            roadDistanceKm: osrmRoute.roadDistanceKm || osrmRoute.distanceKm,
+            distanceLabel: "road distance",
             estimatedDurationMins: osrmRoute.durationMins,
             normalDurationMins: osrmRoute.durationMins,
-            trafficLevel: "normal",
-            trafficStatus: "LIVE_ROUTING",
+            trafficLevel: "free_flow",
+            trafficStatus: "FREE_FLOW_ROUTING",
             delayMinutes: 0,
             fuelCostINR: osrmRoute.fuelCostINR,
             estimatedTollsINR: osrmRoute.estimatedTollsINR,
-            priceType: "LIVE_VERIFIED",
+            fuelTollSource: "INTERNAL_HEURISTIC_ESTIMATE",
+            priceType: "ESTIMATED",
+            disclaimer: "OSRM distance represents turn-by-turn road distance. Fuel and tolls are internal estimates, not provided by OSRM.",
             lastUpdated: new Date().toISOString(),
           };
         }
@@ -209,7 +239,7 @@ export class TransportProvider extends BaseTransportProvider {
         logger.warn(`[TransportProvider] OSRM query failed: ${osrmErr.message}. Falling back to geodesic.`);
       }
 
-      // 3. Geodesic routing calculation (ESTIMATED - Never claims live traffic)
+      // 3. Geodesic routing calculation (ESTIMATED - Straight-line distance)
       const directDistance = calculateHaversineDistance(
         origGeo.latitude,
         origGeo.longitude,
@@ -223,21 +253,23 @@ export class TransportProvider extends BaseTransportProvider {
       const normalDurationMins = Math.round((drivingDistance / 60) * 60);
 
       return {
-        provider: "Advenza Transit Router",
+        provider: "Advenza Geodesic Router",
         status: "ESTIMATED",
         isLive: false,
-        source: "ESTIMATE",
+        source: "HAVERSINE_STRAIGHT_LINE",
         origin: origGeo.name || origClean,
         destination: destGeo.name || destClean,
         mode,
         distanceKm: drivingDistance,
+        straightLineDistanceKm: directDistance,
+        distanceLabel: "straight-line distance",
         estimatedDurationMins: normalDurationMins,
         normalDurationMins: normalDurationMins,
         trafficLevel: "unknown",
         trafficStatus: "UNAVAILABLE",
         delayMinutes: 0,
-        priceType: "HISTORICAL_ESTIMATE",
-        disclaimer: "Live traffic telemetry not configured. Transit times and distances are geodesic road estimates.",
+        priceType: "ESTIMATED",
+        disclaimer: "Live traffic telemetry not configured. Distance is calculated using straight-line geodesic distance with winding factor.",
         lastUpdated: new Date().toISOString(),
       };
     } catch (err) {

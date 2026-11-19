@@ -65,6 +65,7 @@ export const regenerateTripInputSchema = z
     budget: z.coerce.number().min(0).optional(),
     style: z.string().trim().max(100).optional(),
     interests: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
+    accommodation: z.string().trim().max(150).optional(),
     travelers: z.coerce.number().min(1).max(50).optional(),
     travelMode: z.string().trim().max(100).optional(),
     departureHub: z.string().trim().max(150).optional(),
@@ -137,6 +138,7 @@ export const destinationOverviewInputSchema = z
   .object({
     destination: z.string().trim().min(1, "destination is required").max(150),
     interests: z.union([z.array(z.string().trim()), z.string().trim()]).optional(),
+    accommodation: z.string().trim().max(150).optional(),
   })
   .passthrough();
 

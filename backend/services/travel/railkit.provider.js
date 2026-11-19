@@ -2,6 +2,7 @@ import * as railkitSdk from "railkit";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
 import { railcoreProvider } from "../ai/providers/railcore.provider.js";
+import { ntesLiveTrackingService } from "./ntes-live.service.js";
 
 export const CURATED_TRAIN_ROUTES = {
   "12618": {
@@ -66,6 +67,7 @@ export class RailKitProvider {
     this.isConfiguredFlag = false;
     this.cache = new Map();
     this.CACHE_TTL = 30 * 60 * 1000; // 30 mins
+    this.isQuotaExhaustedUntil = 0; // Cooldown timestamp when usage limit exceeded
 
     if (this.apiKey) {
       try {
@@ -92,6 +94,15 @@ export class RailKitProvider {
         status: "NOT_CONFIGURED",
         isLive: false,
         message: "RailKit API key not configured (RAILKIT_API_KEY in backend/.env).",
+      };
+    }
+
+    if (Date.now() < this.isQuotaExhaustedUntil) {
+      return {
+        provider: "RailKit Indian Railways API",
+        status: "QUOTA_EXHAUSTED",
+        isLive: false,
+        message: "RailKit billing cycle usage limit reached (50/50). Using dynamic railway fallback.",
       };
     }
 
@@ -132,11 +143,14 @@ export class RailKitProvider {
       }
     }
 
-    if (this.isConfigured()) {
+    if (this.isConfigured() && Date.now() > this.isQuotaExhaustedUntil) {
       try {
         logger.debug(`[RailKitProvider] Fetching getTrainInfo for ${tNo}`);
         const res = await railkitSdk.getTrainInfo(tNo);
-        if (res?.success && res?.data) {
+        if (res && res.success === false && /limit exceeded|usage limit/i.test(res.error || "")) {
+          this.isQuotaExhaustedUntil = Date.now() + 15 * 60 * 1000;
+          logger.warn(`[RailKitProvider] Usage limit reached for RailKit API: ${res.error}. Cooling down for 15m.`);
+        } else if (res?.success && res?.data) {
           const rawInfo = res.data.trainInfo || {};
           const rawRoute = Array.isArray(res.data.route) ? res.data.route : [];
 
@@ -215,11 +229,14 @@ export class RailKitProvider {
       }
     }
 
-    if (this.isConfigured()) {
+    if (this.isConfigured() && Date.now() > this.isQuotaExhaustedUntil) {
       try {
         logger.debug(`[RailKitProvider] Searching trains between ${fromCode} and ${toCode} on ${dateFormatted || "any"}`);
         const res = await railkitSdk.searchTrainBetweenStations(fromCode, toCode, dateFormatted);
-        if (res?.success && Array.isArray(res?.data)) {
+        if (res && res.success === false && /limit exceeded|usage limit/i.test(res.error || "")) {
+          this.isQuotaExhaustedUntil = Date.now() + 15 * 60 * 1000;
+          logger.warn(`[RailKitProvider] Usage limit reached for RailKit API in train search: ${res.error}. Cooling down for 15m.`);
+        } else if (res?.success && Array.isArray(res?.data)) {
           const trains = res.data.map((t) => ({
             trainNumber: t.train_no,
             trainName: t.train_name,
@@ -293,12 +310,14 @@ export class RailKitProvider {
       };
     }
 
-    if (this.isConfigured()) {
+    if (this.isConfigured() && Date.now() > this.isQuotaExhaustedUntil) {
       // 1. Try Live Tracking V2 (WIMT live GPS tracker)
       try {
         logger.debug(`[RailKitProvider] Checking trackTrainV2 for ${tNo} on ${dateFormatted}`);
         const resV2 = await railkitSdk.trackTrainV2(tNo, dateFormatted);
-        if (resV2?.success && resV2?.data) {
+        if (resV2 && resV2.success === false && /limit exceeded|usage limit/i.test(resV2.error || "")) {
+          this.isQuotaExhaustedUntil = Date.now() + 15 * 60 * 1000;
+        } else if (resV2?.success && resV2?.data) {
           const d = resV2.data;
           return {
             isLive: Boolean(d.isLive ?? true),
@@ -321,7 +340,9 @@ export class RailKitProvider {
       try {
         logger.debug(`[RailKitProvider] Checking trackTrain V1 for ${tNo} on ${dateFormatted}`);
         const resV1 = await railkitSdk.trackTrain(tNo, dateFormatted);
-        if (resV1?.success && resV1?.data) {
+        if (resV1 && resV1.success === false && /limit exceeded|usage limit/i.test(resV1.error || "")) {
+          this.isQuotaExhaustedUntil = Date.now() + 15 * 60 * 1000;
+        } else if (resV1?.success && resV1?.data) {
           const d = resV1.data;
           return {
             isLive: true,
@@ -337,6 +358,16 @@ export class RailKitProvider {
       } catch (v1Err) {
         logger.warn(`[RailKitProvider] trackTrain V1 error: ${v1Err.message}`);
       }
+    }
+
+    // 3. Official Government NTES Direct Live Tracking (Pillar 2: Zero-Cost & Unlimited)
+    try {
+      const ntesRes = await ntesLiveTrackingService.trackLiveTrain(tNo, date);
+      if (ntesRes && ntesRes.isLive) {
+        return ntesRes;
+      }
+    } catch (ntesErr) {
+      logger.warn(`[RailKitProvider] NTES direct live tracking failed: ${ntesErr.message}`);
     }
 
     return {
