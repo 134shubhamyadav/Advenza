@@ -188,6 +188,18 @@ export class LocalRailwayService {
    */
   initDatabase() {
     try {
+      if (!fs.existsSync(this.dbPath)) {
+        const p1 = `${this.dbPath}.part1`;
+        const p2 = `${this.dbPath}.part2`;
+        if (fs.existsSync(p1) && fs.existsSync(p2)) {
+          logger.info(`[LocalRailwayService] Assembling ${this.dbPath} from split parts...`);
+          const buf1 = fs.readFileSync(p1);
+          const buf2 = fs.readFileSync(p2);
+          fs.writeFileSync(this.dbPath, Buffer.concat([buf1, buf2]));
+          logger.info(`[LocalRailwayService] Database successfully assembled from part1 & part2.`);
+        }
+      }
+
       if (fs.existsSync(this.dbPath)) {
         this.db = new DatabaseSync(this.dbPath);
         this.db.exec('PRAGMA journal_mode = WAL;');
