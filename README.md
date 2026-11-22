@@ -52,6 +52,7 @@ Advenza/
 │   │   ├── trip.controller.js             # Trip CRUD & day schedule management
 │   │   └── user.controller.js             # User profile & preferences
 │   ├── data/                              # Local dataset assets
+│   │   ├── airports/                      # Operational Indian airports database
 │   │   └── railways/                      # Indian Railways database components
 │   ├── middleware/                        # Express middleware (auth, rateLimiters, errorHandler)
 │   ├── models/                            # Mongoose schemas (User, Trip, Expense, Invitation, Conversation)
@@ -101,10 +102,6 @@ Advenza/
 │   │   │   └── packing.tsx                # Context-aware smart packing checklist
 │   │   └── router.tsx                     # TanStack router configuration
 │   └── package.json
-│
-├── data/                                  # Repository datasets
-│   ├── airports/                          # Operational Indian airports database
-│   └── Indian-Railway-Data/               # Indian Railways split JSON & station datasets
 │
 └── package.json                           # Root workspace orchestrator
 ```

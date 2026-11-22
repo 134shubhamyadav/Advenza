@@ -38,11 +38,11 @@ export class AirportLookupService {
   _loadDataset() {
     if (this._initialized) return;
 
-    // Search common paths for data/airports/india_operational_airports.json
+    // Search common paths for airports dataset in backend/data/airports
     const candidates = [
-      path.resolve(process.cwd(), "data", "airports", "india_operational_airports.json"),
-      path.resolve(__dirname, "../../../data/airports/india_operational_airports.json"),
       path.resolve(__dirname, "../../data/airports/india_operational_airports.json"),
+      path.resolve(process.cwd(), "backend", "data", "airports", "india_operational_airports.json"),
+      path.resolve(process.cwd(), "data", "airports", "india_operational_airports.json"),
     ];
 
     let filePath = null;
