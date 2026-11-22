@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
 /** Routes that do NOT require authentication. */
-const PUBLIC_PATHS = new Set(["/", "/login", "/signup"]);
+const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/pricing"]);
 
 /**
  * RequireAuth — wraps the router outlet and enforces Firebase auth state.

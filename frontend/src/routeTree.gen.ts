@@ -13,13 +13,13 @@ import { Route as SimulatorRouteImport } from './routes/simulator'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as RiskRouteImport } from './routes/risk'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PackingRouteImport } from './routes/packing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ItineraryRouteImport } from './routes/itinerary'
 import { Route as GroupRouteImport } from './routes/group'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConsensusRouteImport } from './routes/consensus'
-import { Route as CommanderRouteImport } from './routes/commander'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as BudgetRouteImport } from './routes/budget'
 import { Route as IndexRouteImport } from './routes/index'
@@ -45,6 +45,11 @@ const RiskRoute = RiskRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PackingRoute = PackingRouteImport.update({
@@ -75,11 +80,6 @@ const DashboardRoute = DashboardRouteImport.update({
 const ConsensusRoute = ConsensusRouteImport.update({
   id: '/consensus',
   path: '/consensus',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CommanderRoute = CommanderRouteImport.update({
-  id: '/commander',
-  path: '/commander',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -117,13 +117,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/budget': typeof BudgetRoute
   '/chat': typeof ChatRoute
-  '/commander': typeof CommanderRoute
   '/consensus': typeof ConsensusRoute
   '/dashboard': typeof DashboardRoute
   '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
   '/packing': typeof PackingRoute
+  '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
@@ -136,13 +136,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/budget': typeof BudgetRoute
   '/chat': typeof ChatRoute
-  '/commander': typeof CommanderRoute
   '/consensus': typeof ConsensusRoute
   '/dashboard': typeof DashboardRoute
   '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
   '/packing': typeof PackingRoute
+  '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
@@ -156,13 +156,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/budget': typeof BudgetRoute
   '/chat': typeof ChatRoute
-  '/commander': typeof CommanderRoute
   '/consensus': typeof ConsensusRoute
   '/dashboard': typeof DashboardRoute
   '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
   '/packing': typeof PackingRoute
+  '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
@@ -177,13 +177,13 @@ export interface FileRouteTypes {
     | '/'
     | '/budget'
     | '/chat'
-    | '/commander'
     | '/consensus'
     | '/dashboard'
     | '/group'
     | '/itinerary'
     | '/login'
     | '/packing'
+    | '/pricing'
     | '/profile'
     | '/risk'
     | '/signup'
@@ -196,13 +196,13 @@ export interface FileRouteTypes {
     | '/'
     | '/budget'
     | '/chat'
-    | '/commander'
     | '/consensus'
     | '/dashboard'
     | '/group'
     | '/itinerary'
     | '/login'
     | '/packing'
+    | '/pricing'
     | '/profile'
     | '/risk'
     | '/signup'
@@ -215,13 +215,13 @@ export interface FileRouteTypes {
     | '/'
     | '/budget'
     | '/chat'
-    | '/commander'
     | '/consensus'
     | '/dashboard'
     | '/group'
     | '/itinerary'
     | '/login'
     | '/packing'
+    | '/pricing'
     | '/profile'
     | '/risk'
     | '/signup'
@@ -235,13 +235,13 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BudgetRoute: typeof BudgetRoute
   ChatRoute: typeof ChatRoute
-  CommanderRoute: typeof CommanderRoute
   ConsensusRoute: typeof ConsensusRoute
   DashboardRoute: typeof DashboardRoute
   GroupRoute: typeof GroupRoute
   ItineraryRoute: typeof ItineraryRoute
   LoginRoute: typeof LoginRoute
   PackingRoute: typeof PackingRoute
+  PricingRoute: typeof PricingRoute
   ProfileRoute: typeof ProfileRoute
   RiskRoute: typeof RiskRoute
   SignupRoute: typeof SignupRoute
@@ -279,6 +279,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/packing': {
@@ -321,13 +328,6 @@ declare module '@tanstack/react-router' {
       path: '/consensus'
       fullPath: '/consensus'
       preLoaderRoute: typeof ConsensusRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/commander': {
-      id: '/commander'
-      path: '/commander'
-      fullPath: '/commander'
-      preLoaderRoute: typeof CommanderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat': {
@@ -379,13 +379,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BudgetRoute: BudgetRoute,
   ChatRoute: ChatRoute,
-  CommanderRoute: CommanderRoute,
   ConsensusRoute: ConsensusRoute,
   DashboardRoute: DashboardRoute,
   GroupRoute: GroupRoute,
   ItineraryRoute: ItineraryRoute,
   LoginRoute: LoginRoute,
   PackingRoute: PackingRoute,
+  PricingRoute: PricingRoute,
   ProfileRoute: ProfileRoute,
   RiskRoute: RiskRoute,
   SignupRoute: SignupRoute,

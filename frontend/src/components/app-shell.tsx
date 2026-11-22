@@ -13,7 +13,6 @@ import {
   Search,
   Bell,
   Sparkles,
-  Radar,
   SlidersHorizontal,
   ShieldAlert,
   Backpack,
@@ -51,7 +50,6 @@ const navSections: NavSection[] = [
   {
     title: "Live Operations",
     items: [
-      { to: "/commander", label: "Trip Commander", icon: Radar },
       { to: "/risk", label: "Risk Radar", icon: ShieldAlert },
       { to: "/simulator", label: "Plan B", icon: SlidersHorizontal },
     ],

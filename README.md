@@ -1,5 +1,5 @@
 <!-- ================================================================= -->
-<!--               🌍 ✈️ ADVENZA (TRIP COMMANDER) 🚆 🚗                 -->
+<!--               🌍 ✈️ ADVENZA (TRAVEL INTELLIGENCE) 🚆 🚗            -->
 <!--       Autonomous Multi-Agent AI Travel Intelligence Platform       -->
 <!-- ================================================================= -->
 
@@ -15,7 +15,7 @@
 
   <p align="center">
     <a href="https://github.com/134shubhamyadav/Advenza">
-      <img src="https://readme-typing-svg.demolab.com?font=Plus+Jakarta+Sans&weight=800&size=24&duration=2400&pause=1100&color=38BDF8&center=true&vCenter=true&multiline=false&width=800&height=50&lines=✈️+Autonomous+Multi-Agent+AI+Travel+Intelligence;🚆+Provider-Agnostic+Train%2C+Flight+%26+Bus+Transit+Research;🚗+Project-OSRM+Road+Distances%2C+Tolls+%26+Fuel+Mathematics;🏨+Zero-Cost+Own-Home+Lodging+Constraints;💰+Deterministic+Budgeting+with+Zero+LLM+Arithmetic+Drift;🗺️+Dynamic+Destination+Grounding+Across+Global+Regions" alt="Advenza Animated Travel Intelligence Tagline" />
+      <img src="https://readme-typing-svg.demolab.com?font=Plus+Jakarta+Sans&weight=800&size=24&duration=2400&pause=1100&color=38BDF8&center=true&vCenter=true&multiline=false&width=800&height=50&lines=✈️+Autonomous+Multi-Agent+AI+Travel+Intelligence;🚆+Grounded+Indian+Railways+Timetables+%26+Fares;🚗+Project-OSRM+Road+Distances%2C+Tolls+%26+Fuel+Mathematics;🏨+Zero-Cost+Own-Home+Lodging+Constraints;💰+Deterministic+Budgeting+with+Zero+LLM+Arithmetic+Drift;🗺️+Dynamic+Destination+Grounding+Across+Global+Regions" alt="Advenza Animated Travel Intelligence Tagline" />
     </a>
   </p>
 
@@ -35,31 +35,101 @@
 
 ---
 
-## 🧭 V1 Product Definition & Scope
+## 🏛️ Local Project Architecture & Directory Structure
 
-Advenza V1 is an **AI-powered travel planning and destination intelligence platform**. It focuses on research, discovery, day-wise planning, multi-modal transport cost intelligence, and budget calculation.
+Advenza is built with a strictly decoupled **Full-Stack Monorepo Architecture** separating the React 19 SSR frontend from the Express/MongoDB/AI backend services:
 
-### What V1 Delivers:
-1. **AI-Powered Travel Planning:** End-to-end trip creation guided by conversational intelligence and interactive preference elicitation.
-2. **Destination Research & Discovery:** Authentic points of interest, cultural landmarks, restaurants, food specialties, and verified hidden gems grounded via OpenStreetMap Nominatim.
-3. **Day-Wise Itinerary Generation:** Chronological daily schedules with realistic activity durations, travel times, and meal sequencing.
-4. **Multi-Modal Transport Research & Cost Intelligence:** Provider-agnostic evaluation of Trains, Flights, Buses, Road Trips (Drive), and Local Transit with durations, fare ranges, and transparent price classifications.
-5. **Deterministic Budget Intelligence:** Strict Node.js arithmetic for lodging, dining, activities, transport, and a 7% contingency reserve—with zero LLM arithmetic drift.
-6. **Smart Packing & Checklist Generation:** Context-aware, weather-informed packing checklists tailored to destination and trip duration.
-7. **Trip Management & Dashboard:** Saved trips, customizable day schedules, notes, and collaborative trip twin sharing.
-8. **Conversational Travel Assistant:** Context-aware travel copilot supporting natural language modifications to itineraries, budgets, and recommendations.
-
-### V1 Architectural Boundaries:
-* **No Bookings or Payments:** Advenza is a travel intelligence and planning platform, not a ticketing agent or payment processor. It does not conduct financial transactions, seat reservations, or ticket purchases.
-* **Memories Feature Removed:** The legacy media memories, social reels, and photo collages features have been cleanly excised from the active application to optimize performance and focus on travel intelligence.
-* **Custom Railway Database Deferred:** The internal custom SQLite database infrastructure (`railways.db`, `railways_v2.db`, sync scrapers) is safely deferred to future releases. The physical database files are preserved in isolation on disk. Active V1 uses the lightweight, provider-agnostic **Transport Research Abstraction**.
+```
+Advenza/
+├── backend/                               # Express + MongoDB + AI Orchestration Server
+│   ├── config/                            # Environment configuration (env.js)
+│   ├── controllers/                       # REST API controllers
+│   │   ├── ai.controller.js               # Multi-agent AI generation & chat
+│   │   ├── budget.controller.js           # Expense math & settlement engine
+│   │   ├── invitation.controller.js       # Group invite & collaboration logic
+│   │   ├── mail.controller.js             # Brevo email delivery service
+│   │   ├── travel.controller.js           # Station lookup & transport queries
+│   │   ├── trip.controller.js             # Trip CRUD & day schedule management
+│   │   └── user.controller.js             # User profile & preferences
+│   ├── data/                              # Local dataset assets
+│   │   └── railways/                      # Indian Railways database components
+│   ├── middleware/                        # Express middleware (auth, rateLimiters, errorHandler)
+│   ├── models/                            # Mongoose schemas (User, Trip, Expense, Invitation, Conversation)
+│   ├── routes/                            # Modular Express router endpoints
+│   ├── schemas/                           # Zod validation schemas for requests
+│   ├── services/                          # Core domain services
+│   │   ├── ai/                            # 8-Agent Autonomous Research Orchestrator
+│   │   │   ├── orchestrator/              # Destination, Transport, Verification & Judge agents
+│   │   │   └── providers/                 # Groq, NVIDIA NIM, OpenAI & Gemini adapters
+│   │   ├── travel/                        # Transport Research, Airport lookup, OSRM road engine
+│   │   └── places/                        # OpenStreetMap Nominatim spatial disambiguation
+│   ├── utils/                             # Loggers, math helpers, and API clients
+│   └── server.js                          # Express application entry point
+│
+├── frontend/                              # TanStack Start + React 19 Frontend
+│   ├── public/                            # Static assets, logos, infographics
+│   ├── src/
+│   │   ├── components/                    # Reusable React UI components
+│   │   │   ├── app-shell.tsx              # Main navigation shell & layout
+│   │   │   ├── brand-logo.tsx             # Advenza dynamic branding
+│   │   │   ├── require-auth.tsx           # Route protection guard
+│   │   │   ├── budget/                    # Budget estimate cards & expense trackers
+│   │   │   ├── travel/                    # Travel loaders & station selectors
+│   │   │   │   ├── trip-generation-loader.tsx # 5-stage milestone generation loader
+│   │   │   │   └── transit-scenes/        # Animated vector transit progress simulations
+│   │   │   │       ├── FlightProgressBar.tsx    # 12-Stage continuous flight simulation
+│   │   │   │       ├── VandeBharatProgressBar.tsx # Vande Bharat EMU train with OHE catenary
+│   │   │   │       ├── BusProgressBar.tsx       # Volvo 9600 multi-axle sleeper bus
+│   │   │   │       ├── HighwayProgressBar.tsx   # Grand Tourer SUV highway drive
+│   │   │   │       ├── FerryProgressBar.tsx     # Coastal catamaran ferry with waves & wake
+│   │   │   │       ├── ModeSceneRenderer.tsx    # Dynamic mode scene router
+│   │   │   │       └── index.ts                 # Clean barrel export
+│   │   │   └── ui/                        # Accessible UI primitives (Radix UI)
+│   │   ├── context/                       # Authentication context (Firebase / JWT)
+│   │   ├── lib/                           # Utility functions, API fetchers & query keys
+│   │   ├── routes/                        # TanStack Router file-based route definitions
+│   │   │   ├── index.tsx                  # Premium landing page
+│   │   │   ├── dashboard.tsx              # User dashboard & trip portfolio
+│   │   │   ├── trips.new.tsx              # 6-Step interactive trip creation wizard
+│   │   │   ├── trips.$tripId.tsx          # Comprehensive itinerary timeline & details
+│   │   │   ├── budget.tsx                 # Real-time expense tracker & split manager
+│   │   │   ├── risk.tsx                   # AI Risk & Weather Radar
+│   │   │   ├── simulator.tsx              # Plan B & What-If scenario generator
+│   │   │   ├── chat.tsx                   # Conversational AI travel copilot
+│   │   │   ├── pricing.tsx                # Humor-infused early beta subscription page
+│   │   │   ├── login.tsx & signup.tsx     # Auth views
+│   │   │   └── packing.tsx                # Context-aware smart packing checklist
+│   │   └── router.tsx                     # TanStack router configuration
+│   └── package.json
+│
+├── data/                                  # Repository datasets
+│   ├── airports/                          # Operational Indian airports database
+│   └── Indian-Railway-Data/               # Indian Railways split JSON & station datasets
+│
+└── package.json                           # Root workspace orchestrator
+```
 
 ---
 
-## 🌟 Core Pillars of Advenza V1
+## 🧭 Product Definition & Capabilities
 
-### 1. 🤖 Autonomous Multi-Agent AI Research Network
-Rather than relying on a single monolithic prompt that hallucinates routes, costs, and attractions, Advenza deploys a coordinated multi-agent orchestration pipeline:
+Advenza is an **autonomous AI-powered travel planning and destination intelligence operating system**. It automates end-to-end trip research, chronological day-wise scheduling, multi-modal transport cost calculation, and deterministic budget math.
+
+### What Advenza Delivers:
+1. **6-Step Trip Decision Wizard:** Destination disambiguation, duration insights, dates, budget tier, travel pace, and review.
+2. **Autonomous Multi-Agent Network:** 8 decoupled AI research agents that eliminate hallucination by cross-verifying geographical landmarks, transit corridors, and lodging limits.
+3. **Multi-Modal Transit Simulations:** 5 continuous GPU-accelerated vector progress scenes representing Flight, Vande Bharat train, Volvo bus, Highway car drive, and Coastal ferry.
+4. **Authoritative Indian Railways Integration:** Official telescopic fare tables and gateway station resolution.
+5. **Highway Geometry & Fuel Physics:** Live Project-OSRM road network routing, FASTag toll calculations, and fuel consumption math.
+6. **Deterministic ₹0-Drift Budgeting:** Absolute mathematical summation enforcing strict **₹0 lodging** for own-home/relative stays.
+7. **Free Early Beta Model:** Unlimited access to all research agents and simulations with no paywalls or credit cards required.
+
+---
+
+## 🌟 Core Pillars of Advenza
+
+### 1. 🤖 8-Agent Autonomous AI Research Network
+Rather than relying on a single monolithic prompt that invents fake attractions and routes, Advenza runs a coordinated multi-agent orchestration pipeline:
 1. **Destination Research Agent:** Discovers genuine geographical landmarks, cultural heritage sites, and dining specialties via OpenStreetMap spatial anchors.
 2. **Transportation Research Agent:** Evaluates multi-modal corridors (Trains, Flights, Buses, Road Trips), resolves major transit hubs, and estimates journey durations and fares.
 3. **Accommodation Intelligence Agent:** Analyzes lodging by star rating, calculates multi-occupancy room sharing, and enforces strict **₹0 lodging** for own-home stays.
@@ -69,89 +139,19 @@ Rather than relying on a single monolithic prompt that hallucinates routes, cost
 7. **Final AI Judge Agent:** Evidence-based adjudication synthesizing the final dossier based on physical coordinates and timetable truth.
 8. **Master Mission Orchestrator:** Manages bounded asynchronous promises, streaming progress telemetry directly to the frontend.
 
-### 2. 🚆 Grounded Multi-Modal Transport Research
-Advenza V1 features a lightweight, provider-agnostic **Transport Research Service** (`backend/services/travel/transport-research.service.js`) providing balanced comparisons across 5 modes:
-* **Train Journeys:** Modelled against the official Indian Railways telescopic fare formula (SL, 3A, 2A, 1A, CC) and major railhead gateway hubs, computing realistic journey duration and fare ranges without locking SQLite databases.
-* **Flights:** Evaluates flight corridors via IATA airport resolver (e.g., BOM, DEL, BLR, GOI, GOX) and aviation indices, providing flight travel time and indicative airfare ranges.
-* **Buses:** Intercity road transit analysis (Volvo, AC Sleeper, State Transport) for regional routes under 1,000 km, factoring in highway speeds and typical fares.
-* **Road Trips (Drive):** Live Project-OSRM highway geometry calculations, turn-by-turn road distance, realistic fuel consumption (14 km/L at ₹102/L), and national highway FASTag toll estimates.
-* **Local Transit:** Intra-city transit allowances (metro, app cabs, auto rickshaws) tailored to destination tier and group size.
+### 2. 🚆 5 Mode-Specific Animated Transit Simulations
+During trip synthesis, the frontend plays high-fidelity, mode-specific vector progress animations:
+* **✈️ Flight (`FlightProgressBar`):** Full 12-stage commercial airliner simulation (Gate 12A $\to$ Taxi $\to$ $V_r$ Takeoff Rotation on main wheels $\to$ Liftoff $\to$ Gear Retraction $\to$ FL360 Cruise above cloud sea $\to$ Golden Sunset Descent $\to$ PAPI/ALS Approach $\to$ Touchdown on 27R $\to$ Night Gate Arrival).
+* **🚆 Train (`VandeBharatProgressBar`):** Aerodynamic Vande Bharat Express with high-speed track sleepers, 25kV OHE catenary overhead masts, pantograph electrical sparks, and dual-aspect signal gantries.
+* **🚌 Bus (`BusProgressBar`):** Volvo 9600 multi-axle sleeper coach with panoramic windows, spinning alloy wheels, highway lane markings, roadside streetlamps, and green highway boards.
+* **🚗 Car (`HighwayProgressBar`):** Modern SUV / Grand Tourer cruising along winding mountain and coastal highways with guardrails and pine trees.
+* **⛴️ Ferry (`FerryProgressBar`):** Multi-deck coastal catamaran cruise with continuous mathematical sine-wave ocean wakes, churning foam, sweeping lighthouse beacon, and seagulls.
 
-### 3. 🏷️ Explicit Price Classification System
-To ensure total honesty and transparency with travelers, every transport and budget figure is classified into one of three strict tiers:
-* `actual published price`: Verified from an authoritative operational schedule or live published tariff.
-* `retrieved estimate`: Retrieved from an external API or live routing service (e.g. Project-OSRM highway distance).
-* `modelled estimate`: Derived from verified mathematical models, official distance formulas (e.g. Indian Railways telescopic fare tables), or historical benchmarks.
-
-If pricing or schedule data cannot be verified, Advenza preserves the unavailable state rather than fabricating numbers.
-
-### 4. 💵 Deterministic Budget Intelligence
+### 3. 💵 Deterministic Budget Intelligence
 * **Zero LLM Arithmetic Drift:** AI models are strictly prohibited from calculating final costs.
 * **Exact Mathematical Formula:**
   $$\text{Total Cost} = \text{Transport} + \text{Transfers} + \text{Lodging} + (\text{Food} \times \text{Days} \times \text{Travelers}) + \text{Activities} + 7\% \text{ Contingency Buffer}$$
 * **Zero-Cost Lodging Constraint:** Staying at one's own home, native residence, or with relatives deterministically charges ₹0 for lodging, reserving the traveler's budget for transit, food, and activities.
-* **Feasibility Alerts:** If selected transportation alone consumes > 50% of the budget ceiling, the system flags the shortfall with actionable suggestions (e.g., switch to train sleeper class, adjust trip duration).
-
-### 5. 🗺️ Dynamic Destination Discovery Across Global Geographies
-Advenza is built with **zero hardcoded destination names or static fallbacks**. It dynamically researches any valid global or domestic destination:
-* 🏙️ **Metropolitan Hubs:** Mumbai, Delhi, Bengaluru, Chennai (Multi-terminal transit, urban metro, heritage landmarks)
-* 🏖️ **Coastal & Leisure Destinations:** Goa, Kochi, Pondicherry (Beaches, maritime heritage, coastal cuisine)
-* ⛰️ **Hill Stations & Retreats:** Manali, Ooty, Shimla, Darjeeling (Gateway transit transfers, scenic viewpoints, mountain weather)
-* 🏛️ **Cultural & Spiritual Centers:** Varanasi, Jaipur, Udaipur, Ayodhya (Historic ghats, palaces, local food trails)
-* 🔀 **Geographical Disambiguation:** Resolves ambiguous place names (e.g., Springfield IL vs MO) using interactive disambiguation cards.
-
----
-
-## 🔄 Autonomous Multi-Agent Pipeline
-
-```mermaid
-flowchart TD
-    subgraph Client ["👤 Traveler Interface (React 19 + TanStack Start)"]
-        UI["Traveler Query Input<br/>'Mumbai to Goa, 4 Days, 2 Travelers, Train'"]
-        Result["Interactive Day-Wise Itinerary<br/>Timeline, Activity Sequencing & Budget Radar"]
-    end
-
-    subgraph Orchestration ["🎯 Orchestration Layer"]
-        Orch["Master Orchestrator Service"]
-        Judge["Final AI Judge Agent<br/>(Evidence-Based Adjudication)"]
-        BudgetEngine["Deterministic Budget Engine<br/>(Strict Math + 7% Buffer)"]
-    end
-
-    subgraph TransportLayer ["🚆 Transport Research Layer"]
-        TRS["Transport Research Service<br/>(Provider-Agnostic Abstraction)"]
-        OSRM["Project-OSRM Engine<br/>(Road Distance, Tolls & Fuel)"]
-        FlightProv["Aviation Hub Resolver<br/>(Airport Codes & Flight Indices)"]
-        RailModel["Telescopic Fare Engine<br/>(SL, 3A, 2A, 1A Modelled Estimates)"]
-    end
-
-    subgraph AIAgents ["🧠 Multi-Agent Research Network"]
-        DestAgent["Destination Research Agent<br/>(OpenStreetMap Nominatim Anchors)"]
-        TransitAgent["Transportation Research Agent<br/>(Multi-Modal Corridor Evaluation)"]
-        HotelAgent["Accommodation Agent<br/>(Zero-Cost Own-Home Lodging Rule)"]
-        RiskAgent["Safety & Risk Radar Agent<br/>(Security Advisory & Weather)"]
-        VerifyAgent["Quantitative Verification Agent<br/>(Feasibility & Deduplication Scoring)"]
-    end
-
-    UI --> Orch
-    Orch --> DestAgent
-    Orch --> TransitAgent
-    Orch --> HotelAgent
-    Orch --> RiskAgent
-
-    TransitAgent --> TRS
-    TRS --> OSRM
-    TRS --> FlightProv
-    TRS --> RailModel
-
-    DestAgent --> VerifyAgent
-    TransitAgent --> VerifyAgent
-    HotelAgent --> VerifyAgent
-    RiskAgent --> VerifyAgent
-
-    VerifyAgent --> Judge
-    Judge --> BudgetEngine
-    BudgetEngine --> Result
-```
 
 ---
 
@@ -160,10 +160,10 @@ flowchart TD
 Advenza includes a resilient AI routing system with automatic multi-tier fallback across major inference providers:
 
 ```
-[Tier 1: Groq (Llama-3.3-70b / Llama-3.1-8b)]
+[Tier 1: Groq (Llama-3.3-70b / Qwen-2.5-32b)]
        │
        ▼ (Fallback on Rate Limit / 429)
-[Tier 2: NVIDIA NIM (Llama-3.1-70b-instruct / Mistral-Large)]
+[Tier 2: NVIDIA NIM (Llama-3.1-70b-instruct / Nemotron)]
        │
        ▼ (Fallback on 5xx / Timeout)
 [Tier 3: OpenAI (GPT-4o-mini / GPT-4o)]
@@ -177,47 +177,6 @@ Advenza includes a resilient AI routing system with automatic multi-tier fallbac
 
 ---
 
-## ⚙️ V1 Environment Variables Specification
-
-Advenza requires the following environment variables. Set them in `backend/.env` and `frontend/.env`:
-
-### Backend Configuration (`backend/.env`)
-
-| Variable | Requirement | Description |
-| :--- | :--- | :--- |
-| `PORT` | Optional (default: `5000`) | Backend HTTP port |
-| `NODE_ENV` | Optional (default: `development`) | Environment (`development` or `production`) |
-| `MONGODB_URI` | **Required** | MongoDB connection string (Atlas or local) |
-| `JWT_SECRET` | **Required** | Secret key for local JWT authentication tokens |
-| `MEDIA_SECRET` | Optional | HMAC secret for signed expense receipt URLs |
-| `GROQ_API_KEY` | Recommended | Primary high-speed LLM provider for agent orchestration |
-| `OPENAI_API_KEY` | Optional | Secondary LLM provider fallback (GPT-4o / GPT-4o-mini) |
-| `GEMINI_API_KEY` | Optional | Google Gemini inference fallback |
-| `NVIDIA_API_KEY` | Optional | NVIDIA NIM inference provider |
-| `MISTRAL_API_KEY` | Optional | Mistral AI inference provider |
-| `OPENROUTER_API_KEY` | Optional | OpenRouter universal inference aggregator |
-| `TOGETHER_API_KEY` | Optional | Together AI inference provider |
-| `CEREBRAS_API_KEY` | Optional | Cerebras ultra-fast Llama inference provider |
-| `COHERE_API_KEY` | Optional | Cohere Command-R inference provider |
-| `FIREBASE_PROJECT_ID` | Optional | Firebase Auth project ID for token verification |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Optional | Firebase Admin SDK credentials JSON string |
-| `BREVO_API_KEY` | Optional | Brevo / Sendinblue SMTP API key for invitations |
-| `AMADEUS_CLIENT_ID` | Optional | Amadeus GDS API client ID for flight lookups |
-| `AMADEUS_CLIENT_SECRET` | Optional | Amadeus GDS API client secret |
-| `GOOGLE_MAPS_API_KEY` | Optional | Google Maps Directions API key |
-| `SKIP_RAILWAY_SYNC` | Optional (default: `true`) | Defer background SQLite railway synchronization in V1 |
-
-### Frontend Configuration (`frontend/.env`)
-
-| Variable | Requirement | Description |
-| :--- | :--- | :--- |
-| `VITE_API_URL` | Optional (default: `http://localhost:5000`) | Backend API base URL |
-| `VITE_FIREBASE_API_KEY` | Optional | Firebase Client API key |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Optional | Firebase Auth domain |
-| `VITE_FIREBASE_PROJECT_ID` | Optional | Firebase Project ID |
-
----
-
 ## 🚀 Quickstart & Installation
 
 ### Prerequisites
@@ -225,60 +184,34 @@ Advenza requires the following environment variables. Set them in `backend/.env`
 * **npm:** v10.x or higher
 * **MongoDB:** Local instance or free MongoDB Atlas cluster
 
-### 1. Clone the Repository
+### 1. Clone & Install
 ```bash
 git clone https://github.com/134shubhamyadav/Advenza.git
 cd Advenza
-```
 
-### 2. Install Dependencies
-```bash
 # Install root, backend, and frontend packages
 npm install
 npm install --prefix backend
 npm install --prefix frontend
 ```
 
-### 3. Configure Environment Variables
+### 2. Configure Environment Variables
 ```bash
-# Backend setup
 cp backend/.env.example backend/.env
-# Edit backend/.env and provide at least MONGODB_URI and one AI API key (e.g. GROQ_API_KEY)
+# Edit backend/.env and provide MONGODB_URI and GROQ_API_KEY (or other LLM key)
 ```
 
-### 4. Launch Development Environment
+### 3. Launch Development Environment
 ```bash
-# Starts both frontend (http://localhost:3000) and backend (http://localhost:5000) concurrently
+# Starts both frontend (http://localhost:3000) and backend (http://localhost:5000)
 npm run dev
 ```
 
-### 5. Build for Production
+### 4. Build for Production
 ```bash
-npm run build
+# Type check and build client and SSR bundles
+npm run build:frontend
 ```
-
----
-
-## 🧪 Verification & Acceptance Testing
-
-Execute the comprehensive automated V1 acceptance test suite to verify authentication, trip persistence, itinerary generation, budget mathematics, and multi-modal transport research:
-
-```bash
-# Execute the automated V1 acceptance suite
-node backend/test_v1_acceptance.js
-```
-
-### Key Acceptance Criteria Verified:
-* ✔ **Clean Builds:** Frontend and backend compile without syntax or bundle errors.
-* ✔ **Authentication & Security:** JWT and Firebase token verification with route protection.
-* ✔ **Trip Creation & Persistence:** Seamless database creation and multi-tenant isolation.
-* ✔ **Day-Wise Itinerary Generation:** Chronological activity sequencing and realistic timing.
-* ✔ **Multi-Modal Transport Research:** Trains (telescopic formula), Flights, Buses, and Drive (OSRM).
-* ✔ **Explicit Price Classification:** Transparent `modelled estimate` and `retrieved estimate` labels.
-* ✔ **Deterministic Budget Mathematics:** Exact lodging, transport, meal, activity, and buffer summation.
-* ✔ **Zero-Cost Lodging Constraint:** ₹0 lodging for own-home and relative stays.
-* ✔ **Memories Removal Verified:** `/memory` UI routes and `/api/memories` endpoints return 404.
-* ✔ **Railway Databases Untouched:** All physical railway database files preserved intact on disk.
 
 ---
 

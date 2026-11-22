@@ -149,15 +149,25 @@ function Landing() {
               Advenza
             </Link>
             <div className="liquid-glass hidden items-center gap-1 rounded-full px-2 py-2 md:flex">
-              {["How It Works", "Features", "Destinations", "Pricing"].map((l) => (
-                <a
-                  key={l}
-                  href={`#${l.toLowerCase().replace(/\s/g, "-")}`}
-                  className="rounded-full px-4 py-1.5 text-sm text-white/85 transition hover:bg-white/10 hover:text-white"
-                >
-                  {l}
-                </a>
-              ))}
+              {["How It Works", "Features", "Destinations", "Pricing"].map((l) =>
+                l === "Pricing" ? (
+                  <Link
+                    key={l}
+                    to="/pricing"
+                    className="rounded-full px-4 py-1.5 text-sm text-white/85 transition hover:bg-white/10 hover:text-white"
+                  >
+                    {l}
+                  </Link>
+                ) : (
+                  <a
+                    key={l}
+                    href={`#${l.toLowerCase().replace(/\s/g, "-")}`}
+                    className="rounded-full px-4 py-1.5 text-sm text-white/85 transition hover:bg-white/10 hover:text-white"
+                  >
+                    {l}
+                  </a>
+                )
+              )}
               {user ? (
                 <Link
                   to="/dashboard"
@@ -309,19 +319,36 @@ function Landing() {
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-8 bg-black/70 backdrop-blur-xl md:hidden"
             >
-              {["How It Works", "Features", "Destinations", "Pricing"].map((l, i) => (
-                <motion.a
-                  key={l}
-                  href={`#${l.toLowerCase().replace(/\s/g, "-")}`}
-                  onClick={() => setMenuOpen(false)}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 + i * 0.05, duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-                  className="text-3xl text-white"
-                >
-                  {l}
-                </motion.a>
-              ))}
+              {["How It Works", "Features", "Destinations", "Pricing"].map((l, i) =>
+                l === "Pricing" ? (
+                  <motion.div
+                    key={l}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 + i * 0.05, duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                  >
+                    <Link
+                      to="/pricing"
+                      onClick={() => setMenuOpen(false)}
+                      className="text-3xl text-white"
+                    >
+                      {l}
+                    </Link>
+                  </motion.div>
+                ) : (
+                  <motion.a
+                    key={l}
+                    href={`#${l.toLowerCase().replace(/\s/g, "-")}`}
+                    onClick={() => setMenuOpen(false)}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 + i * 0.05, duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                    className="text-3xl text-white"
+                  >
+                    {l}
+                  </motion.a>
+                )
+              )}
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -356,7 +383,7 @@ function Landing() {
           <div className="flex animate-marquee gap-16 whitespace-nowrap text-sm font-medium text-muted-foreground will-change-transform">
             {[...Array(2)].flatMap((_, k) =>
               [
-                "AI Trip Commander",
+                "Autonomous Travel Network",
                 "Decision Engine",
                 "What-If Simulator",
                 "AI Risk Radar",
@@ -628,7 +655,10 @@ function Landing() {
         {/* Pricing */}
         <section id="pricing" className="mx-auto max-w-7xl px-6 py-28">
           <div className="text-center">
-            <p className="text-sm font-medium text-accent">Pricing</p>
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-semibold mb-3 border border-emerald-500/20 shadow-sm">
+              <Sparkles className="h-3.5 w-3.5" /> Early Beta: 100% Free While We Scale!
+            </div>
+            <p className="text-sm font-medium text-accent">Transparent Pricing</p>
             <h2 className="mt-2 font-display text-5xl md:text-6xl">
               Free to start. <span className="italic">Fair to scale.</span>
             </h2>
@@ -711,7 +741,7 @@ function Landing() {
                   ))}
                 </ul>
                 <Button asChild variant={p.variant} className="mt-8 w-full rounded-xl">
-                  <Link to="/signup">{p.cta}</Link>
+                  <Link to="/pricing">{p.cta}</Link>
                 </Button>
               </motion.div>
             ))}
@@ -783,9 +813,15 @@ function Landing() {
                 <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
                   {c.l.map((i) => (
                     <li key={i}>
-                      <a href="#" className="hover:text-foreground">
-                        {i}
-                      </a>
+                      {i === "Pricing" ? (
+                        <Link to="/pricing" className="hover:text-foreground">
+                          {i}
+                        </Link>
+                      ) : (
+                        <a href="#" className="hover:text-foreground">
+                          {i}
+                        </a>
+                      )}
                     </li>
                   ))}
                 </ul>

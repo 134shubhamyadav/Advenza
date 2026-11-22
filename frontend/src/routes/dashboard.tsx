@@ -11,7 +11,6 @@ import {
   Map,
   Plane,
   TrendingUp,
-  Radar,
   ShieldAlert,
   Trash2,
 } from "lucide-react";
@@ -370,18 +369,7 @@ function Dashboard() {
         </div>
 
         {/* Insights row */}
-        <div className="lg:col-span-3 grid gap-4 md:grid-cols-[1fr_1fr_1fr]">
-          <Link to="/commander" className="rounded-2xl glass-panel p-6 hover-lift">
-            <div className="flex items-center gap-2">
-              <Radar className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">Trip Commander</p>
-              <AiBadge className="ml-auto">Live</AiBadge>
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground">
-              AI watching your plan in real-time. Accept or dismiss suggestions.
-            </p>
-            <p className="mt-3 text-xs text-primary">Open commander →</p>
-          </Link>
+        <div className="lg:col-span-3 grid gap-4 md:grid-cols-2">
           <Link to="/risk" className="rounded-2xl glass-panel p-6 hover-lift">
             <div className="flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-primary" />

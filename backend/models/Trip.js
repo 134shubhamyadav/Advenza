@@ -224,15 +224,6 @@ const TripSchema = new mongoose.Schema({
   // Final Judge Railway & Timeline Verification Audit
   railwayValidation: { type: mongoose.Schema.Types.Mixed, default: null },
 
-  // Commander event acceptance tracking
-  acceptedCommanderEvents: [
-    {
-      eventId: { type: String, required: true },
-      acceptedAt: { type: Date, default: Date.now },
-      actionTaken: { type: String, default: "" },
-    },
-  ],
-
   // Metadata
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },

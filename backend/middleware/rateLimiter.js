@@ -36,19 +36,6 @@ export const aiChatLimiter = rateLimit({
   },
 });
 
-export const commanderLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    error: "Commander telemetry rate limit reached. Please refresh after a minute.",
-    code: "COMMANDER_RATE_LIMIT",
-  },
-});
-
-
 export const travelSearchLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 40, // Max 40 searches per minute

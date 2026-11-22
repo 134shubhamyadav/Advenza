@@ -18,7 +18,6 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import healthRoutes from "./routes/health.js";
 import tripRoutes from "./routes/trips.js";
 import aiRoutes from "./routes/ai.js";
-import commanderRoutes from "./routes/commander.js";
 import travelRoutes from "./routes/travel.js";
 import budgetRoutes from "./routes/budget.js";
 import userRoutes from "./routes/user.js";
@@ -96,7 +95,6 @@ app.get("/", (req, res) =>
 app.use("/api/trips", budgetRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/ai", aiRoutes);
-app.use("/api/commander", commanderRoutes);
 app.use("/api/travel", travelRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/media", mediaRoutes);
