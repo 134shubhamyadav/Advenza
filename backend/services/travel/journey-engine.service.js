@@ -20,8 +20,7 @@
 
 import { transportProvider } from "./providers/transport.provider.js";
 import { flightProvider, resolveAirportCode } from "./providers/flight.provider.js";
-import { railcoreProvider } from "../ai/providers/railcore.provider.js";
-import { railwayTimelineService } from "./railway-timeline.service.js";
+import { transportResearchService } from "./transport-research.service.js";
 import { travelCacheService, CACHE_TTLS } from "./travel-cache.service.js";
 import { calculateDestinationWindows } from "./destination-window.service.js";
 import { logger } from "../../utils/logger.js";
@@ -120,38 +119,20 @@ export async function calculateJourneyLeg(leg, options = {}) {
     const arrivalDt = buildDateTime(result.arrivalDate, result.arrivalTime);
 
     const isSuspiciousSameDayTrain =
-      isTrainMode && result.departureDate && result.arrivalDate && result.departureDate === result.arrivalDate;
+      isTrainMode &&
+      result.durationSource !== "USER_SPECIFIED" &&
+      result.departureDate &&
+      result.arrivalDate &&
+      result.departureDate === result.arrivalDate &&
+      (!result.departureTime || !result.arrivalTime);
 
     if (!isSuspiciousSameDayTrain && departureDt && arrivalDt) {
       const userDuration = durationBetween(departureDt, arrivalDt);
       if (userDuration != null && userDuration >= 0) {
         result.durationMinutes = userDuration;
-        result.durationSource = result.durationSource || "USER_SPECIFIED";
-        // Status: if booked or has a transit reference, mark CONFIRMED
-        if (result.booked || result.transitRef) {
-          result.status = "CONFIRMED";
-        }
-        if (isTrainMode && depLoc && arrLoc) {
-          // Enrich with stops and live tracking if train
-          try {
-            const tl = await railwayTimelineService.buildRailwayTimeline({
-              trainNumber: result.transitRef,
-              fromStation: depLoc,
-              toStation: arrLoc,
-              journeyDate: result.departureDate,
-              arrivalDate: result.arrivalDate,
-              departureTime: result.departureTime,
-              arrivalTime: result.arrivalTime,
-              fallbackDurationMinutes: result.durationMinutes,
-            });
-            if (tl) {
-              result.railwayTimeline = tl;
-              result.stops = tl.stops;
-              result.liveTracking = tl.liveTracking;
-              result.dataClassification = tl.dataClassification;
-            }
-          } catch {}
-        }
+        result.durationSource = "USER_SPECIFIED";
+        // Status: if user specified times or booked or has a transit reference, mark CONFIRMED
+        result.status = "CONFIRMED";
         return result;
       }
     }
@@ -372,71 +353,28 @@ async function _estimateFlightDuration(result, origin, destination) {
  * These are NOT presented as live data. They are clearly labelled ESTIMATED_HAVERSINE.
  */
 async function _calculateScheduleBasedJourney(result, origin, destination, mode) {
-  // If Indian train mode, use centralized railwayTimelineService (RailKit + IRCTC cross-check)
+  // If train mode, use provider-agnostic transportResearchService
   if (mode === "train" || mode === "rail") {
     try {
-      const tl = await railwayTimelineService.buildRailwayTimeline({
-        trainNumber: result.transitRef,
-        fromStation: origin,
-        toStation: destination,
-        journeyDate: result.departureDate,
-        arrivalDate: result.arrivalDate,
-        departureTime: result.departureTime,
-        arrivalTime: result.arrivalTime,
-        fallbackDurationMinutes: result.durationMinutes,
+      const trainEstimate = await transportResearchService.estimateTrainRoute({
+        origin,
+        destination,
+        travelDate: result.departureDate,
       });
-
-      if (tl && tl.totalDurationMinutes > 0) {
-        result.durationMinutes = tl.totalDurationMinutes;
-        result.durationSource = tl.dataClassification || "SCHEDULED_VERIFIED";
+      if (trainEstimate && trainEstimate.estimatedDurationMinutes > 0) {
+        result.durationMinutes = trainEstimate.estimatedDurationMinutes;
+        result.durationSource = "SCHEDULED_ESTIMATE";
         result.status = result.booked ? "CONFIRMED" : "SCHEDULED";
         if (!result.transitRef) {
-          result.transitRef = `${tl.trainNumber} - ${tl.trainName}`;
+          result.transitRef = trainEstimate.route;
         }
-        if (tl.fromStation?.departureTime) {
-          result.departureTime = tl.fromStation.departureTime;
-        }
-        result.arrivalDate = tl.destinationArrivalDate;
-        if (tl.toStation?.arrivalTime) {
-          result.arrivalTime = tl.toStation.arrivalTime;
-        }
-        result.railwayTimeline = tl;
-        result.stops = tl.stops;
-        result.liveTracking = tl.liveTracking;
-        result.dataClassification = tl.dataClassification;
+        result.priceClassification = trainEstimate.priceClassification;
+        result.estimatedFareINR = trainEstimate.estimatedFareINR;
+        result.sourceName = trainEstimate.sourceName;
         return result;
       }
-    } catch (railErr) {
-      logger.warn(`[JourneyEngine] railwayTimelineService calculation note: ${railErr.message}`);
-    }
-
-    // Secondary fallback: RailCore provider if configured
-    if (railcoreProvider.isConfigured()) {
-      try {
-        const railData = await railcoreProvider.resolveRailwayRoute({
-          origin,
-          destination,
-          journeyDate: result.departureDate,
-        });
-        if (railData?.status === "SUCCESS" && railData?.recommendedTrain) {
-          const train = railData.recommendedTrain;
-          result.durationMinutes = train.durationMinutes;
-          result.durationSource = "SCHEDULED";
-          result.status = result.booked ? "CONFIRMED" : "SCHEDULED";
-          if (!result.transitRef) {
-            result.transitRef = `${train.trainNumber} - ${train.trainName}`;
-          }
-          if (!result.departureTime && train.departureTime) {
-            result.departureTime = train.departureTime;
-          }
-          if (!result.arrivalTime && train.arrivalTime) {
-            result.arrivalTime = train.arrivalTime;
-          }
-          return result;
-        }
-      } catch (rcErr) {
-        logger.warn(`[JourneyEngine] RailCore train lookup failed: ${rcErr.message}`);
-      }
+    } catch (trainErr) {
+      logger.warn(`[JourneyEngine] transportResearchService train note: ${trainErr.message}`);
     }
   }
 
@@ -682,7 +620,7 @@ export async function computeJourneys(tripData) {
     arrivalLocation: rawReturn.arrivalLocation || tripData.departureHub || origin,
     departureDate: rawReturn.departureDate || rawReturn.date || tripData.endDate || "",
     departureTime: rawReturn.departureTime || rawReturn.time || "",
-    arrivalDate: rawReturn.arrivalDate || rawReturn.date || "",
+    arrivalDate: rawReturn.arrivalDate || rawReturn.departureDate || rawReturn.date || tripData.endDate || "",
     arrivalTime: rawReturn.arrivalTime || "",
     durationMinutes: rawReturn.durationMinutes ?? null,
     durationSource: rawReturn.durationSource || "",

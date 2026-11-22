@@ -1,7 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
 import { checkRedisHealth } from "../services/queue/redis.js";
-import { getReelQueueHealth } from "../services/queue/reel-queue.js";
 import { flightProvider } from "../services/travel/providers/flight.provider.js";
 import { hotelProvider } from "../services/travel/providers/hotel.provider.js";
 import { transportProvider } from "../services/travel/providers/transport.provider.js";
@@ -63,9 +62,8 @@ router.get("/detailed", async (req, res) => {
   if (dbState === 1) dbStatus = "HEALTHY";
   else if (dbState === 2) dbStatus = "DEGRADED";
 
-  const [redisHealth, queueHealth, flightAvail, hotelAvail, transportAvail] = await Promise.all([
+  const [redisHealth, flightAvail, hotelAvail, transportAvail] = await Promise.all([
     checkRedisHealth(),
-    getReelQueueHealth(),
     flightProvider.checkAvailability(),
     hotelProvider.checkAvailability(),
     transportProvider.checkAvailability(),
@@ -97,7 +95,6 @@ router.get("/detailed", async (req, res) => {
       message: dbState === 1 ? "Connected and ready." : "Disconnected or reconnecting.",
     },
     redis: redisHealth,
-    bullmqQueue: queueHealth,
     storage: {
       status: storageStatus,
       message: storageMessage,

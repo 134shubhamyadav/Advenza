@@ -14,7 +14,9 @@ import {
 
 export interface DatePickerProps {
   value?: string | Date | null;
+  date?: string | Date | null;
   onChange?: (dateString: string) => void;
+  onDateChange?: (date: Date | undefined) => void;
   placeholder?: string;
   className?: string;
   disabled?: boolean;
@@ -30,7 +32,9 @@ export interface DatePickerProps {
  */
 export function DatePicker({
   value,
+  date,
   onChange,
+  onDateChange,
   placeholder = "Pick a date",
   className,
   disabled = false,
@@ -39,43 +43,47 @@ export function DatePicker({
   align = "start",
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false);
+  const effectiveValue = value !== undefined ? value : date;
 
   // Parse string date (YYYY-MM-DD or ISO) into Date object
   const selectedDate = React.useMemo(() => {
-    if (!value) return undefined;
-    if (value instanceof Date) return isValid(value) ? value : undefined;
-    if (typeof value === "string") {
+    if (!effectiveValue) return undefined;
+    if (effectiveValue instanceof Date) return isValid(effectiveValue) ? effectiveValue : undefined;
+    if (typeof effectiveValue === "string") {
       // Handle YYYY-MM-DD or DD-MM-YYYY
-      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        const parsed = parseISO(value);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(effectiveValue)) {
+        const parsed = parseISO(effectiveValue);
         return isValid(parsed) ? parsed : undefined;
       }
-      const dmy = value.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+      const dmy = effectiveValue.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
       if (dmy) {
         const [, d, m, y] = dmy;
         const parsed = new Date(Number(y), Number(m) - 1, Number(d));
         return isValid(parsed) ? parsed : undefined;
       }
-      const parsed = new Date(value);
+      const parsed = new Date(effectiveValue);
       return isValid(parsed) ? parsed : undefined;
     }
     return undefined;
-  }, [value]);
+  }, [effectiveValue]);
 
-  const handleSelect = (date: Date | undefined) => {
-    if (!date) {
+  const handleSelect = (selected: Date | undefined) => {
+    if (!selected) {
       onChange?.("");
+      onDateChange?.(undefined);
       setOpen(false);
       return;
     }
-    const formatted = format(date, "yyyy-MM-dd");
+    const formatted = format(selected, "yyyy-MM-dd");
     onChange?.(formatted);
+    onDateChange?.(selected);
     setOpen(false);
   };
 
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
     onChange?.("");
+    onDateChange?.(undefined);
   };
 
   return (

@@ -3,8 +3,7 @@ import { destinationDisambiguationService } from "../services/places/destination
 import { orchestratorService } from "../services/ai/orchestrator/orchestrator.service.js";
 import { budgetIntelligenceAgent } from "../services/ai/orchestrator/budget-intelligence.agent.js";
 import { accommodationAgent } from "../services/ai/orchestrator/accommodation.agent.js";
-import { railcoreProvider } from "../services/ai/providers/railcore.provider.js";
-import { ntesLiveTrackingService } from "../services/travel/ntes-live.service.js";
+import { transportResearchService } from "../services/travel/transport-research.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 export const generate = asyncHandler(async (req, res) => {
@@ -52,8 +51,28 @@ export const risk = asyncHandler(async (req, res) => {
 });
 
 export const estimateBudget = asyncHandler(async (req, res) => {
-  const { destination, startDate, endDate, travelers } = req.query;
-  const result = await aiService.estimateBudget({ destination, startDate, endDate, travelers });
+  const {
+    destination,
+    startDate,
+    endDate,
+    travelers,
+    accommodation,
+    travelMode,
+    transportCost,
+    stayCost,
+    origin,
+  } = req.query;
+  const result = await aiService.estimateBudget({
+    destination,
+    startDate,
+    endDate,
+    travelers,
+    accommodation,
+    travelMode,
+    transportCost,
+    stayCost,
+    origin,
+  });
   res.json(result);
 });
 
@@ -108,59 +127,27 @@ export const orchestratedResearch = asyncHandler(async (req, res) => {
   res.json(result);
 });
 
-export const searchTrains = asyncHandler(async (req, res) => {
+export const researchTransport = asyncHandler(async (req, res) => {
   const origin = req.query.origin || req.body?.origin;
   const destination = req.query.destination || req.body?.destination;
   const date = req.query.date || req.body?.date;
-  const passengers = Number(req.query.passengers || req.body?.passengers) || 1;
-  const preferredClass = req.query.preferredClass || req.body?.preferredClass || "3A";
-  const quota = req.query.quota || req.body?.quota || "GN";
+  const travelers = Number(req.query.travelers || req.query.passengers || req.body?.travelers) || 1;
+  const preferredMode = req.query.preferredMode || req.body?.preferredMode;
 
-  if (!origin || !destination) {
+  if (!destination) {
     return res.status(400).json({
       success: false,
-      error: "Both origin and destination are required for train search.",
+      error: "Destination is required for transport research.",
     });
   }
 
-  const result = await railcoreProvider.resolveRailwayRoute({
+  const result = await transportResearchService.researchAllModes({
     origin,
     destination,
-    journeyDate: date,
-    passengers,
-    preferredClass,
-    quota,
+    travelDate: date,
+    travelers,
+    preferredMode,
   });
 
-  res.json(result);
-});
-
-export const trackLiveTrain = asyncHandler(async (req, res) => {
-  const { trainNumber } = req.params;
-  const date = req.query.date || req.body?.date;
-
-  if (!trainNumber) {
-    return res.status(400).json({
-      success: false,
-      error: "trainNumber parameter is required.",
-    });
-  }
-
-  const liveData = await ntesLiveTrackingService.trackLiveTrain(trainNumber, date);
-  res.json(liveData);
-});
-
-export const searchStations = asyncHandler(async (req, res) => {
-  const query = req.query.q || req.query.query || "";
-  const limit = Math.min(25, Math.max(1, Number(req.query.limit) || 10));
-  if (!query || String(query).trim().length < 1) {
-    return res.json({ success: true, count: 0, results: [] });
-  }
-
-  const results = await railcoreProvider.searchStations(String(query).trim());
-  res.json({
-    success: true,
-    count: results.length,
-    results: results.slice(0, limit),
-  });
+  res.json({ success: true, ...result });
 });

@@ -16,6 +16,7 @@ import {
   Play,
   Globe,
   MessageCircle,
+  Check,
 } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
@@ -359,7 +360,7 @@ function Landing() {
                 "Decision Engine",
                 "What-If Simulator",
                 "AI Risk Radar",
-                "Memory Timeline",
+                "Travel Intelligence",
                 "Smart Packing",
                 "Trip Twin",
               ].map((n) => (
@@ -703,7 +704,7 @@ function Landing() {
                   {p.features.map((f) => (
                     <li key={f} className="flex items-center gap-2">
                       <span className="grid h-4 w-4 place-items-center rounded-full bg-accent/20 text-accent">
-                        ✓
+                        <Check className="h-2.5 w-2.5" />
                       </span>
                       {f}
                     </li>

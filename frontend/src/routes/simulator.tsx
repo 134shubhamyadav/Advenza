@@ -98,9 +98,9 @@ const MarkdownRenderer = memo(function MarkdownRenderer({ content }: { content: 
       // Bold-only line → treat as a section label
       flush(idx);
       elements.push(<p key={idx} className="font-semibold mt-3 mb-1 text-foreground text-sm" dangerouslySetInnerHTML={{ __html: inline(t) }} />);
-    } else if (t.startsWith("- ") || t.startsWith("* ") || t.startsWith("✅") || t.startsWith("💰") || t.startsWith("⏱")) {
-      // Treat emoji bullets and standard list items identically
-      const cleaned = t.startsWith("- ") || t.startsWith("* ") ? t.slice(2) : t;
+    } else if (t.startsWith("- ") || t.startsWith("* ")) {
+      // Standard markdown list items
+      const cleaned = t.slice(2);
       listItems.push(cleaned);
     } else {
       flush(idx);
@@ -226,7 +226,7 @@ function PlanBChatPage() {
         {
           id: "welcome",
           role: "assistant",
-          content: `Hey! I'm your **Plan B assistant** for **${selectedTrip.title}** ✈️\n\nIf anything goes sideways during your trip to **${selectedTrip.destination || "your destination"}**, just tell me what happened in plain language — like texting a friend who knows the place.\n\nFor example:\n- *Our train is delayed by 2 hours*\n- *We missed Charminar this morning*\n- *It started raining heavily*\n- *The museum is closed today*\n- *We're too tired to carry on*\n\nI'll figure out the best recovery plan for you.`,
+          content: `Hey! I'm your **Plan B assistant** for **${selectedTrip.title}**.\n\nIf anything goes sideways during your trip to **${selectedTrip.destination || "your destination"}**, just tell me what happened in plain language — like texting a friend who knows the place.\n\nFor example:\n- *Our train is delayed by 2 hours*\n- *We missed Charminar this morning*\n- *It started raining heavily*\n- *The museum is closed today*\n- *We're too tired to carry on*\n\nI'll figure out the best recovery plan for you.`,
           timestamp: new Date(),
         },
       ]);
@@ -242,7 +242,7 @@ function PlanBChatPage() {
       {
         id: "welcome",
         role: "assistant",
-        content: `Hey! I'm your **Plan B assistant** for **${trip.title}** ✈️\n\nIf anything goes sideways during your trip to **${trip.destination || "your destination"}**, just tell me what happened in plain language — like texting a friend who knows the place.\n\nFor example:\n- *Our train is delayed by 2 hours*\n- *We missed Charminar this morning*\n- *It started raining heavily*\n- *The museum is closed today*\n- *We're too tired to carry on*\n\nI'll figure out the best recovery plan for you.`,
+        content: `Hey! I'm your **Plan B assistant** for **${trip.title}**.\n\nIf anything goes sideways during your trip to **${trip.destination || "your destination"}**, just tell me what happened in plain language — like texting a friend who knows the place.\n\nFor example:\n- *Our train is delayed by 2 hours*\n- *We missed Charminar this morning*\n- *It started raining heavily*\n- *The museum is closed today*\n- *We're too tired to carry on*\n\nI'll figure out the best recovery plan for you.`,
         timestamp: new Date(),
       },
     ]);
@@ -328,7 +328,7 @@ function PlanBChatPage() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: `✅ Done! I've updated ${affected} in your itinerary. All other days are untouched. Head over to your **Itinerary** page to see the full updated plan.`,
+          content: `Done! I've updated ${affected} in your itinerary. All other days are untouched. Head over to your **Itinerary** page to see the full updated plan.`,
           timestamp: new Date(),
         },
       ]);

@@ -839,8 +839,29 @@ Return valid JSON with the "trains" array.`
           };
         }
 
+        const meta = localRailwayService.getTrainMetadata(t.trainNumber);
+        const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const dayKeyMap = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+        let runsOnDate = t.runsOnDate !== undefined ? t.runsOnDate : true;
+        let journeyDayName = t.journeyDayName || "";
+        if (dateStr) {
+          const jDate = new Date(dateStr);
+          if (!isNaN(jDate.getTime())) {
+            const dayIdx = jDate.getDay();
+            journeyDayName = dayNames[dayIdx];
+            const dayKey = dayKeyMap[dayIdx];
+            if (meta?.runningDaysMap) {
+              runsOnDate = Boolean(meta.runningDaysMap[dayKey]);
+            }
+          }
+        }
+
         return {
           ...t,
+          runningDays: t.runningDays || meta?.runningDays || "Daily",
+          runningDaysMap: t.runningDaysMap || meta?.runningDaysMap || null,
+          runsOnDate,
+          journeyDayName,
           fares,
           seatAvailability: availability,
           selectedClass: targetClass,

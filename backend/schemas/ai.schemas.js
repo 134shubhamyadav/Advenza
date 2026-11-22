@@ -132,6 +132,11 @@ export const estimateBudgetInputSchema = z.object({
   startDate: z.string().trim().min(1, "startDate is required"),
   endDate: z.string().trim().min(1, "endDate is required"),
   travelers: z.coerce.number().min(1).default(1),
+  accommodation: z.string().optional(),
+  travelMode: z.string().optional(),
+  transportCost: z.coerce.number().optional(),
+  stayCost: z.coerce.number().optional(),
+  origin: z.string().optional(),
 });
 
 export const destinationOverviewInputSchema = z

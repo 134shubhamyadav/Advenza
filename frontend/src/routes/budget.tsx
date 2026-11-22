@@ -33,6 +33,7 @@ import {
   RefreshCw,
   Loader2,
   Plane,
+  Lightbulb,
   Building2,
   Utensils,
   Ticket,
@@ -678,8 +679,9 @@ function BudgetDashboard() {
                 <div className="rounded-xl border border-border bg-background/80 p-4">
                   <p className="text-sm font-semibold text-foreground">{aiInsights.summary}</p>
                   {aiInsights.dailyPacingAdvice && (
-                    <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                      💡 {aiInsights.dailyPacingAdvice}
+                    <p className="text-xs text-muted-foreground mt-2 leading-relaxed flex items-start gap-1.5">
+                      <Lightbulb className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                      <span>{aiInsights.dailyPacingAdvice}</span>
                     </p>
                   )}
                 </div>

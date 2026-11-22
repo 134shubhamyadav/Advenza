@@ -1,6 +1,5 @@
 import Trip from "../models/Trip.js";
 import Expense from "../models/Expense.js";
-import Memory from "../models/Memory.js";
 import Invitation from "../models/Invitation.js";
 import { logger } from "../utils/logger.js";
 import { budgetService } from "../services/budget/budget.service.js";
@@ -201,14 +200,8 @@ export const deleteTrip = asyncHandler(async (req, res) => {
   const trip = await Trip.findOneAndDelete({ _id: req.params.id, createdBy: req.uid });
   if (!trip) throw new NotFoundError("Trip not found or unauthorized");
 
-  // Cascade cleanup: delete expenses and soft-delete/archive associated memories
-  await Promise.all([
-    Expense.deleteMany({ tripId: req.params.id }),
-    Memory.updateMany(
-      { tripId: req.params.id },
-      { $set: { isDeleted: true, status: "deleted", deletedAt: new Date() } }
-    ),
-  ]);
+  // Cascade cleanup: delete associated expenses
+  await Expense.deleteMany({ tripId: req.params.id });
 
   res.json({ message: "Trip and associated resources deleted" });
 });

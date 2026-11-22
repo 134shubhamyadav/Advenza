@@ -45,6 +45,72 @@ const getTripCardImage = (trip: TripSummary): string => {
   return FALLBACK_TRAVEL_IMAGE;
 };
 
+const calculateTripProgress = (trip: any): number => {
+  let score = 0;
+
+  // 1. Destination & travel window specified (20%)
+  if (trip.destination && (trip.startDate || trip.duration)) {
+    score += 20;
+  } else if (trip.destination) {
+    score += 10;
+  }
+
+  // 2. Day-by-day Itinerary & activities planned (30%)
+  const days = Array.isArray(trip.days) ? trip.days : [];
+  const totalActivities = days.reduce(
+    (sum: number, d: any) => sum + (Array.isArray(d?.activities) ? d.activities.length : 0),
+    0
+  );
+  if (days.length > 0) {
+    score += totalActivities >= days.length * 2 ? 30 : 15;
+  }
+
+  // 3. Accommodation / stay resolved (15%)
+  const isFreeStay =
+    trip.accommodation === "OWN_HOME" ||
+    trip.accommodation === "NATIVE_HOME" ||
+    trip.accommodation === "RELATIVES_HOME" ||
+    trip.isFreeAccommodation === true;
+  if (trip.hotelName || trip.hotelLocation || trip.accommodation || trip.accommodationType || isFreeStay) {
+    score += 15;
+  }
+
+  // 4. Transit / travel route configured (15%)
+  if (
+    trip.outboundJourney?.transitRef ||
+    trip.outboundJourney?.departureTime ||
+    trip.transitRef ||
+    trip.travelMode ||
+    (Array.isArray(trip.transport) && trip.transport.length > 0)
+  ) {
+    score += 15;
+  }
+
+  // 5. Budget or tracked expenses (10%)
+  if (Number(trip.budgetTotal) > 0 || trip.budgetEstimate || Number(trip.budget) > 0 || (Array.isArray(trip.expenses) && trip.expenses.length > 0)) {
+    score += 10;
+  }
+
+  // 6. Traveler configuration or group collaboration (10%)
+  const travelerCount = Number(trip.travelers) || 1;
+  const memberCount = Array.isArray(trip.members) ? trip.members.length : 1;
+  const hasActiveVotes = Array.isArray(trip.voteOptions) && trip.voteOptions.some((o: any) => Array.isArray(o.voters) && o.voters.length > 0);
+  const isSoloTrip = travelerCount === 1 && memberCount <= 1;
+
+  if (isSoloTrip) {
+    // Solo trips do not require group voting and are 100% complete in party configuration
+    score += 10;
+  } else if (memberCount > 1 || hasActiveVotes || (Array.isArray(trip.expenses) && trip.expenses.length > 0)) {
+    // Group trips with multiple members, active consensus votes, or shared expenses
+    score += 10;
+  } else {
+    // Group trip configured for >1 travelers but awaiting members
+    score += 5;
+  }
+
+  return Math.min(100, Math.max(5, score));
+};
+
 function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -228,13 +294,20 @@ function Dashboard() {
                       </p>
                     </div>
                     <div className="mt-4 pt-2 border-t border-border/40">
-                      <div className="mb-1.5 flex justify-between text-xs">
-                        <span className="text-muted-foreground">Planning progress</span>
-                        <span className="font-medium">
-                          {t.expenses?.length > 0 ? "80%" : "40%"}
-                        </span>
-                      </div>
-                      <Progress value={t.expenses?.length > 0 ? 80 : 40} className="h-1.5" />
+                      {(() => {
+                        const progressPct = calculateTripProgress(t);
+                        return (
+                          <>
+                            <div className="mb-1.5 flex justify-between text-xs">
+                              <span className="text-muted-foreground">Planning progress</span>
+                              <span className="font-semibold text-foreground">
+                                {progressPct}%
+                              </span>
+                            </div>
+                            <Progress value={progressPct} className="h-1.5" />
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

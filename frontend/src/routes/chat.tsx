@@ -14,7 +14,8 @@ import {
   ExternalLink, 
   Navigation,
   Compass,
-  ArrowRight
+  ArrowRight,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
@@ -272,8 +273,9 @@ function Chat() {
               )}
 
               {conversationState.accommodation?.name && (
-                <Badge variant="outline" className="gap-1 font-normal border-blue-500/30 text-blue-600 dark:text-blue-400 text-[11px]">
-                  🏨 {conversationState.accommodation.name}
+                <Badge variant="outline" className="gap-1 font-normal border-blue-500/30 text-blue-600 dark:text-blue-400 text-[11px] flex items-center">
+                  <Building2 className="h-3 w-3 inline" />
+                  <span>{conversationState.accommodation.name}</span>
                 </Badge>
               )}
             </div>

@@ -48,29 +48,6 @@ export const commanderLimiter = rateLimit({
   },
 });
 
-export const collageLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Max 20 collage operations per 15 minutes
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    error: "Collage generation rate limit reached. Please wait a few minutes before creating more collages.",
-    code: "COLLAGE_RATE_LIMIT",
-  },
-});
-
-export const reelLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Max 10 reel generation operations per 15 minutes
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    error: "Reel generation rate limit reached. Video rendering is CPU-intensive. Please wait a few minutes before rendering another reel.",
-    code: "REEL_RATE_LIMIT",
-  },
-});
 
 export const travelSearchLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute

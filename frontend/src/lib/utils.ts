@@ -110,13 +110,32 @@ export function formatDurationMinutes(minutes?: number | null): string {
  * Returns formatted status badge config for a duration source or status
  */
 export function getDurationStatusBadge(status?: string, source?: string, booked?: boolean): { label: string; variant: "confirmed" | "estimated" | "unavailable" } {
-  if (booked || status === "CONFIRMED" || source === "USER_SPECIFIED") {
-    return { label: "✓ Confirmed", variant: "confirmed" };
+  if (booked || status === "CONFIRMED" || source === "USER_SPECIFIED" || source === "SCHEDULED") {
+    return { label: "Confirmed", variant: "confirmed" };
   }
-  if (status === "ESTIMATED" || source === "CALCULATED_MAPS" || source === "SCHEDULED" || source === "ESTIMATED_HAVERSINE") {
-    return { label: "≈ Estimated", variant: "estimated" };
+  if (status === "ESTIMATED" || source === "CALCULATED_MAPS" || source === "ESTIMATED_HAVERSINE") {
+    return { label: "Estimated", variant: "estimated" };
   }
-  return { label: "— Timing unavailable", variant: "unavailable" };
+  return { label: "Estimated", variant: "estimated" };
+}
+
+/**
+ * Checks whether a journey leg has concrete user-specified or confirmed transit details
+ * (such as departure/arrival time, transit reference/number, ticket, or confirmed booking)
+ */
+export function hasConcreteTransitDetails(leg?: any, fallbackTime?: string, fallbackRef?: string): boolean {
+  if (!leg && !fallbackTime && !fallbackRef) return false;
+  return Boolean(
+    leg?.booked ||
+    leg?.transitRef ||
+    fallbackRef ||
+    leg?.departureTime ||
+    fallbackTime ||
+    leg?.arrivalTime ||
+    leg?.ticketRef ||
+    leg?.durationSource === "USER_SPECIFIED" ||
+    (leg?.status === "CONFIRMED" && leg?.durationMinutes)
+  );
 }
 
 /**

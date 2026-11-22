@@ -222,7 +222,7 @@ export class RailwayTimelineService {
     }
 
     // ── 2. If Train Number is Not Known: Search Direct Trains on Corridor ───
-    const hasExplicitSchedule = !trainNumber && fallbackDurationMinutes && userDepTime;
+    const hasExplicitSchedule = !trainNumber && (fallbackDurationMinutes || (userDepTime && userArrTime && targetArrivalDate));
     if (!hasExplicitSchedule && !trainInfo && fromCode && toCode) {
       try {
         let availableTrains = [];
@@ -271,8 +271,17 @@ export class RailwayTimelineService {
           }
           trainNumber = selectedTrainHeader.trainNumber;
 
-          // Fetch full station route
-          trainInfo = await railkitProvider.getTrainInfo(trainNumber);
+          // Fetch full station route via RailKit or Local DB
+          try {
+            trainInfo = await railkitProvider.getTrainInfo(trainNumber);
+          } catch {}
+          if (!trainInfo || !trainInfo.route || trainInfo.route.length === 0) {
+            try {
+              trainInfo = localRailwayService.getTrainSchedule(trainNumber);
+            } catch (localErr) {
+              logger.warn(`[RailwayTimelineService] localRailwayService schedule error: ${localErr.message}`);
+            }
+          }
         }
       } catch (searchErr) {
         logger.warn(`[RailwayTimelineService] Corridor search error: ${searchErr.message}`);
@@ -309,6 +318,31 @@ export class RailwayTimelineService {
     });
   }
 
+  _resolveTrainRunningMeta(trainNumber, journeyDate) {
+    const meta = localRailwayService.getTrainMetadata(trainNumber);
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const dayKeyMap = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+    let runsOnDate = true;
+    let journeyDayName = "";
+    if (journeyDate) {
+      const jDate = new Date(journeyDate);
+      if (!isNaN(jDate.getTime())) {
+        const dayIdx = jDate.getDay();
+        journeyDayName = dayNames[dayIdx];
+        const dayKey = dayKeyMap[dayIdx];
+        if (meta?.runningDaysMap) {
+          runsOnDate = Boolean(meta.runningDaysMap[dayKey]);
+        }
+      }
+    }
+    return {
+      runningDays: meta?.runningDays || "Daily",
+      runningDaysMap: meta?.runningDaysMap || null,
+      runsOnDate,
+      journeyDayName,
+    };
+  }
+
   /**
    * Build complete timeline from verified RailKit route data.
    */
@@ -328,24 +362,77 @@ export class RailwayTimelineService {
       const fromClusters = localRailwayService.getStationCluster(fromCode).map((c) => c.toUpperCase());
       boardingIdx = route.findIndex((st) => fromClusters.includes(st.stnCode.toUpperCase()));
     }
-
-    // 3. Destination station match (must appear after boarding index)
-    const minDestIdx = boardingIdx !== -1 ? boardingIdx + 1 : 0;
-    if (toCode) {
-      destinationIdx = route.findIndex((st, i) => i >= minDestIdx && st.stnCode.toUpperCase() === toCode.toUpperCase());
+    // 3. Nearby junction fallback for origin (e.g. Baramati -> Daund, Pune)
+    if (boardingIdx === -1 && fromCode) {
+      const fromStn = localRailwayService.resolveStation(fromCode);
+      if (fromStn?.lat && fromStn?.lon) {
+        const junctions = localRailwayService.findNearbyJunctions(fromStn.lat, fromStn.lon, 95);
+        for (const junc of junctions) {
+          const idx = route.findIndex((st) => st.stnCode.toUpperCase() === junc.code.toUpperCase());
+          if (idx !== -1) {
+            boardingIdx = idx;
+            break;
+          }
+        }
+      }
     }
-    // 4. Cluster fallback for destination (e.g. Kochi -> ERS, ERN, AWY)
+
+    // 4. Destination station match
+    if (toCode) {
+      destinationIdx = route.findIndex((st, i) => (boardingIdx === -1 || i > boardingIdx) && st.stnCode.toUpperCase() === toCode.toUpperCase());
+    }
+    // 5. Cluster fallback for destination (e.g. Kochi -> ERS, ERN, AWY)
     if (destinationIdx === -1 && toCode) {
       const toClusters = localRailwayService.getStationCluster(toCode).map((c) => c.toUpperCase());
-      destinationIdx = route.findIndex((st, i) => i >= minDestIdx && toClusters.includes(st.stnCode.toUpperCase()));
+      destinationIdx = route.findIndex((st, i) => (boardingIdx === -1 || i > boardingIdx) && toClusters.includes(st.stnCode.toUpperCase()));
+    }
+    // 6. Nearby junction fallback for destination
+    if (destinationIdx === -1 && toCode) {
+      const toStn = localRailwayService.resolveStation(toCode);
+      if (toStn?.lat && toStn?.lon) {
+        const junctions = localRailwayService.findNearbyJunctions(toStn.lat, toStn.lon, 95);
+        for (const junc of junctions) {
+          const idx = route.findIndex((st, i) => (boardingIdx === -1 || i > boardingIdx) && st.stnCode.toUpperCase() === junc.code.toUpperCase());
+          if (idx !== -1) {
+            destinationIdx = idx;
+            break;
+          }
+        }
+      }
     }
 
-    // Default to first and last station if not found
-    if (boardingIdx === -1) boardingIdx = 0;
-    if (destinationIdx === -1 || destinationIdx <= boardingIdx) destinationIdx = route.length - 1;
+    // Strict forward-sequence validation: boarding station must precede destination station
+    if (boardingIdx === -1 || destinationIdx === -1 || boardingIdx >= destinationIdx) {
+      logger.warn(`[RailwayTimelineService] Train ${trainInfo.trainNumber || ""} does not connect ${fromCode} (idx: ${boardingIdx}) to ${toCode} (idx: ${destinationIdx}) in forward sequence`);
 
-    const boardingStation = route[boardingIdx];
-    const destinationStation = route[destinationIdx];
+      const connectingData = localRailwayService.findNearbyConnectingRoutes({
+        from: fromCode,
+        to: toCode,
+        date: journeyDate,
+      });
+
+      const connectingSuggestions = connectingData?.suggestions || [];
+      return {
+        status: connectingSuggestions.length > 0 ? "CONNECTING_SERVICE_REQUIRED" : "UNAVAILABLE",
+        canBoard: false,
+        isDirect: false,
+        trainNumber: trainInfo.trainNumber,
+        trainName: trainInfo.trainName,
+        fromStation: this.resolveStationDetails(fromCode),
+        toStation: this.resolveStationDetails(toCode),
+        reason: `Train ${trainInfo.trainNumber} (${trainInfo.trainName || "Express"}) does not connect ${fromCode} to ${toCode} in the forward travel direction. A connecting rail transfer is required.`,
+        suggestedConnectingRoutes: connectingSuggestions,
+        stops: [],
+        intermediateStoppages: [],
+        dataClassification: "UNAVAILABLE",
+      };
+    }
+
+    // Extract authentic, verified sequential segment
+    const segmentRaw = route.slice(boardingIdx, destinationIdx + 1);
+
+    const boardingStation = segmentRaw[0];
+    const destinationStation = segmentRaw[segmentRaw.length - 1];
 
     // Station Railway Day fields (Day 1, Day 2, Day 3...)
     const boardingDay = Number(boardingStation.day) || 1;
@@ -371,7 +458,6 @@ export class RailwayTimelineService {
     if (depDateTime && arrDateTime) {
       totalDurationMinutes = Math.round((arrDateTime.getTime() - depDateTime.getTime()) / 60000);
       if (totalDurationMinutes < 0) {
-        // If times caused negative duration, add days
         totalDurationMinutes += 24 * 60;
       }
     } else {
@@ -379,7 +465,7 @@ export class RailwayTimelineService {
     }
 
     // Intermediate stops between boarding and destination (inclusive)
-    const segmentStops = route.slice(boardingIdx, destinationIdx + 1).map((st, idx) => {
+    const segmentStops = segmentRaw.map((st, idx) => {
       const stDay = Number(st.day) || boardingDay;
       const stDayOffset = Math.max(0, stDay - boardingDay);
       const stCalendarDate = this._addDays(journeyDate, stDayOffset);
@@ -470,12 +556,23 @@ export class RailwayTimelineService {
       ? new Date(depDateTime.getTime() + (liveTracking?.depDelayMinutes || 0) * 60000).toISOString()
       : "";
 
+    const runningMeta = this._resolveTrainRunningMeta(trainInfo.trainNumber, departureDate);
+    const runsOnRequestedDate = runningMeta.runsOnDate;
+
     return {
+      status: liveTracking?.isLive ? "LIVE_TRACKING" : runsOnRequestedDate ? "SCHEDULED_VERIFIED" : "NOT_RUNNING_ON_DATE",
+      canBoard: runsOnRequestedDate !== false,
+      isDirect: true,
+      reason: runsOnRequestedDate === false ? `Train ${trainInfo.trainNumber} does not run on ${runningMeta.journeyDayName}s (${runningMeta.runningDays}).` : null,
       trainNumber: trainInfo.trainNumber,
       trainName: trainInfo.trainName,
       trainNameHindi: trainInfo.trainNameHindi || "",
       trainType: trainInfo.type || "SUPERFAST_EXPRESS",
       direction,
+      runningDays: runningMeta.runningDays,
+      runningDaysMap: runningMeta.runningDaysMap,
+      runsOnDate: runningMeta.runsOnDate,
+      journeyDayName: runningMeta.journeyDayName,
       fromStation: {
         code: boardingStation.stnCode,
         name: boardingStation.stnName,
@@ -511,6 +608,7 @@ export class RailwayTimelineService {
       isOvernight: dayCrossings > 0 || (depDateTime && arrDateTime && depDateTime.getUTCDate() !== arrDateTime.getUTCDate()),
       stoppagesCount: segmentStops.length,
       stops: segmentStops,
+      intermediateStoppages: segmentStops.length > 2 ? segmentStops.slice(1, -1) : [],
       transitDays,
       arrivalWindow,
       liveTracking,
@@ -676,12 +774,59 @@ export class RailwayTimelineService {
 
     const arrivalWindow = this._calculateArrivalDayUsableWindow(arrDateTime, 0);
 
+    // Enrich with authentic intermediate stops from local database
+    let stopsData = null;
+    if (trainNumber) {
+      try {
+        const localSched = localRailwayService.getTrainSchedule(trainNumber);
+        if (localSched?.route && localSched.route.length >= 2) {
+          const r = localSched.route;
+          stopsData = r.map((st, idx) => {
+            const stDay = Number(st.day) || 1;
+            const stDayOffset = Math.max(0, stDay - 1);
+            const stCalendarDate = this._addDays(departureDate, stDayOffset);
+            return {
+              sequence: idx + 1,
+              stationCode: st.stnCode,
+              stationName: st.stnName,
+              scheduledArrival: st.arrival,
+              scheduledDeparture: st.departure,
+              haltDuration: st.halt || "2 min",
+              haltMinutes: st.haltMinutes || 2,
+              distanceFromOriginKm: st.distanceKm || 0,
+              railwayDay: stDay,
+              calendarDate: stCalendarDate,
+              isBoarding: idx === 0,
+              isDestination: idx === r.length - 1,
+            };
+          });
+        }
+      } catch (e) {
+        logger.warn(`[RailwayTimelineService] Fallback stops lookup note: ${e.message}`);
+      }
+    }
+
+    if (!stopsData || stopsData.length < 2) {
+      // Do not fabricate fake intermediate stations (INT-1, INT-2)
+      stopsData = [];
+    }
+
+    const runningMeta = this._resolveTrainRunningMeta(trainNumber, departureDate);
+
     return {
+      status: runningMeta.runsOnDate ? "SCHEDULED_VERIFIED" : "NOT_RUNNING_ON_DATE",
+      canBoard: runningMeta.runsOnDate !== false,
+      isDirect: true,
+      reason: runningMeta.runsOnDate === false ? `Train ${trainNumber} does not operate on ${runningMeta.journeyDayName}s (${runningMeta.runningDays}).` : null,
       trainNumber,
       trainName,
       trainNameHindi: "",
       trainType: "SUPERFAST_EXPRESS",
       direction,
+      runningDays: runningMeta.runningDays,
+      runningDaysMap: runningMeta.runningDaysMap,
+      runsOnDate: runningMeta.runsOnDate,
+      journeyDayName: runningMeta.journeyDayName,
       fromStation: {
         code: fromStation.code,
         name: fromStation.name,
@@ -709,29 +854,11 @@ export class RailwayTimelineService {
       totalJourneyDays: dayCrossings + 1,
       dayCrossings,
       isOvernight: dayCrossings > 0,
-      stoppagesCount: 2,
-      stops: [
-        {
-          sequence: 1,
-          stationCode: fromStation.code,
-          stationName: fromStation.name,
-          scheduledDeparture: depTime,
-          railwayDay: 1,
-          calendarDate: departureDate,
-          isBoarding: true,
-          isDestination: false,
-        },
-        {
-          sequence: 2,
-          stationCode: toStation.code,
-          stationName: toStation.name,
-          scheduledArrival: arrTime,
-          railwayDay: dayCrossings + 1,
-          calendarDate: arrivalDate,
-          isBoarding: false,
-          isDestination: true,
-        },
-      ],
+      stoppagesCount: (() => {
+        return stopsData.length;
+      })(),
+      stops: stopsData,
+      intermediateStoppages: stopsData.length > 2 ? stopsData.slice(1, -1) : [],
       transitDays,
       arrivalWindow,
       liveTracking: {

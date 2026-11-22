@@ -240,10 +240,12 @@ function Group() {
                   <Button className="h-11" onClick={handleInvite} disabled={saving}>
                     {saving ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                    ) : inviteSent ? (
+                      <Check className="mr-1.5 h-4 w-4 text-emerald-400" />
                     ) : (
                       <UserPlus className="mr-1.5 h-4 w-4" />
                     )}
-                    {inviteSent ? "Invite sent! ✓" : "Invite"}
+                    {inviteSent ? "Invite sent!" : "Invite"}
                   </Button>
                 </div>
 

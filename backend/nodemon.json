@@ -1,0 +1,10 @@
+{
+  "verbose": false,
+  "ignore": [
+    "scripts/*",
+    "scratch/*",
+    "data/*",
+    "*.test.js",
+    "*.sql"
+  ]
+}

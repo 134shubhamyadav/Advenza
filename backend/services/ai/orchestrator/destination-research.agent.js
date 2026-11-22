@@ -63,9 +63,11 @@ const CACHE_TTL = 2 * 60 * 60 * 1000;
 
 async function fetchOpenStreetPOIs(destination) {
   try {
+    const rawStr = String(destination || "").trim();
+    const cleanCity = rawStr.split(",")[0].trim() || rawStr;
     const [restRes, attrRes, mktRes] = await Promise.allSettled([
       apiClient.request(
-        `https://nominatim.openstreetmap.org/search?format=json&q=restaurant+in+${encodeURIComponent(destination)}&limit=4`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=restaurant+in+${encodeURIComponent(cleanCity)}&limit=4`,
         {
           provider: "NominatimRestaurants",
           timeoutMs: 4000,
@@ -73,7 +75,7 @@ async function fetchOpenStreetPOIs(destination) {
         }
       ),
       apiClient.request(
-        `https://nominatim.openstreetmap.org/search?format=json&q=attraction+in+${encodeURIComponent(destination)}&limit=4`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=attraction+in+${encodeURIComponent(cleanCity)}&limit=4`,
         {
           provider: "NominatimAttractions",
           timeoutMs: 4000,
@@ -81,7 +83,7 @@ async function fetchOpenStreetPOIs(destination) {
         }
       ),
       apiClient.request(
-        `https://nominatim.openstreetmap.org/search?format=json&q=market+in+${encodeURIComponent(destination)}&limit=2`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=market+in+${encodeURIComponent(cleanCity)}&limit=2`,
         {
           provider: "NominatimMarkets",
           timeoutMs: 4000,
@@ -154,9 +156,9 @@ Conduct thorough, factual, and verified travel research for the actual requested
 User interests: ${interestStr}. Number of travelers: ${travelers}.
 ${osmGroundTruth}
 
-CRITICAL ANTI-HALLUCINATION RULES:
-1. Research ONLY the actual destination "${rawDest}". Never substitute unrelated cities or default to another country/region.
-2. Provide authentic, real-world attractions and locations that genuinely exist in "${rawDest}".
+CRITICAL ANTI-HALLUCINATION & CANONICAL RESOLUTION RULES:
+1. Research the requested destination "${rawDest}". If "${rawDest}" is a minor spelling typo, phonetic transliteration, or historical/colonial name of an established destination (such as "Jaiselmer" for "Jaisalmer", "Banglore" for "Bengaluru", "Benares" or "Banaras" for "Varanasi", "Pondy" for "Puducherry", "Cochin" for "Kochi", "Baroda" for "Vadodara", "Trivandrum" for "Thiruvananthapuram", "Calicut" for "Kozhikode"), resolve it to that intended canonical destination and provide verified real-world attractions and details for that destination. If the query is a fictional, synthetic, unresolvable, or non-existent location (e.g. containing random alphanumeric suffixes or nonsense terms like "ZanskarHighMountainPass99"), do NOT invent or substitute places — return empty arrays for popularAttractions and hiddenGems. Never substitute completely unrelated places (e.g. do not substitute Paris for Mumbai).
+2. Provide authentic, real-world attractions and locations that genuinely exist in this destination.
 3. Provide realistic visiting durations, approximate GPS coordinates, and opening hours.
 4. Distinguish famous Popular Attractions from authentic, verified Hidden Gems (lesser-known local spots with distinct character).
 5. Highlight authentic local dining establishments and iconic regional dishes.

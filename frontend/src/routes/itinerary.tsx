@@ -31,6 +31,13 @@ import {
   CheckCircle2,
   HelpCircle,
   ExternalLink,
+  Home,
+  AlertTriangle,
+  PlaneTakeoff,
+  PlaneLanding,
+  Footprints,
+  Search,
+  Sun,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -39,10 +46,10 @@ import {
   inr, 
   formatDurationMinutes, 
   getDurationStatusBadge,
-  calculateInclusiveDays
+  calculateInclusiveDays,
+  hasConcreteTransitDetails
 } from "@/lib/utils";
 import { BudgetEstimateCard } from "@/components/budget/budget-estimate-card";
-import { RailwayTimelineCard } from "@/components/travel/railway-timeline-card";
 import type { TripSummary, DayTimingWindow, JourneyLeg } from "@/services/tripService";
 import { toast } from "sonner";
 import {
@@ -175,6 +182,7 @@ function getDayTimingBadgeConfig(window?: DayTimingWindow, dayNumber?: number) {
   if (!window || !window.status) {
     return {
       label: "Full Exploration Day",
+      icon: Sun,
       variant: "default",
       hours: null,
       description: "Exploration day",
@@ -189,35 +197,40 @@ function getDayTimingBadgeConfig(window?: DayTimingWindow, dayNumber?: number) {
   switch (status) {
     case "TRAVEL_OUTBOUND":
       return {
-        label: "🚆 Outbound Travel",
+        label: "Outbound Travel",
+        icon: Train,
         variant: "amber",
         hours: "0h sightseeing",
         description: "Travel consumes this day · No destination activities",
       };
     case "ARRIVAL_DAY":
       return {
-        label: "🛬 Arrival & Settling",
+        label: "Arrival & Settling",
+        icon: PlaneLanding,
         variant: "blue",
         hours: hrs ? `${hrs} usable` : "",
         description: startTime ? `Exploration starts ~${startTime}` : "Exploration begins after arrival",
       };
     case "FULL_DESTINATION_DAY":
       return {
-        label: "☀️ Full Sightseeing",
+        label: "Full Sightseeing",
+        icon: Sun,
         variant: "emerald",
         hours: hrs ? `${hrs} usable` : "Full Day",
         description: "Full day available for exploration",
       };
     case "RETURN_DAY":
       return {
-        label: "🛫 Return Day",
+        label: "Return Day",
+        icon: PlaneTakeoff,
         variant: "orange",
         hours: hrs ? `${hrs} usable` : "",
         description: endTime ? `Sightseeing cutoff ~${endTime}` : "Sightseeing wraps up for return departure",
       };
     case "TRAVEL_RETURN":
       return {
-        label: "🚆 Return Travel",
+        label: "Return Travel",
+        icon: Train,
         variant: "purple",
         hours: "0h sightseeing",
         description: "Return travel day",
@@ -225,6 +238,7 @@ function getDayTimingBadgeConfig(window?: DayTimingWindow, dayNumber?: number) {
     default:
       return {
         label: "Sightseeing Day",
+        icon: Compass,
         variant: "default",
         hours: hrs,
         description: window.reason || "Exploration day",
@@ -432,8 +446,8 @@ function Itinerary() {
                   <Compass className="h-4 w-4" /> 5 Journey Milestones Timeline
                 </span>
                 {timing?.timingConflict?.hasConflict && (
-                  <Badge variant="destructive" className="text-[10px] uppercase font-bold tracking-wide">
-                    ⚠️ Duration Advisory
+                  <Badge variant="destructive" className="text-[10px] uppercase font-bold tracking-wide flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" /> Duration Advisory
                   </Badge>
                 )}
               </div>
@@ -441,7 +455,7 @@ function Itinerary() {
                 {/* Milestone 1: Home City Departure */}
                 <div className="rounded-xl border border-border/70 bg-background/80 p-2.5 space-y-0.5">
                   <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
-                    <span>🏠</span>
+                    <Home className="h-3.5 w-3.5 text-primary" />
                     <span>1. Home Departure</span>
                   </div>
                   <p className="font-semibold text-xs text-foreground truncate">
@@ -455,7 +469,7 @@ function Itinerary() {
                 {/* Milestone 2: Destination Arrival */}
                 <div className="rounded-xl border border-border/70 bg-background/80 p-2.5 space-y-0.5">
                   <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
-                    <span>📍</span>
+                    <MapPin className="h-3.5 w-3.5 text-emerald-500" />
                     <span>2. Destination Arrival</span>
                   </div>
                   <p className="font-semibold text-xs text-foreground truncate">
@@ -469,7 +483,7 @@ function Itinerary() {
                 {/* Milestone 3: Sightseeing Window */}
                 <div className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 space-y-0.5 sm:col-span-2 lg:col-span-1">
                   <div className="flex items-center gap-1.5 text-primary text-[10px] font-semibold uppercase tracking-wider">
-                    <span>🗓️</span>
+                    <Calendar className="h-3.5 w-3.5 text-primary" />
                     <span>3. Sightseeing Dates</span>
                   </div>
                   <p className="font-bold text-xs text-foreground truncate">
@@ -483,7 +497,7 @@ function Itinerary() {
                 {/* Milestone 4: Return Departure */}
                 <div className="rounded-xl border border-border/70 bg-background/80 p-2.5 space-y-0.5">
                   <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
-                    <span>🛫</span>
+                    <PlaneTakeoff className="h-3.5 w-3.5 text-amber-500" />
                     <span>4. Return Departure</span>
                   </div>
                   <p className="font-semibold text-xs text-foreground truncate">
@@ -497,7 +511,7 @@ function Itinerary() {
                 {/* Milestone 5: Home City Arrival */}
                 <div className="rounded-xl border border-border/70 bg-background/80 p-2.5 space-y-0.5">
                   <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
-                    <span>🏡</span>
+                    <Home className="h-3.5 w-3.5 text-primary" />
                     <span>5. Home City Arrival</span>
                   </div>
                   <p className="font-semibold text-xs text-foreground truncate">
@@ -513,7 +527,7 @@ function Itinerary() {
               {timing?.timingConflict?.hasConflict && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200 space-y-1">
                   <div className="flex items-center gap-2 font-semibold">
-                    <span>⚠️</span>
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
                     <span>Journey Duration Advisory: {timing.timingConflict.message}</span>
                   </div>
                   <p className="text-[11px] text-amber-800 dark:text-amber-300">
@@ -523,57 +537,50 @@ function Itinerary() {
               )}
             </div>
 
-            {/* Verified Indian Railways Timeline & Live Tracking Card (Section 12) */}
-            {outboundLeg?.railwayTimeline && (
-              <RailwayTimelineCard
-                timeline={outboundLeg.railwayTimeline}
-                title="Outbound Railway Timeline & Stoppages"
-              />
-            )}
-            {returnLeg?.railwayTimeline && (
-              <RailwayTimelineCard
-                timeline={returnLeg.railwayTimeline}
-                title="Return Railway Timeline & Stoppages"
-              />
-            )}
-
             {/* Travel Intelligence & Usable Sightseeing Time Strip */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 border-t border-border/50 pt-4">
-              {/* Outbound Travel Leg */}
-              <div className="rounded-xl border border-border/70 bg-background/50 p-3.5 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
-                    <OutboundIcon className="h-3.5 w-3.5 text-primary" /> Outbound Travel
-                  </span>
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                    outboundStatus.variant === "confirmed"
-                      ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                      : outboundStatus.variant === "estimated"
-                        ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-                        : "bg-muted text-muted-foreground"
-                  }`}>
-                    {outboundStatus.label}
-                  </span>
-                </div>
-                <p className="text-sm font-semibold text-foreground">
-                  {trip.origin || outboundLeg?.departureLocation || "Origin"} → {trip.destination || outboundLeg?.arrivalLocation || "Destination"}
-                </p>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{outboundLeg?.transportType || trip.travelMode || "Transit"}</span>
-                  {outboundDuration && (
-                    <>
-                      <span>·</span>
-                      <span className="font-medium text-foreground">{formatDurationMinutes(outboundDuration)}</span>
-                    </>
+              {/* Outbound Travel Leg (Rendered only when concrete transit details exist) */}
+              {hasConcreteTransitDetails(outboundLeg, trip.departureTime, trip.transitRef) && (
+                <div className="rounded-xl border border-border/70 bg-background/50 p-3.5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
+                      <OutboundIcon className="h-3.5 w-3.5 text-primary" /> Outbound Travel
+                    </span>
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                      outboundStatus.variant === "confirmed"
+                        ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                        : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                    }`}>
+                      {outboundStatus.label}
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {trip.origin || outboundLeg?.departureLocation || "Origin"} → {trip.destination || outboundLeg?.arrivalLocation || "Destination"}
+                  </p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{outboundLeg?.transitRef ? `${outboundLeg.transitRef} (${outboundLeg?.transportType || trip.travelMode})` : (outboundLeg?.transportType || trip.travelMode || "Transit")}</span>
+                    {outboundDuration && (
+                      <>
+                        <span>·</span>
+                        <span className="font-medium text-foreground">{formatDurationMinutes(outboundDuration)}</span>
+                      </>
+                    )}
+                    {timing?.outbound?.isOvernight && (
+                      <>
+                        <span>·</span>
+                        <span className="text-indigo-500 font-medium flex items-center gap-1"><Moon className="h-3 w-3" /> Overnight</span>
+                      </>
+                    )}
+                  </div>
+                  {(outboundLeg?.departureTime || outboundLeg?.arrivalTime || trip.departureTime || trip.arrivalTime) && (
+                    <p className="text-[11px] text-muted-foreground font-mono mt-1">
+                      {(outboundLeg?.departureTime || trip.departureTime) ? `Dep: ${outboundLeg?.departureDate ? `${outboundLeg.departureDate} ` : ""}${outboundLeg?.departureTime || trip.departureTime}` : ""}
+                      {(outboundLeg?.departureTime || trip.departureTime) && (outboundLeg?.arrivalTime || trip.arrivalTime) ? " · " : ""}
+                      {(outboundLeg?.arrivalTime || trip.arrivalTime) ? `Arr: ${outboundLeg?.arrivalDate ? `${outboundLeg.arrivalDate} ` : ""}${outboundLeg?.arrivalTime || trip.arrivalTime}` : ""}
+                    </p>
                   )}
-                  {timing?.outbound?.isOvernight && (
-                    <>
-                      <span>·</span>
-                      <span className="text-indigo-500 font-medium">🌙 Overnight</span>
-                    </>
-                  )}
                 </div>
-              </div>
+              )}
 
               {/* Usable Destination Sightseeing Time */}
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-1">
@@ -593,8 +600,8 @@ function Itinerary() {
                 </p>
               </div>
 
-              {/* Return Travel Leg (if specified) */}
-              {returnLeg && (returnLeg.booked || returnLeg.departureTime || returnLeg.transportType) ? (
+              {/* Return Travel Leg (Rendered when concrete transit details exist, otherwise Trip Dates) */}
+              {hasConcreteTransitDetails(returnLeg) ? (
                 <div className="rounded-xl border border-border/70 bg-background/50 p-3.5 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
@@ -603,18 +610,16 @@ function Itinerary() {
                     <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
                       returnStatus.variant === "confirmed"
                         ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                        : returnStatus.variant === "estimated"
-                          ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-                          : "bg-muted text-muted-foreground"
+                        : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
                     }`}>
                       {returnStatus.label}
                     </span>
                   </div>
                   <p className="text-sm font-semibold text-foreground">
-                    {returnLeg.departureLocation || trip.destination} → {returnLeg.arrivalLocation || trip.origin || "Home"}
+                    {returnLeg?.departureLocation || trip.destination} → {returnLeg?.arrivalLocation || trip.origin || "Home"}
                   </p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{returnLeg.transportType || outboundLeg?.transportType || trip.travelMode || "Transit"}</span>
+                    <span>{returnLeg?.transitRef ? `${returnLeg.transitRef} (${returnLeg?.transportType || "Return"})` : (returnLeg?.transportType || outboundLeg?.transportType || trip.travelMode || "Transit")}</span>
                     {returnDuration && (
                       <>
                         <span>·</span>
@@ -624,10 +629,17 @@ function Itinerary() {
                     {timing?.return?.isOvernight && (
                       <>
                         <span>·</span>
-                        <span className="text-indigo-500 font-medium">🌙 Overnight</span>
+                        <span className="text-indigo-500 font-medium flex items-center gap-1"><Moon className="h-3 w-3" /> Overnight</span>
                       </>
                     )}
                   </div>
+                  {(returnLeg?.departureTime || returnLeg?.arrivalTime) && (
+                    <p className="text-[11px] text-muted-foreground font-mono mt-1">
+                      {returnLeg?.departureTime ? `Dep: ${returnLeg?.departureDate ? `${returnLeg.departureDate} ` : ""}${returnLeg.departureTime}` : ""}
+                      {returnLeg?.departureTime && returnLeg?.arrivalTime ? " · " : ""}
+                      {returnLeg?.arrivalTime ? `Arr: ${returnLeg?.arrivalDate ? `${returnLeg.arrivalDate} ` : ""}${returnLeg.arrivalTime}` : ""}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-xl border border-border/70 bg-background/50 p-3.5 space-y-1">
@@ -688,7 +700,7 @@ function Itinerary() {
                             </Badge>
                           )}
                           {/* Day Timing Window Badge */}
-                          <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
                             timingBadge.variant === "amber"
                               ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
                               : timingBadge.variant === "blue"
@@ -701,6 +713,7 @@ function Itinerary() {
                                       ? "bg-purple-500/10 text-purple-600 border-purple-500/20"
                                       : "bg-muted/50 text-foreground border-border"
                           }`}>
+                            <timingBadge.icon className="h-3 w-3" />
                             {timingBadge.label} {timingBadge.hours ? `· ${timingBadge.hours}` : ""}
                           </span>
                         </div>
@@ -739,7 +752,11 @@ function Itinerary() {
                               {item.startLocation && (item.travelDistanceKm != null || item.travelDurationMinutes != null) && (
                                 <div className="mb-2 rounded-lg border border-border/70 bg-muted/30 px-2.5 py-1.5 flex items-center justify-between flex-wrap gap-2 text-[11px]">
                                   <div className="flex items-center gap-1.5 text-muted-foreground">
-                                    <span>{item.travelMode === "Walk" ? "🚶" : "🚗"}</span>
+                                    {item.travelMode === "Walk" ? (
+                                      <Footprints className="h-3.5 w-3.5 text-muted-foreground" />
+                                    ) : (
+                                      <Car className="h-3.5 w-3.5 text-muted-foreground" />
+                                    )}
                                     <span className="font-semibold text-foreground">
                                       {item.travelMode || "Cab"} · {item.travelDurationMinutes} min{item.travelDurationMinutes !== 1 ? "s" : ""} ({item.travelDistanceKm} km)
                                     </span>
@@ -827,7 +844,7 @@ function Itinerary() {
                               {item.isPlaceHiddenGem && (item.gemConfidence === "POTENTIAL_HIDDEN_GEM" || item.placeType === "POTENTIAL_HIDDEN_GEM") ? (
                                 <div className="mt-1.5 flex items-center gap-1.5">
                                   <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 text-[11px] font-semibold text-purple-700 dark:text-purple-300 ring-1 ring-purple-300/50">
-                                    🔍 Potential Hidden Gem
+                                    <Search className="h-3 w-3 text-purple-600 dark:text-purple-300" /> Potential Hidden Gem
                                   </span>
                                   {item.region && (
                                     <span className="text-[10px] text-muted-foreground">
@@ -838,7 +855,7 @@ function Itinerary() {
                               ) : item.isPlaceHiddenGem ? (
                                 <div className="mt-1.5 flex items-center gap-1.5">
                                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300 ring-1 ring-amber-300/50">
-                                    💎 Confirmed Hidden Gem
+                                    <Sparkles className="h-3 w-3 text-amber-600 dark:text-amber-300" /> Confirmed Hidden Gem
                                   </span>
                                   {item.region && (
                                     <span className="text-[10px] text-muted-foreground">
@@ -853,13 +870,15 @@ function Itinerary() {
                                 </p>
                               )}
                               {item.matchReason && (
-                                <p className="mt-1 text-xs text-muted-foreground/90 italic">
-                                  ★ {item.matchReason}
+                                <p className="mt-1 text-xs text-muted-foreground/90 italic flex items-center gap-1">
+                                  <Sparkles className="h-2.5 w-2.5 text-primary shrink-0" />
+                                  <span>{item.matchReason}</span>
                                 </p>
                               )}
                               {item.isFutureScheduleUnconfirmed && (
-                                <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">
-                                  ⚠️ Regular hours shown · Schedule subject to seasonal confirmation
+                                <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                                  <span>Regular hours shown · Schedule subject to seasonal confirmation</span>
                                 </p>
                               )}
                               {item.meta && (

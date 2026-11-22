@@ -16,7 +16,6 @@ import {
   Radar,
   SlidersHorizontal,
   ShieldAlert,
-  Album,
   Backpack,
   Users2,
 } from "lucide-react";
@@ -26,7 +25,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-const navSections = [
+interface NavItem {
+  to: string;
+  label: string;
+  icon: any;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+const navSections: NavSection[] = [
   {
     title: "Trip Planning",
     items: [
@@ -47,10 +57,9 @@ const navSections = [
     ],
   },
   {
-    title: "Intelligence & Memories",
+    title: "Travel Intelligence",
     items: [
       { to: "/chat", label: "Advenza AI", icon: MessageCircle },
-      { to: "/memory", label: "Memories", icon: Album },
     ],
   },
   {
@@ -59,10 +68,10 @@ const navSections = [
       { to: "/profile", label: "Profile", icon: User },
     ],
   },
-] as const;
+];
 
 // Flat navigation list
-const nav = navSections.flatMap((s) => s.items);
+const nav: NavItem[] = navSections.flatMap((s) => s.items);
 
 // A scenic, low-opacity Indian palette photo drifts behind the aurora — evocative but never noisy.
 const BACKDROP_IMG =
@@ -88,7 +97,7 @@ export function AppShell({
   return (
     <div className="relative h-screen w-full overflow-hidden bg-background">
       {/* ============ Cinematic backdrop ============ */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden [contain:strict] [transform:translateZ(0)]">
         {/* Faint Indian scenic — Udaipur palace on lake */}
         <div
           className="absolute inset-0 bg-cover bg-center opacity-[0.10]"
@@ -97,13 +106,13 @@ export function AppShell({
         {/* Warm saffron → deep-lake gradient wash, drifting */}
         <div className="absolute inset-0 animate-drift bg-[linear-gradient(120deg,oklch(0.92_0.09_75_/_0.55),oklch(0.85_0.06_25_/_0.35),oklch(0.75_0.13_230_/_0.4),oklch(0.7_0.14_165_/_0.35))]" />
         {/* Aurora blobs (Rajasthan sunset + monsoon emerald + royal blue) */}
-        <div className="absolute -left-40 top-16 h-[30rem] w-[30rem] rounded-full bg-[oklch(0.78_0.16_55)]/30 blur-3xl animate-blob" />
+        <div className="absolute -left-40 top-16 h-[30rem] w-[30rem] rounded-full bg-[oklch(0.78_0.16_55)]/30 blur-3xl animate-blob [transform:translateZ(0)]" />
         <div
-          className="absolute right-0 top-1/3 h-[34rem] w-[34rem] rounded-full bg-[oklch(0.68_0.14_165)]/25 blur-3xl animate-blob"
+          className="absolute right-0 top-1/3 h-[34rem] w-[34rem] rounded-full bg-[oklch(0.68_0.14_165)]/25 blur-3xl animate-blob [transform:translateZ(0)]"
           style={{ animationDelay: "-6s" }}
         />
         <div
-          className="absolute bottom-0 left-1/3 h-[28rem] w-[28rem] rounded-full bg-[oklch(0.55_0.16_265)]/30 blur-3xl animate-blob"
+          className="absolute bottom-0 left-1/3 h-[28rem] w-[28rem] rounded-full bg-[oklch(0.55_0.16_265)]/30 blur-3xl animate-blob [transform:translateZ(0)]"
           style={{ animationDelay: "-10s" }}
         />
         {/* Fine grain / vignette to marry it all */}
@@ -178,8 +187,8 @@ export function AppShell({
         </aside>
 
         {/* ============ Main (Scrollable independently from fixed sidebar) ============ */}
-        <div className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto">
-          <header className="sticky top-0 z-30 border-b border-white/40 bg-white/40 backdrop-blur-xl">
+        <div className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain [transform:translateZ(0)]">
+          <header className="sticky top-0 z-30 border-b border-white/40 bg-white/40 backdrop-blur-xl [contain:paint] [transform:translateZ(0)]">
             <div className="flex h-16 items-center gap-3 px-5 md:px-8">
               <div className="md:hidden">
                 <BrandLogo showWord={false} />

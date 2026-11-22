@@ -2,6 +2,7 @@ import { BaseFlightProvider } from "./base.provider.js";
 import { apiClient } from "../../../utils/apiClient.js";
 import { logger } from "../../../utils/logger.js";
 import { env } from "../../../config/env.js";
+import { airportLookupService } from "../airport-lookup.service.js";
 
 // Standard Indian & International Airport IATA Catalog
 export const AIRPORT_CODES = {
@@ -53,9 +54,21 @@ export const AIRPORT_CODES = {
 export function resolveAirportCode(str) {
   if (!str) return "BOM";
   const clean = str.trim().toLowerCase().split(",")[0].trim();
-  if (clean.length === 3 && AIRPORT_CODES[clean]) return AIRPORT_CODES[clean];
+  if (clean.length === 3) {
+    const byCode = airportLookupService.findAirportByCode(clean);
+    if (byCode?.iata_code) return byCode.iata_code;
+    if (AIRPORT_CODES[clean]) return AIRPORT_CODES[clean];
+    return clean.toUpperCase();
+  }
+  const byCity = airportLookupService.findAirportsByCity(clean);
+  if (byCity.length > 0 && byCity[0].iata_code) {
+    return byCity[0].iata_code;
+  }
+  const bySearch = airportLookupService.searchAirports(clean, { onlyScheduled: true, limit: 1 });
+  if (bySearch.length > 0 && bySearch[0].iata_code) {
+    return bySearch[0].iata_code;
+  }
   if (AIRPORT_CODES[clean]) return AIRPORT_CODES[clean];
-  if (clean.length === 3) return clean.toUpperCase();
   return clean.slice(0, 3).toUpperCase();
 }
 

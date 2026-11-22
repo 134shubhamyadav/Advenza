@@ -4,6 +4,15 @@ import { DatabaseSync } from 'node:sqlite';
 import { logger } from '../../utils/logger.js';
 import { ntesLiveTrackingService } from './ntes-live.service.js';
 
+const CODE_ALIASES = {
+  CSMT: 'CSTM',
+  MMCT: 'BCT',
+  AYC: 'AY',
+  PRG: 'PRYJ',
+  DDU: 'MGS',
+  BSBS: 'MUV',
+};
+
 // Pre-defined multi-terminal metro station clusters & destination railhead mappings across India
 const METRO_TERMINAL_CLUSTERS = {
   // Metro Clusters & Major Terminals
@@ -180,7 +189,66 @@ export class LocalRailwayService {
   constructor() {
     this.dbPath = path.resolve('./data/railways/railways.db');
     this.db = null;
+    this.trainMetaMap = new Map();
     this.initDatabase();
+    this._initTrainMetadata();
+  }
+
+  /**
+   * Lazily loads Indian Railways train running days and metadata
+   */
+  _initTrainMetadata() {
+    try {
+      const p1Path = path.resolve('./data/Indian-Railway-Data/trains_part1.json');
+      const p2Path = path.resolve('./data/Indian-Railway-Data/trains_part2.json');
+      if (fs.existsSync(p1Path) && fs.existsSync(p2Path)) {
+        const p1 = JSON.parse(fs.readFileSync(p1Path, 'utf-8'));
+        const p2 = JSON.parse(fs.readFileSync(p2Path, 'utf-8'));
+        for (const t of p1) {
+          if (t?.trainNumber) {
+            this.trainMetaMap.set(String(t.trainNumber).padStart(5, '0'), {
+              runningDays: t.runningDays,
+              source: t.source,
+              destination: t.destination,
+            });
+          }
+        }
+        for (const t of p2) {
+          if (t?.trainNumber) {
+            this.trainMetaMap.set(String(t.trainNumber).padStart(5, '0'), {
+              runningDays: t.runningDays,
+              source: t.source,
+              destination: t.destination,
+            });
+          }
+        }
+        logger.info(`[LocalRailwayService] Loaded metadata & running days for ${this.trainMetaMap.size} trains.`);
+      }
+    } catch (err) {
+      logger.warn(`[LocalRailwayService] Could not load train metadata JSON: ${err.message}`);
+    }
+  }
+
+  /**
+   * Get train running days metadata
+   */
+  getTrainMetadata(trainNumber) {
+    if (!trainNumber) return null;
+    const num = String(trainNumber).padStart(5, '0');
+    return this.trainMetaMap.get(num) || null;
+  }
+
+  /**
+   * Formats running days object into human-readable string (e.g. "Daily" or "Mon, Wed, Fri")
+   */
+  _formatRunningDays(runningDaysMap) {
+    if (!runningDaysMap || typeof runningDaysMap !== 'object') return 'Daily';
+    const dayKeys = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    const dayLabels = { MON: 'Mon', TUE: 'Tue', WED: 'Wed', THU: 'Thu', FRI: 'Fri', SAT: 'Sat', SUN: 'Sun' };
+    const active = dayKeys.filter((k) => runningDaysMap[k]);
+    if (active.length === 7) return 'Daily';
+    if (active.length === 0) return 'Special Service';
+    return active.map((k) => dayLabels[k]).join(', ');
   }
 
   /**
@@ -400,7 +468,9 @@ export class LocalRailwayService {
 
     // 2. Direct uppercase code match (e.g. "CSMT", "NDLS", "ERS")
     if (/^[A-Z]{2,5}$/.test(raw.toUpperCase())) {
-      const stn = this.db.prepare('SELECT * FROM stations WHERE code = ?').get(raw.toUpperCase());
+      const upperCode = raw.toUpperCase();
+      const codeToQuery = CODE_ALIASES[upperCode] || upperCode;
+      const stn = this.db.prepare('SELECT * FROM stations WHERE code = ?').get(codeToQuery);
       if (stn) {
         return {
           code: stn.code,
@@ -409,7 +479,7 @@ export class LocalRailwayService {
           lat: stn.lat,
           lon: stn.lon,
           isMajor: Boolean(stn.is_major),
-          clusterCodes: [stn.code],
+          clusterCodes: [stn.code, upperCode],
         };
       }
     }
@@ -548,7 +618,38 @@ export class LocalRailwayService {
           distanceKm: estDistKm,
           trainType: row.trainType || 'EXPRESS',
           availableClasses,
-          runningDays: 'Daily',
+          runningDays: (() => {
+            const m = this.getTrainMetadata(row.trainNumber);
+            return this._formatRunningDays(m?.runningDays);
+          })(),
+          runningDaysMap: (() => {
+            const m = this.getTrainMetadata(row.trainNumber);
+            return m?.runningDays || { SUN: true, MON: true, TUE: true, WED: true, THU: true, FRI: true, SAT: true };
+          })(),
+          runsOnDate: (() => {
+            if (!date) return true;
+            try {
+              const dayKeys = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+              const dIndex = new Date(date).getDay();
+              const dayKey = dayKeys[dIndex];
+              const m = this.getTrainMetadata(row.trainNumber);
+              if (m?.runningDays && typeof m.runningDays === 'object') {
+                return Boolean(m.runningDays[dayKey]);
+              }
+              return true;
+            } catch {
+              return true;
+            }
+          })(),
+          journeyDayName: (() => {
+            if (!date) return '';
+            try {
+              const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+              return dayNames[new Date(date).getDay()] || '';
+            } catch {
+              return '';
+            }
+          })(),
           fares,
           seatAvailability: {
             trainNumber: row.trainNumber,
@@ -742,30 +843,71 @@ export class LocalRailwayService {
 
     try {
       const train = this.db.prepare('SELECT * FROM trains WHERE number = ?').get(num);
-      const stops = this.db.prepare(`
+      let stops = this.db.prepare(`
         SELECT station_code, station_name, arrival, departure, day, distance, journey_min
         FROM schedules
         WHERE train_number = ?
         ORDER BY journey_min ASC
       `).all(num);
 
+      if (!stops || stops.length === 0) return null;
+
+      // When stop count is large (> 45), focus on commercial passenger halts
+      // Stations where arrival != departure OR first station OR last station
+      let displayStops = stops;
+      if (stops.length > 45) {
+        const commercialHalts = stops.filter((s, idx) => {
+          if (idx === 0 || idx === stops.length - 1) return true;
+          if (s.arrival && s.departure && s.arrival !== s.departure && s.arrival !== 'None' && s.departure !== 'None') return true;
+          return false;
+        });
+        if (commercialHalts.length >= 6) {
+          displayStops = commercialHalts;
+        }
+      }
+
+      const meta = this.getTrainMetadata(num);
+      const runningDaysMap = meta?.runningDays || { SUN: true, MON: true, TUE: true, WED: true, THU: true, FRI: true, SAT: true };
+      const runningDaysSummary = this._formatRunningDays(runningDaysMap);
+
+      const formattedRoute = displayStops.map((s, idx) => {
+        const arr = s.arrival === 'None' || !s.arrival ? null : s.arrival.slice(0, 5);
+        const dep = s.departure === 'None' || !s.departure ? null : s.departure.slice(0, 5);
+        const isHalt = arr && dep && arr !== dep;
+        return {
+          sequence: idx + 1,
+          stnCode: s.station_code,
+          stnName: s.station_name,
+          arrival: arr,
+          departure: dep,
+          day: Number(s.day) || 1,
+          distanceKm: s.distance || 0,
+          halt: isHalt ? '2 min' : '0 min',
+          haltMinutes: isHalt ? 2 : 0,
+          journeyMin: s.journey_min,
+        };
+      });
+
       return {
         trainNumber: num,
         trainName: train?.name || `Train ${num}`,
         trainType: train?.type || 'EXPRESS',
-        fromStationCode: train?.from_code || (stops[0]?.station_code || ''),
-        toStationCode: train?.to_code || (stops[stops.length - 1]?.station_code || ''),
-        totalStops: stops.length,
-        stops: stops.map((s, idx) => ({
+        fromStationCode: train?.from_code || (displayStops[0]?.station_code || ''),
+        toStationCode: train?.to_code || (displayStops[displayStops.length - 1]?.station_code || ''),
+        totalStops: displayStops.length,
+        route: formattedRoute,
+        stops: displayStops.map((s, idx) => ({
           stopNumber: idx + 1,
           stationCode: s.station_code,
           stationName: s.station_name,
-          arrivalTime: s.arrival,
-          departureTime: s.departure,
-          day: s.day,
-          distanceKm: s.distance,
+          arrivalTime: s.arrival === 'None' || !s.arrival ? null : s.arrival.slice(0, 5),
+          departureTime: s.departure === 'None' || !s.departure ? null : s.departure.slice(0, 5),
+          day: Number(s.day) || 1,
+          distanceKm: s.distance || 0,
           journeyMinute: s.journey_min,
         })),
+        runningDays: runningDaysSummary,
+        runningDaysMap,
       };
     } catch (err) {
       logger.error(`[LocalRailwayService] getTrainSchedule error: ${err.message}`);

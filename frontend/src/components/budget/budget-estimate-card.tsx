@@ -264,7 +264,9 @@ export function BudgetEstimateCard({
         <div className={cn("rounded-2xl glass-panel p-6 border border-border/60", className)}>
           <div className="flex items-center justify-between pb-3 border-b border-border/50">
             <div className="flex items-center gap-2.5">
-              <span className="text-xl">💰</span>
+              <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                <Wallet className="h-5 w-5" />
+              </div>
               <h3 className="font-semibold text-base">Budget Estimate</h3>
             </div>
             <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-500 border-amber-500/20">
@@ -312,8 +314,8 @@ export function BudgetEstimateCard({
       {/* ── Header ── */}
       <div className="flex items-center justify-between pb-4 border-b border-border/50">
         <div className="flex items-center gap-2.5">
-          <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center text-lg select-none">
-            💰
+          <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+            <Wallet className="h-5 w-5" />
           </div>
           <div>
             <h3 className="font-display font-semibold text-base sm:text-lg tracking-tight">

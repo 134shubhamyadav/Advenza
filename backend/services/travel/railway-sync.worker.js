@@ -64,6 +64,10 @@ class RailwaySyncWorker {
    * Initialize worker on server boot
    */
   init() {
+    if (process.env.SKIP_RAILWAY_SYNC === 'true' || process.env.DISABLE_RAILWAY_SYNC === 'true') {
+      logger.info(`[RailwaySyncWorker] Background sync paused via SKIP_RAILWAY_SYNC environment flag.`);
+      return;
+    }
     const ageHours = this.getLastSyncAgeHours();
     logger.info(`[RailwaySyncWorker] Initialized. Last sync was ${ageHours.toFixed(1)} hours ago.`);
 

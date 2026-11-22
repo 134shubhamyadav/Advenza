@@ -44,22 +44,10 @@ router.post(
   aiController.orchestratedResearch
 );
 
-// GET /api/ai/trains (Live RailCore Indian Railways train search, fares & availability)
+// GET /api/ai/transport/research (Multi-modal transit research: Trains, Flights, Buses, Driving, Local)
 router.get(
-  "/trains",
-  aiController.searchTrains
-);
-
-// GET /api/ai/stations (High-speed station & railhead autocomplete across 8,990+ Indian Railways stations)
-router.get(
-  "/stations",
-  aiController.searchStations
-);
-
-// GET /api/ai/trains/live/:trainNumber (Direct CRIS NTES Live Train Tracking - Free & Unlimited)
-router.get(
-  "/trains/live/:trainNumber",
-  aiController.trackLiveTrain
+  "/transport/research",
+  aiController.researchTransport
 );
 
 // GET /api/ai/estimate-budget

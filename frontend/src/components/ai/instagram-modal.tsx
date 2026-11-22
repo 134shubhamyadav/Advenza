@@ -42,9 +42,9 @@ export function InstagramModal({ isOpen, onOpenChange, dayData }: InstagramModal
   if (!dayData) return null;
 
   const captions = [
-    `Lost in the magic of ${dayData.place}. ✨ Advenza knew exactly where I needed to be today.`,
-    `${dayData.weather.split(",")[1]?.trim() || "Beautiful"} days and unforgettable views in ${dayData.place}. 🏰🤍`,
-    `A quiet moment at ${dayData.place}. Planned by AI, lived by me. 🌅`,
+    `Lost in the magic of ${dayData.place}. Advenza knew exactly where I needed to be today.`,
+    `${dayData.weather.split(",")[1]?.trim() || "Beautiful"} days and unforgettable views in ${dayData.place}.`,
+    `A quiet moment at ${dayData.place}. Planned by AI, lived by me.`,
   ];
 
   const handleCopy = (text: string, index: number) => {
