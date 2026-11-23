@@ -4,7 +4,6 @@ import fs from "fs";
 import crypto from "crypto";
 import admin from "firebase-admin";
 import Collage from "../models/Collage.js";
-import Reel from "../models/Reel.js";
 import Expense from "../models/Expense.js";
 import Trip from "../models/Trip.js";
 import { logger } from "../utils/logger.js";
@@ -12,7 +11,7 @@ import { env } from "../config/env.js";
 
 const router = express.Router();
 
-const ALLOWED_TYPES = new Set(["collages", "reels", "receipts"]);
+const ALLOWED_TYPES = new Set(["collages", "receipts"]);
 const MIME_TYPES = {
   ".webp": "image/webp",
   ".jpg": "image/jpeg",
@@ -113,7 +112,7 @@ router.get("/:type/:filename", async (req, res) => {
   const relativePath = `${safeType}/${safeFilename}`;
   const shareToken = req.query.shareToken ? String(req.query.shareToken).trim() : null;
 
-  // 2. Check public share token first (Collages and Reels)
+  // 2. Check public share token first (Collages)
   if (shareToken) {
     if (safeType === "collages") {
       const collage = await Collage.findOne({
@@ -121,14 +120,6 @@ router.get("/:type/:filename", async (req, res) => {
         shareAccess: { $in: ["public", "unlisted", "link"] },
       }).lean();
       if (collage) {
-        return streamFile(fullPath, res);
-      }
-    } else if (safeType === "reels") {
-      const reel = await Reel.findOne({
-        shareToken,
-        privacy: { $in: ["public", "unlisted", "shared"] },
-      }).lean();
-      if (reel) {
         return streamFile(fullPath, res);
       }
     }
@@ -163,25 +154,6 @@ router.get("/:type/:filename", async (req, res) => {
           const isMember = trip?.members?.some((m) => m.userId === uid || m.email === uid);
           if (!isMember) {
             return res.status(403).json({ error: "Access denied to private collage" });
-          }
-        }
-      }
-    } else if (safeType === "reels") {
-      const idOrPart = safeFilename.split(".")[0];
-      const reel = await Reel.findOne({
-        $or: [
-          { _id: idOrPart.length === 24 ? idOrPart : null },
-          { "output.storageKey": new RegExp(safeFilename) },
-          { "output.videoUrl": new RegExp(safeFilename) },
-        ],
-      }).lean();
-
-      if (reel) {
-        if (reel.userId !== uid) {
-          const trip = await Trip.findById(reel.tripId).lean();
-          const isMember = trip?.members?.some((m) => m.userId === uid || m.email === uid);
-          if (!isMember) {
-            return res.status(403).json({ error: "Access denied to private reel" });
           }
         }
       }

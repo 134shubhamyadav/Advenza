@@ -16,15 +16,6 @@ export class BaseFlightProvider {
   async searchFlights(params) {
     throw new Error(`searchFlights() not implemented in ${this.name}`);
   }
-
-  /**
-   * Retrieve live flight operational status.
-   * @param {Object} params - { flightNumber, date }
-   * @returns {Promise<Object>}
-   */
-  async getFlightStatus(params) {
-    throw new Error(`getFlightStatus() not implemented in ${this.name}`);
-  }
 }
 
 export class BaseHotelProvider {

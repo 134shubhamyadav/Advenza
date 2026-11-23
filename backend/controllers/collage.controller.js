@@ -16,6 +16,7 @@ export class CollageController {
       const {
         tripId,
         memoryIds,
+        imageUrls = [],
         layout = "grid",
         aspectRatio = "1:1",
         theme = "dark",
@@ -40,14 +41,15 @@ export class CollageController {
 
       // 2. Verify Memory Ownership & Isolation
       // Ensure all requested memoryIds belong to the authenticated user and specified trip
+      const uniqueMemoryIds = [...new Set(memoryIds)];
       const memories = await Memory.find({
-        _id: { $in: memoryIds },
+        _id: { $in: uniqueMemoryIds },
         isDeleted: false,
       });
 
-      if (memories.length !== memoryIds.length) {
+      if (memories.length !== uniqueMemoryIds.length) {
         throw new ValidationError(
-          `Some requested memories could not be found or have been deleted (found ${memories.length} of ${memoryIds.length}).`
+          `Some requested memories could not be found or have been deleted (found ${memories.length} of ${uniqueMemoryIds.length}).`
         );
       }
 
@@ -67,7 +69,8 @@ export class CollageController {
       const collage = await Collage.create({
         userId: req.uid,
         tripId,
-        memoryIds,
+        memoryIds: uniqueMemoryIds,
+        imageUrls: Array.isArray(imageUrls) && imageUrls.length > 0 ? imageUrls : [],
         layout,
         aspectRatio,
         theme,

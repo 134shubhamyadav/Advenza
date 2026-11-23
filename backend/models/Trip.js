@@ -87,10 +87,9 @@ const JourneyLegSchema = new mongoose.Schema(
     status: { type: String, default: "ESTIMATED" }, // "ESTIMATED", "CONFIRMED", "NOT_CONFIGURED"
     booked: { type: Boolean, default: false },
     ticketRef: { type: String, default: "" },
-    // Verified Railway Engine Timeline & Live Tracking
+    // Verified Railway Engine Timeline
     railwayTimeline: { type: mongoose.Schema.Types.Mixed, default: null },
     stops: { type: [mongoose.Schema.Types.Mixed], default: [] },
-    liveTracking: { type: mongoose.Schema.Types.Mixed, default: null },
     dataClassification: { type: String, default: "" }, // "SCHEDULED_VERIFIED", "LIVE_VERIFIED", "CROSS_CHECKED"
   },
   { _id: false }
@@ -223,15 +222,6 @@ const TripSchema = new mongoose.Schema({
 
   // Final Judge Railway & Timeline Verification Audit
   railwayValidation: { type: mongoose.Schema.Types.Mixed, default: null },
-
-  // Commander event acceptance tracking
-  acceptedCommanderEvents: [
-    {
-      eventId: { type: String, required: true },
-      acceptedAt: { type: Date, default: Date.now },
-      actionTaken: { type: String, default: "" },
-    },
-  ],
 
   // Metadata
   createdAt: { type: Date, default: Date.now },

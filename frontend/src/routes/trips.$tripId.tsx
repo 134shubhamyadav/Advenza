@@ -42,7 +42,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TripMemoriesTab } from "@/components/trips/trip-memories-tab";
 import { BudgetEstimateCard } from "@/components/budget/budget-estimate-card";
-import { RailwayTimelineCard } from "@/components/travel/railway-timeline-card";
 import type { TripSummary, DayTimingWindow, HeroImage } from "@/services/tripService";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
@@ -426,24 +425,6 @@ function TripDetails() {
                     </div>
                   )}
                 </div>
-
-                {/* Verified Indian Railways Timeline & Live Tracking Card (Section 12) */}
-                {outboundLeg?.railwayTimeline && (
-                  <div className="mt-5">
-                    <RailwayTimelineCard
-                      timeline={outboundLeg.railwayTimeline}
-                      title="Outbound Railway Timeline & Stoppages"
-                    />
-                  </div>
-                )}
-                {returnLeg?.railwayTimeline && (
-                  <div className="mt-4">
-                    <RailwayTimelineCard
-                      timeline={returnLeg.railwayTimeline}
-                      title="Return Railway Timeline & Stoppages"
-                    />
-                  </div>
-                )}
 
                 {/* Usable Destination Time Highlights */}
                 {totalUsableHours != null && (

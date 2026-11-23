@@ -147,3 +147,36 @@ export const CurateCollageOutputSchema = z.object({
     })
   ).default([]),
 });
+
+// Photo-Aware AI Caption Generation Schema
+export const generateCaptionsSchema = z
+  .object({
+    memoryId: z.string().trim().optional(),
+    imageUrls: z.array(z.string().trim().min(1)).optional().default([]),
+    place: z.string().trim().optional().default(""),
+    highlight: z.string().trim().optional().default(""),
+    caption: z.string().trim().optional().default(""),
+    date: z.string().trim().optional().default(""),
+    category: z.string().trim().optional().default(""),
+    tonePreference: z.string().trim().optional().default(""),
+  })
+  .refine(
+    (data) => Boolean(data.memoryId || (data.imageUrls && data.imageUrls.length > 0)),
+    { message: "Either memoryId or at least one imageUrl is required for photo-aware caption generation" }
+  );
+
+export const PhotoAwareCaptionsOutputSchema = z.object({
+  visualSummary: z.string().default("Visual highlights from the travel memory"),
+  captions: z
+    .array(
+      z.object({
+        id: z.string(),
+        style: z.string(),
+        tag: z.string(),
+        caption: z.string(),
+        focus: z.string().optional().default(""),
+      })
+    )
+    .min(8, "At least 8 diverse captions are required"),
+});
+

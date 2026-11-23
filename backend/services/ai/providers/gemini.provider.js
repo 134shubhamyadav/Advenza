@@ -24,14 +24,15 @@ export class GeminiProvider extends BaseAIProvider {
     return this.client;
   }
 
-  async createCompletion({ messages, temperature = 0.7, maxTokens = 4096, signal, preferredModel, jsonMode = false }) {
+  async createCompletion({ messages, temperature = 0.7, maxTokens = 8192, signal, preferredModel, jsonMode = false }) {
     const client = this.getClient();
     if (!client) {
       throw new Error("Gemini API key is not configured");
     }
 
     const modelsToTry = preferredModel ? [preferredModel, ...this.models.filter((m) => m !== preferredModel)] : this.models;
-    const effectiveMaxTokens = Math.min(Number(maxTokens) || 4096, 4096);
+    // Gemini models support 8192+ output tokens; do not artificially throttle to 4096 which causes truncated JSON
+    const effectiveMaxTokens = Math.min(Number(maxTokens) || 8192, 8192);
     const PER_MODEL_TIMEOUT_MS = 30_000;
     let lastError = null;
 
@@ -62,13 +63,19 @@ export class GeminiProvider extends BaseAIProvider {
       } catch (err) {
         clearTimeout(perModelTimer);
         lastError = err;
+        const status = err.status || err.statusCode;
         logger.warn(`[Gemini] Model ${model} failed: ${err.message}`, {
           model,
-          status: err.status || err.statusCode,
+          status,
           isTimeout: modelController.signal.aborted,
         });
 
         if (signal?.aborted) {
+          throw err;
+        }
+
+        // Account-level errors: skip attempting other models on same key
+        if (status === 401 || status === 402 || status === 429) {
           throw err;
         }
       }
@@ -79,4 +86,3 @@ export class GeminiProvider extends BaseAIProvider {
 }
 
 export default new GeminiProvider();
-

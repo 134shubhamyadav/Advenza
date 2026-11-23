@@ -42,7 +42,6 @@ import {
   calculateInclusiveDays
 } from "@/lib/utils";
 import { BudgetEstimateCard } from "@/components/budget/budget-estimate-card";
-import { RailwayTimelineCard } from "@/components/travel/railway-timeline-card";
 import type { TripSummary, DayTimingWindow, JourneyLeg } from "@/services/tripService";
 import { toast } from "sonner";
 import {
@@ -522,20 +521,6 @@ function Itinerary() {
                 </div>
               )}
             </div>
-
-            {/* Verified Indian Railways Timeline & Live Tracking Card (Section 12) */}
-            {outboundLeg?.railwayTimeline && (
-              <RailwayTimelineCard
-                timeline={outboundLeg.railwayTimeline}
-                title="Outbound Railway Timeline & Stoppages"
-              />
-            )}
-            {returnLeg?.railwayTimeline && (
-              <RailwayTimelineCard
-                timeline={returnLeg.railwayTimeline}
-                title="Return Railway Timeline & Stoppages"
-              />
-            )}
 
             {/* Travel Intelligence & Usable Sightseeing Time Strip */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 border-t border-border/50 pt-4">

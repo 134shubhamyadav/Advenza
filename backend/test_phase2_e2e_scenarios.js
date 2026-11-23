@@ -6,8 +6,6 @@
  */
 
 import assert from "node:assert/strict";
-import { localRailwayService } from "./services/travel/local-railway.service.js";
-import { railwayTimelineService } from "./services/travel/railway-timeline.service.js";
 import { computeJourneys, calculateTripTiming } from "./services/travel/journey-engine.service.js";
 import { osrmRoutingService } from "./services/travel/osrm-routing.service.js";
 import { transportProvider } from "./services/travel/providers/transport.provider.js";
@@ -37,64 +35,6 @@ async function runPhase2Validation() {
   console.log("===============================================================================");
   console.log("       ADVENZA PHASE 2: END-TO-END VALIDATION & RELIABILITY SUITE              ");
   console.log("===============================================================================\n");
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // CHECK 1: Scenario A — Intercity Train Trip (Mumbai to Kochi, Nov 20 2026, 4 days)
-  // ─────────────────────────────────────────────────────────────────────────────
-  try {
-    const fromClusters = localRailwayService.getStationCluster("Mumbai");
-    const toClusters = localRailwayService.getStationCluster("Kochi");
-
-    assert.ok(fromClusters.includes("PNVL"), "Mumbai cluster includes Panvel (PNVL)");
-    assert.ok(toClusters.includes("ERS"), "Kochi cluster includes Ernakulam Junction (ERS)");
-
-    const timeline = await railwayTimelineService.buildRailwayTimeline({
-      fromStation: "Mumbai",
-      toStation: "Kochi",
-      journeyDate: "2026-11-20",
-      trainNumber: "12618",
-      trainName: "Mangala Lakshadweep Express",
-      direction: "outbound",
-      trackLive: false,
-    });
-
-    assert.ok(timeline != null, "Timeline successfully constructed");
-    assert.equal(timeline.isUnresolvedSchedule, false, "Timeline is resolved");
-    // Boarding must be in Mumbai cluster (e.g. KYN or PNVL), NOT Nizamuddin stop 0 (Delhi)
-    assert.ok(
-      ["PNVL", "KYN", "LTT", "CSMT"].includes(timeline.boardingStationCode),
-      `Boarding station is in Mumbai cluster (got ${timeline.boardingStationCode})`
-    );
-    assert.ok(
-      ["ERS", "ERN", "AWY"].includes(timeline.destinationStationCode),
-      `Destination station is in Kochi cluster (got ${timeline.destinationStationCode})`
-    );
-    
-    // Duration must be ~27 hours 25 minutes (1645 minutes), crossing 1 midnight (Day 2 to Day 3)
-    assert.ok(timeline.totalDurationMinutes >= 1600 && timeline.totalDurationMinutes <= 1700,
-      `Duration must be ~27h 25m, got ${timeline.totalDurationMinutes} mins`);
-    assert.equal(timeline.dayCrossings, 1, `Day crossings must be 1, got ${timeline.dayCrossings}`);
-    assert.equal(timeline.departureDate, "2026-11-20", `Departure date must be 2026-11-20`);
-    assert.equal(timeline.destinationArrivalDate, "2026-11-21", `Arrival date in Kochi must be 2026-11-21`);
-
-    // Section 5 Railway Verification: Timezone awareness in Asia/Kolkata (+05:30)
-    assert.ok(timeline.scheduledBoardingDepartureDateTime.includes("+05:30"), "Departure timestamp contains +05:30 offset");
-    assert.ok(timeline.scheduledDestinationArrivalDateTime.includes("+05:30"), "Arrival timestamp contains +05:30 offset");
-
-    // Static timetable vs live status
-    assert.equal(timeline.dataClassification, "SCHEDULED_JOURNEY", `Future train must be SCHEDULED_JOURNEY, got ${timeline.dataClassification}`);
-
-    recordTest(1, "Scenario A: Mumbai to Kochi Train Timeline (Cluster Matching, 27h duration, +05:30 IST)", true, {
-      boarding: timeline.boardingStationCode,
-      destination: timeline.destinationStationCode,
-      durationMinutes: timeline.totalDurationMinutes,
-      departureDate: timeline.departureDate,
-      arrivalDate: timeline.destinationArrivalDate,
-      classification: timeline.dataClassification,
-    });
-  } catch (err) {
-    recordTest(1, "Scenario A: Mumbai to Kochi Train Timeline", false, err.message);
-  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // CHECK 2: Scenario B — Nearby Local Trip (Bhandup to Mulund, Mumbai, 1 day)

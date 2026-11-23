@@ -60,6 +60,8 @@ const DestinationResearchSchema = z.object({
 // Cache destination research in-memory (TTL 2 hours)
 const destinationResearchCache = new Map();
 const CACHE_TTL = 2 * 60 * 60 * 1000;
+// In-flight promise map to deduplicate simultaneous requests for the same destination
+const inFlightResearch = new Map();
 
 async function fetchOpenStreetPOIs(destination) {
   try {
@@ -125,31 +127,51 @@ export class DestinationResearchAgent {
       throw new Error("Destination name is required for destination research.");
     }
 
-    const cacheKey = `${rawDest.toLowerCase()}:${(Array.isArray(interests) ? interests : []).sort().join(",")}`;
-    if (destinationResearchCache.has(cacheKey)) {
-      const entry = destinationResearchCache.get(cacheKey);
+    const normDest = rawDest.toLowerCase();
+    const sortedInterests = (Array.isArray(interests) ? interests : []).sort().join(",");
+    const specificKey = `${normDest}:${sortedInterests}`;
+
+    // 1. Check exact cache (specific interests)
+    if (destinationResearchCache.has(specificKey)) {
+      const entry = destinationResearchCache.get(specificKey);
       if (Date.now() - entry.timestamp < CACHE_TTL) {
-        logger.info(`[${this.name}] Cache hit for ${rawDest}`);
+        logger.info(`[${this.name}] Exact cache hit for ${rawDest}`);
         return entry.data;
       }
     }
 
-    logger.info(`[${this.name}] Conducting dynamic research for destination: "${rawDest}"`);
+    // 2. Check base destination cache (fallback reuse if same destination was researched recently)
+    if (destinationResearchCache.has(normDest)) {
+      const entry = destinationResearchCache.get(normDest);
+      if (Date.now() - entry.timestamp < CACHE_TTL) {
+        logger.info(`[${this.name}] Base destination cache hit for ${rawDest}`);
+        return entry.data;
+      }
+    }
 
-    // Fetch verified OpenStreetMap POIs to ground research with real venues
-    const osmData = await fetchOpenStreetPOIs(rawDest);
-    let osmGroundTruth = "";
-    if (osmData.restaurants.length > 0 || osmData.attractions.length > 0 || osmData.markets.length > 0) {
-      osmGroundTruth = `\nVERIFIED REAL-WORLD OPENSTREETMAP GEO-INDEX FOR "${rawDest}":
+    // 3. Deduplicate simultaneous in-flight research requests for the same destination
+    if (inFlightResearch.has(normDest)) {
+      logger.info(`[${this.name}] Deduplicating concurrent research for ${rawDest}`);
+      return inFlightResearch.get(normDest);
+    }
+
+    const researchTask = (async () => {
+      logger.info(`[${this.name}] Conducting dynamic research for destination: "${rawDest}"`);
+
+      // Fetch verified OpenStreetMap POIs to ground research with real venues
+      const osmData = await fetchOpenStreetPOIs(rawDest);
+      let osmGroundTruth = "";
+      if (osmData.restaurants.length > 0 || osmData.attractions.length > 0 || osmData.markets.length > 0) {
+        osmGroundTruth = `\nVERIFIED REAL-WORLD OPENSTREETMAP GEO-INDEX FOR "${rawDest}":
 ${osmData.restaurants.length > 0 ? `- Real Local Restaurants/Cafes: ${osmData.restaurants.map((r) => `"${r.name}" (${r.lat}, ${r.lon})`).join(", ")}` : ""}
 ${osmData.attractions.length > 0 ? `- Real Verified Sights/Attractions: ${osmData.attractions.map((a) => `"${a.name}" (${a.lat}, ${a.lon})`).join(", ")}` : ""}
 ${osmData.markets.length > 0 ? `- Real Regional Markets/Bazaars: ${osmData.markets.map((m) => `"${m.name}" (${m.lat}, ${m.lon})`).join(", ")}` : ""}
 Prioritize these verified real-world places and coordinates in your output. Attach accurate visiting times and regional specialties. Never fabricate fake businesses.`;
-    }
+      }
 
-    const interestStr = Array.isArray(interests) && interests.length > 0 ? interests.join(", ") : "general culture, food, landmarks, nature";
+      const interestStr = Array.isArray(interests) && interests.length > 0 ? interests.join(", ") : "general culture, food, landmarks, nature";
 
-    const prompt = `You are an expert geographical and travel intelligence researcher.
+      const prompt = `You are an expert geographical and travel intelligence researcher.
 Conduct thorough, factual, and verified travel research for the actual requested destination: "${rawDest}".
 User interests: ${interestStr}. Number of travelers: ${travelers}.
 ${osmGroundTruth}
@@ -205,37 +227,45 @@ Return strictly a valid JSON object matching this schema:
   "transportTips": "Specific local commuting advice (metro pass, ride apps, airport transfer advice)"
 }`;
 
-    const completionResult = await aiRouter.execute({
-      messages: [
-        {
-          role: "system",
-          content: "You are an autonomous destination intelligence agent. Always output valid JSON only.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      temperature: 0.2,
-      jsonMode: true,
-      maxTokens: 4096,
-      timeoutMs: 35000,
+      const completionResult = await aiRouter.execute({
+        messages: [
+          {
+            role: "system",
+            content: "You are an autonomous destination intelligence agent. Always output valid JSON only.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        temperature: 0.2,
+        jsonMode: true,
+        maxTokens: 2500,
+        timeoutMs: 35000,
+      });
+
+      const parsedJson = parseAIJson(completionResult.content);
+      const validated = DestinationResearchSchema.parse(parsedJson);
+
+      // Attach provider telemetry for Final AI Judge
+      validated._telemetry = {
+        provider: completionResult.provider,
+        model: completionResult.model,
+        durationMs: completionResult.durationMs,
+        osmPoisDiscovered: osmData.restaurants.length + osmData.attractions.length + osmData.markets.length,
+      };
+
+      // Cache both specific and base
+      destinationResearchCache.set(specificKey, { data: validated, timestamp: Date.now() });
+      destinationResearchCache.set(normDest, { data: validated, timestamp: Date.now() });
+      logger.info(`[${this.name}] Successfully completed research for ${rawDest} via ${completionResult.provider}`);
+      return validated;
+    })().finally(() => {
+      inFlightResearch.delete(normDest);
     });
 
-    const parsedJson = parseAIJson(completionResult.content);
-    const validated = DestinationResearchSchema.parse(parsedJson);
-
-    // Attach provider telemetry for Final AI Judge
-    validated._telemetry = {
-      provider: completionResult.provider,
-      model: completionResult.model,
-      durationMs: completionResult.durationMs,
-      osmPoisDiscovered: osmData.restaurants.length + osmData.attractions.length + osmData.markets.length,
-    };
-
-    destinationResearchCache.set(cacheKey, { data: validated, timestamp: Date.now() });
-    logger.info(`[${this.name}] Successfully completed research for ${rawDest} via ${completionResult.provider}`);
-    return validated;
+    inFlightResearch.set(normDest, researchTask);
+    return researchTask;
   }
 }
 

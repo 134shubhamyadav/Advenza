@@ -1,5 +1,5 @@
 <!-- ================================================================= -->
-<!--               🌍 ✈️ ADVENZA (TRIP COMMANDER) 🚆 🚗                 -->
+<!--               🌍 ✈️ ADVENZA (INTELLIGENT TRAVEL ENGINE) 🚆 🚗                 -->
 <!--       Autonomous Multi-Agent AI Travel Intelligence Platform       -->
 <!-- ================================================================= -->
 

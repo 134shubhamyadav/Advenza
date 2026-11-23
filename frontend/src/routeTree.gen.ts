@@ -20,7 +20,6 @@ import { Route as ItineraryRouteImport } from './routes/itinerary'
 import { Route as GroupRouteImport } from './routes/group'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConsensusRouteImport } from './routes/consensus'
-import { Route as CommanderRouteImport } from './routes/commander'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as BudgetRouteImport } from './routes/budget'
 import { Route as IndexRouteImport } from './routes/index'
@@ -83,11 +82,6 @@ const ConsensusRoute = ConsensusRouteImport.update({
   path: '/consensus',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CommanderRoute = CommanderRouteImport.update({
-  id: '/commander',
-  path: '/commander',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
   path: '/chat',
@@ -123,7 +117,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/budget': typeof BudgetRoute
   '/chat': typeof ChatRoute
-  '/commander': typeof CommanderRoute
   '/consensus': typeof ConsensusRoute
   '/dashboard': typeof DashboardRoute
   '/group': typeof GroupRoute
@@ -143,7 +136,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/budget': typeof BudgetRoute
   '/chat': typeof ChatRoute
-  '/commander': typeof CommanderRoute
   '/consensus': typeof ConsensusRoute
   '/dashboard': typeof DashboardRoute
   '/group': typeof GroupRoute
@@ -164,7 +156,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/budget': typeof BudgetRoute
   '/chat': typeof ChatRoute
-  '/commander': typeof CommanderRoute
   '/consensus': typeof ConsensusRoute
   '/dashboard': typeof DashboardRoute
   '/group': typeof GroupRoute
@@ -186,7 +177,6 @@ export interface FileRouteTypes {
     | '/'
     | '/budget'
     | '/chat'
-    | '/commander'
     | '/consensus'
     | '/dashboard'
     | '/group'
@@ -206,7 +196,6 @@ export interface FileRouteTypes {
     | '/'
     | '/budget'
     | '/chat'
-    | '/commander'
     | '/consensus'
     | '/dashboard'
     | '/group'
@@ -226,7 +215,6 @@ export interface FileRouteTypes {
     | '/'
     | '/budget'
     | '/chat'
-    | '/commander'
     | '/consensus'
     | '/dashboard'
     | '/group'
@@ -247,7 +235,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BudgetRoute: typeof BudgetRoute
   ChatRoute: typeof ChatRoute
-  CommanderRoute: typeof CommanderRoute
   ConsensusRoute: typeof ConsensusRoute
   DashboardRoute: typeof DashboardRoute
   GroupRoute: typeof GroupRoute
@@ -343,13 +330,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsensusRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/commander': {
-      id: '/commander'
-      path: '/commander'
-      fullPath: '/commander'
-      preLoaderRoute: typeof CommanderRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/chat': {
       id: '/chat'
       path: '/chat'
@@ -399,7 +379,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BudgetRoute: BudgetRoute,
   ChatRoute: ChatRoute,
-  CommanderRoute: CommanderRoute,
   ConsensusRoute: ConsensusRoute,
   DashboardRoute: DashboardRoute,
   GroupRoute: GroupRoute,

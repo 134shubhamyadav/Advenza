@@ -7,17 +7,25 @@ import {
   migrateMemoriesSchema,
   curateCollageSchema,
   listMemoriesQuerySchema,
+  generateCaptionsSchema,
 } from "../schemas/memory.schemas.js";
 import * as memoryController from "../controllers/memory.controller.js";
 import { uploadLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 
-// Enforce authentication across all memory routes
+// Public share route (accessible without authentication for shared memory links)
+// GET /api/memories/share/:id — Fetch public sanitized memory for sharing
+router.get("/share/:id", memoryController.getSharedMemory);
+
+// Enforce authentication across all remaining memory routes
 router.use(verifyToken);
 
 // POST /api/memories/curate — AI-powered memory selection for collages
 router.post("/curate", validate({ body: curateCollageSchema }), memoryController.curateCollage);
+
+// POST /api/memories/generate-captions — Photo-aware multimodal AI Instagram caption generator
+router.post("/generate-captions", validate({ body: generateCaptionsSchema }), memoryController.generateCaptions);
 
 // GET /api/memories — List user's memories with cursor pagination, category & search filter
 router.get("/", validate({ query: listMemoriesQuerySchema }), memoryController.listMemories);

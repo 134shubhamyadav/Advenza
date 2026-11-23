@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Memory from "../models/Memory.js";
 import Trip from "../models/Trip.js";
 import { memoryAiService } from "../services/ai/memory-ai.service.js";
@@ -106,6 +107,43 @@ export const getMemoryById = asyncHandler(async (req, res) => {
     throw new NotFoundError("Memory not found or access denied");
   }
   res.json(memory);
+});
+
+export const getSharedMemory = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    throw new NotFoundError("Memory not found");
+  }
+
+  const memory = await Memory.findOne({
+    _id: id,
+    isDeleted: false,
+    status: { $ne: "deleted" },
+  }).lean();
+
+  if (!memory) {
+    throw new NotFoundError("Memory not found or no longer available");
+  }
+
+  // Return a safe, sanitized public payload without exposing userId or private user account metadata
+  const publicData = {
+    _id: memory._id,
+    place: memory.place || "Travel Memory",
+    date: memory.date || "",
+    weather: memory.weather || "",
+    highlight: memory.highlight || "",
+    caption: memory.caption || "",
+    description: memory.description || "",
+    category: memory.category || "OTHER",
+    media: Array.isArray(memory.media) && memory.media.length > 0
+      ? memory.media
+      : (memory.mediaUrl ? [{ url: memory.mediaUrl, resourceType: memory.mediaType || "image" }] : []),
+    location: memory.location || null,
+    moments: memory.moments || [],
+    createdAt: memory.createdAt,
+  };
+
+  res.json(publicData);
 });
 
 export const createMemory = asyncHandler(async (req, res) => {
@@ -477,3 +515,32 @@ export const cleanupAssets = asyncHandler(async (req, res) => {
   }
   res.json({ success: true, message: "Assets cleaned up successfully." });
 });
+
+/**
+ * POST /api/memories/generate-captions
+ * Visually analyzes memory photos using multimodal AI and generates 8 distinct captions.
+ */
+export const generateCaptions = asyncHandler(async (req, res) => {
+  const { memoryId, imageUrls, place, highlight, caption, date, category, tonePreference } = req.body;
+
+  const result = await memoryAiService.generatePhotoAwareCaptions({
+    memoryId,
+    imageUrls,
+    place,
+    highlight,
+    caption,
+    date,
+    category,
+    tonePreference,
+    userId: req.uid,
+  });
+
+  res.json({
+    success: true,
+    visualSummary: result.visualSummary,
+    captions: result.captions,
+    provider: result.provider,
+    model: result.model,
+  });
+});
+

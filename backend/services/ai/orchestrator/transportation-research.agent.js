@@ -2,7 +2,6 @@ import { aiRouter } from "../ai-router.service.js";
 import { parseAIJson } from "../ai-parser.js";
 import { osrmRoutingService } from "../../travel/osrm-routing.service.js";
 import { weatherProvider } from "../../travel/providers/weather.provider.js";
-import { railcoreProvider } from "../providers/railcore.provider.js";
 import { logger } from "../../../utils/logger.js";
 import { z } from "zod";
 
@@ -71,10 +70,9 @@ export class TransportationResearchAgent {
     const effectiveOrigin = rawOrigin || "Nearest Major Metropolitan Hub";
     logger.info(`[${this.name}] Researching transportation routes: ${effectiveOrigin} → ${rawDest} for ${travelers} traveler(s)`);
 
-    // 1. Concurrently check live OSRM road routing and RailCore Indian Railways route
+    // 1. Concurrently check live OSRM road routing
     let osrmRoute = null;
     let nearbyHubs = { station: null, airport: null };
-    let railcoreResult = null;
 
     try {
       const [origGeo, destGeo] = await Promise.all([
@@ -97,20 +95,6 @@ export class TransportationResearchAgent {
         );
       }
 
-      if (railcoreProvider.isConfigured()) {
-        tasks.push(
-          railcoreProvider.resolveRailwayRoute({
-            origin: effectiveOrigin,
-            destination: rawDest,
-            journeyDate,
-            passengers: travelers,
-            preferredClass,
-          }).then((r) => { railcoreResult = r; }).catch((err) => {
-            logger.warn(`[${this.name}] RailCore query skipped: ${err.message}`);
-          })
-        );
-      }
-
       await Promise.allSettled(tasks);
     } catch (geoErr) {
       logger.warn(`[${this.name}] Live transit lookups skipped: ${geoErr.message}`);
@@ -124,20 +108,6 @@ export class TransportationResearchAgent {
 - Real estimated fuel cost: ~₹${osrmRoute.fuelCostINR} (passenger car, 14 km/L at standard fuel rates)
 - Real estimated highway tolls: ~₹${osrmRoute.estimatedTollsINR}
 Integrate this exact road distance into your "Drive" option and set priceType to "LIVE_VERIFIED".`;
-    }
-
-    if (railcoreResult && railcoreResult.status === "SUCCESS" && railcoreResult.trains?.length > 0) {
-      const recTrain = railcoreResult.recommendedTrain;
-      groundTruthNote += `\nVERIFIED RAILCORE INDIAN RAILWAYS LIVE GROUND TRUTH:
-- Route Stations: ${railcoreResult.fromStation} (${recTrain.fromStationName || ""}) → ${railcoreResult.toStation} (${recTrain.toStationName || ""})
-- Total Trains Found: ${railcoreResult.totalTrainsFound} scheduled trains
-- Primary Recommended Train: #${recTrain.trainNumber} "${recTrain.trainName}"
-- Departure: ${recTrain.departureTime} | Arrival: ${recTrain.arrivalTime} (${recTrain.durationHours} hrs, ${recTrain.distanceKm || 0} km)
-- Target Class: ${recTrain.selectedClass}
-- Base One-Way Fare per Person: ₹${recTrain.selectedFarePerPersonINR} (Round-trip group cost: ₹${recTrain.totalFareForGroupINR * 2})
-- Live Seat Availability: ${recTrain.seatAvailability?.availabilityText || "Available"} (Status: ${recTrain.seatAvailability?.status || "CONFIRMED"})
-- Available Classes: ${recTrain.fares?.map((f) => `${f.classCode} (₹${f.fareINR})`).join(", ") || recTrain.availableClasses?.join(", ")}
-Integrate this exact train information for the "Train" option, set priceType to "LIVE_VERIFIED", and source to "RAILCORE_LIVE_API".`;
     }
 
     if (nearbyHubs.station || nearbyHubs.airport) {
@@ -218,85 +188,12 @@ Return strictly a valid JSON object matching this schema:
       }
     }
 
-    // If RailCore provided live train data, ensure Train mode has verified live details
-    if (railcoreResult && railcoreResult.status === "SUCCESS" && railcoreResult.trains?.length > 0) {
-      if (!Array.isArray(parsedJson.recommendedModes)) {
-        parsedJson.recommendedModes = [];
-      }
-
-      const recTrain = railcoreResult.recommendedTrain;
-      const oneWayFare = recTrain.selectedFarePerPersonINR || 600;
-      const rtPerPerson = oneWayFare * 2;
-      const rtGroupTotal = rtPerPerson * Math.max(1, travelers);
-
-      const trainDetails = {
-        trainNumber: recTrain.trainNumber,
-        trainName: recTrain.trainName,
-        fromStationCode: recTrain.fromStationCode || railcoreResult.fromStation,
-        fromStationName: recTrain.fromStationName || "",
-        toStationCode: recTrain.toStationCode || railcoreResult.toStation,
-        toStationName: recTrain.toStationName || "",
-        departureTime: recTrain.departureTime,
-        arrivalTime: recTrain.arrivalTime,
-        durationMinutes: recTrain.durationMinutes,
-        durationHours: recTrain.durationHours,
-        selectedClass: recTrain.selectedClass,
-        oneWayFarePerPersonINR: oneWayFare,
-        roundTripFarePerPersonINR: rtPerPerson,
-        roundTripGroupTotalINR: rtGroupTotal,
-        fares: recTrain.fares || [],
-        seatAvailability: recTrain.seatAvailability || null,
-        availableClasses: recTrain.availableClasses || [],
-        allTrains: railcoreResult.trains.slice(0, 5),
-        priceType: "LIVE_VERIFIED",
-        source: "RAILCORE_LIVE_API",
-        retrievedAt: new Date().toISOString(),
-      };
-
-      const trainModeIndex = parsedJson.recommendedModes.findIndex(
-        (m) => String(m.mode).toLowerCase() === "train"
-      );
-
-      const trainModePayload = {
-        mode: "Train",
-        isDirectAvailable: true,
-        durationHours: recTrain.durationHours,
-        outboundRoute: `${recTrain.trainNumber} ${recTrain.trainName} (${recTrain.fromStationCode || railcoreResult.fromStation} ${recTrain.departureTime} → ${recTrain.toStationCode || railcoreResult.toStation} ${recTrain.arrivalTime})`,
-        returnRoute: `Return via ${recTrain.toStationCode || railcoreResult.toStation} → ${recTrain.fromStationCode || railcoreResult.fromStation}`,
-        pricePerPersonINR: rtPerPerson,
-        totalRoundTripForGroupINR: rtGroupTotal,
-        lastMileInfo: {
-          nearestTerminal: `${recTrain.toStationName || recTrain.toStationCode || railcoreResult.toStation} Station`,
-          distanceToCenterKm: 6,
-          recommendedLocalMode: "Prepaid Taxi / Auto Rickshaw",
-          estimatedFareINR: 250,
-        },
-        priceType: "LIVE_VERIFIED",
-        bookingAdvice: `Live RailCore status: ${recTrain.seatAvailability?.availabilityText || "AVAILABLE"} (${recTrain.selectedClass}). Available classes: ${recTrain.fares?.map((f) => `${f.classCode}: ₹${f.fareINR}`).join(", ") || recTrain.availableClasses?.join(", ")}.`,
-        trainDetails,
-      };
-
-      if (trainModeIndex >= 0) {
-        parsedJson.recommendedModes[trainModeIndex] = {
-          ...parsedJson.recommendedModes[trainModeIndex],
-          ...trainModePayload,
-        };
-      } else {
-        parsedJson.recommendedModes.push(trainModePayload);
-      }
-
-      if (preferredMode && /train|rail/i.test(preferredMode)) {
-        parsedJson.bestOption = "Train";
-      }
-    }
-
     const validated = TransportResearchSchema.parse({
       ...parsedJson,
       origin: parsedJson.origin || effectiveOrigin,
       destination: parsedJson.destination || rawDest,
       distanceKm: osrmRoute?.distanceKm || parsedJson.distanceKm || 0,
       summary: parsedJson.summary || parsedJson.overview || `Travel options connecting ${effectiveOrigin} and ${rawDest}.`,
-      railcoreData: railcoreResult || undefined,
     });
 
     // Attach provider telemetry for Final AI Judge
@@ -305,7 +202,6 @@ Return strictly a valid JSON object matching this schema:
       model: completionResult.model,
       durationMs: completionResult.durationMs,
       hasLiveRouting: Boolean(osrmRoute),
-      hasLiveRail: Boolean(railcoreResult?.status === "SUCCESS" && railcoreResult?.trains?.length > 0),
     };
 
     return validated;

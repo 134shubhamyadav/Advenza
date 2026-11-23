@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { railwayTimelineService } from "./services/travel/railway-timeline.service.js";
 import { conversationalAIService } from "./services/ai/conversational-ai.service.js";
 import { destinationDisambiguationService } from "./services/places/destination-disambiguation.service.js";
 import { verificationAgent } from "./services/ai/orchestrator/verification.agent.js";
@@ -111,88 +110,6 @@ async function main() {
       process.env.NODE_ENV = originalEnv;
       process.env.FIREBASE_SERVICE_ACCOUNT_JSON = originalJson;
     }
-  });
-
-  // ── 2. MULTI-DAY RAILWAY TIMELINE MANDATORY TEST ───────────────────────────
-
-  await runTest("Railway: Mandatory Test — Nov 18 10:55 AM to Nov 19 5:30 PM = 30h 35m (1,835 mins)", async () => {
-    const timeline = await railwayTimelineService.buildRailwayTimeline({
-      fromStation: "DELHI",
-      toStation: "MUMBAI",
-      journeyDate: "2026-11-18",
-      arrivalDate: "2026-11-19",
-      departureTime: "10:55",
-      arrivalTime: "17:30",
-    });
-
-    assert.equal(timeline.totalDurationMinutes, 1835, "Duration must be exactly 1,835 minutes (30h 35m)");
-    assert.equal(timeline.totalDurationText, "30h 35m", "Duration text must be '30h 35m'");
-    assert.equal(timeline.dayCrossings, 1, "Must cross exactly 1 calendar midnight");
-    assert.equal(timeline.totalJourneyDays, 2, "Must touch 2 journey days");
-    assert.equal(timeline.isOvernight, true, "Must be classified as overnight");
-    assert.equal(timeline.destinationArrivalDate, "2026-11-19", "Destination arrival date must be Nov 19, 2026");
-    assert.equal(timeline.destinationArrivalTime, "17:30", "Destination arrival time must be 17:30");
-    assert.ok(timeline.scheduledBoardingDepartureDateTime.startsWith("2026-11-18T10:55"), "Departure timestamp must match Nov 18 10:55");
-    assert.ok(timeline.scheduledDestinationArrivalDateTime.startsWith("2026-11-19T17:30"), "Arrival timestamp must match Nov 19 17:30");
-    assert.ok(timeline.expectedDestinationArrivalDateTime.startsWith("2026-11-19T17:30"), "Expected arrival timestamp must match Nov 19 17:30");
-  });
-
-  await runTest("Railway: Multi-day 48h journey (Mangala Lakshadweep Express 12618) properly spreads across Day 1, 2, 3", async () => {
-    const timeline = await railwayTimelineService.buildRailwayTimeline({
-      trainNumber: "12618",
-      fromStation: "NZM",
-      toStation: "ERS",
-      journeyDate: "2026-11-18",
-    });
-
-    assert.equal(timeline.trainNumber, "12618");
-    assert.ok(timeline.totalDurationMinutes >= 2800, `Mangala Lakshadweep Express must take ~49-50 hours, got ${timeline.totalDurationMinutes}`);
-    assert.equal(timeline.dayCrossings, 2, "Must cross 2 calendar midnights (Day 1 to Day 3)");
-    assert.equal(timeline.totalJourneyDays, 3, "Total journey days must be 3");
-    assert.equal(timeline.destinationArrivalDate, "2026-11-20", "Arrival date must be 2026-11-20 (Day 3)");
-    assert.equal(timeline.isOvernight, true);
-    assert.ok(timeline.stops.length > 20, "Must have intermediate station stops");
-    // Verify intermediate stations have correct sequence calendar dates
-    const day3Stop = timeline.stops.find((s) => s.stationCode === "ERS");
-    assert.equal(day3Stop?.calendarDate, "2026-11-20", "ERS final arrival date must be Day 3");
-  });
-
-  await runTest("Railway: Incomplete timetable (clock times only without arrival date or duration) returns UNAVAILABLE without guessing same-day", async () => {
-    const timeline = await railwayTimelineService._buildFallbackTimeline({
-      trainNumber: "99999",
-      trainName: "Unscheduled Express",
-      fromStation: { code: "NDLS", name: "New Delhi" },
-      toStation: { code: "CSMT", name: "Mumbai" },
-      journeyDate: "2026-11-18",
-      userDepTime: "10:55",
-      userArrTime: "17:30",
-      durationMinutes: null,
-      inputArrivalDate: null,
-    });
-
-    assert.equal(timeline.isUnresolvedSchedule, true, "Must flag unresolved schedule");
-    assert.equal(timeline.statusClassification, "UNAVAILABLE", "Status classification must be UNAVAILABLE");
-    assert.equal(timeline.dataClassification, "UNAVAILABLE", "Data classification must be UNAVAILABLE");
-    assert.equal(timeline.totalDurationMinutes, null, "Must never invent 6h 35m same-day duration");
-    assert.equal(timeline.destinationArrivalDate, null, "Must never invent arrival date");
-  });
-
-  await runTest("Railway: Classification separation distinguishes scheduled journey vs live tracking", async () => {
-    const timeline = await railwayTimelineService.buildRailwayTimeline({
-      fromStation: "DELHI",
-      toStation: "MUMBAI",
-      journeyDate: "2026-11-25", // Future date: scheduled timetable search, not live tracking
-      departureTime: "10:55",
-      arrivalTime: "17:30",
-      fallbackDurationMinutes: 1835,
-      trackLive: false,
-    });
-
-    assert.equal(timeline.statusClassification, "SCHEDULED_JOURNEY", "Timetable search must not claim live tracking");
-    assert.equal(timeline.freshnessClassification, "STATIC", "Freshness must be STATIC");
-    assert.equal(timeline.liveTracking.isLive, false, "Live tracking must be false");
-    assert.ok(timeline.provider, "Provider must be defined");
-    assert.ok(timeline.lastUpdatedAt, "lastUpdatedAt timestamp must be present");
   });
 
   // ── 3. GEOGRAPHIC PROXIMITY & HALLUCINATION ELIMINATION ───────────────────

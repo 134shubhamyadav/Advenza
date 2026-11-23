@@ -16,12 +16,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { Camera, Plus, MapPin, Image as ImageIcon, Trash2, Sparkles, Film } from "lucide-react";
+import { Camera, Plus, MapPin, Image as ImageIcon, Trash2, Sparkles, Share2 } from "lucide-react";
 import { compressImage } from "@/lib/image-utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { DatePicker } from "@/components/ui/date-picker";
 import { CollageCreator } from "./collage-creator";
-import { ReelStudio } from "@/components/reels/reel-studio";
+import { MemoryPhotoCollage } from "@/components/memories/memory-photo-collage";
+import { MemoryShareDialog } from "@/components/memories/memory-share-dialog";
 
 
 
@@ -61,8 +62,7 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [activeMemoryForContent, setActiveMemoryForContent] = useState<MemoryDocument | null>(null);
-  const [activeMemoryForReel, setActiveMemoryForReel] = useState<MemoryDocument | null>(null);
-  const [reelStudioOpen, setReelStudioOpen] = useState(false);
+  const [shareMemoryItem, setShareMemoryItem] = useState<MemoryDocument | null>(null);
 
   // Form states
   const [formPlace, setFormPlace] = useState("");
@@ -360,18 +360,6 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
                 <Sparkles className="mr-1.5 h-3.5 w-3.5 text-primary" />
                 Collage
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setActiveMemoryForReel(memories[0]);
-                  setReelStudioOpen(true);
-                }}
-                className="border-violet-500/20 text-violet-400 hover:bg-violet-500/10"
-              >
-                <Film className="mr-1.5 h-3.5 w-3.5 text-violet-400" />
-                Reel Studio
-              </Button>
             </>
           )}
           <Button onClick={() => setCreateOpen(true)} className="bg-gradient-to-r from-primary to-accent">
@@ -411,17 +399,14 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
                       <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                       Collage
                     </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => {
-                        setActiveMemoryForReel(mem);
-                        setReelStudioOpen(true);
-                      }}
-                      className="text-violet-400 border-violet-500/20 hover:bg-violet-500/10"
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShareMemoryItem(mem)}
+                      className="text-primary/70 border-primary/20 hover:bg-primary/10"
                     >
-                      <Film className="mr-1.5 h-3.5 w-3.5" />
-                      Reel
+                      <Share2 className="mr-1.5 h-3.5 w-3.5" />
+                      Share
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => handleDelete(mem)} className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10">
                       <Trash2 className="h-4 w-4" />
@@ -435,25 +420,29 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
                 )}
 
                 {mem.mediaItems && mem.mediaItems.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {mem.mediaItems.map((media) => (
-                      <div key={media.id} className="relative aspect-square overflow-hidden rounded-xl bg-muted/20 border border-border/40">
-                        {media.type === "video" ? (
-                          <video
-                            src={media.storageUrl}
-                            controls
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <img 
-                            src={media.storageUrl} 
-                            alt="Memory" 
-                            className="h-full w-full object-cover transition-transform hover:scale-105"
-                            loading="lazy"
-                          />
-                        )}
-                      </div>
-                    ))}
+                  <div
+                    className="relative rounded-xl overflow-hidden my-3"
+                    style={{
+                      minHeight:
+                        mem.mediaItems.length === 1
+                          ? 240
+                          : mem.mediaItems.length === 2
+                          ? 260
+                          : mem.mediaItems.length === 3
+                          ? 280
+                          : 320,
+                    }}
+                  >
+                    <MemoryPhotoCollage
+                      media={mem.mediaItems.map((m) => ({
+                        url: m.storageUrl,
+                        resourceType: m.type === "video" ? "video" : "image",
+                      }))}
+                      place={mem.place}
+                      date={mem.date}
+                      onShare={() => setShareMemoryItem(mem)}
+                      className="h-full"
+                    />
                   </div>
                 )}
               </div>
@@ -616,17 +605,21 @@ export function TripMemoriesTab({ tripId }: TripMemoriesTabProps) {
         </SheetContent>
       </Sheet>
 
-      <Dialog open={reelStudioOpen} onOpenChange={setReelStudioOpen}>
-        <DialogContent className="sm:max-w-[840px] max-h-[94vh] overflow-y-auto">
-          <ReelStudio
-            tripId={tripId}
-            allMemories={memories}
-            initialSelectedIds={activeMemoryForReel ? [activeMemoryForReel.id] : []}
-            destinationName={activeMemoryForReel?.place || "Trip Memories"}
-            onClose={() => setReelStudioOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      {/* UNIFIED SHARE DIALOG */}
+      <MemoryShareDialog
+        isOpen={!!shareMemoryItem}
+        onOpenChange={(open) => !open && setShareMemoryItem(null)}
+        memory={shareMemoryItem ? {
+          _id: shareMemoryItem.id,
+          place: shareMemoryItem.place,
+          date: shareMemoryItem.date,
+          highlight: shareMemoryItem.highlight,
+          media: shareMemoryItem.mediaItems?.map((m) => ({
+            url: m.storageUrl,
+            resourceType: m.type === "video" ? "video" as const : "image" as const,
+          })),
+        } : null}
+      />
     </div>
   );
 }

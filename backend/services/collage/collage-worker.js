@@ -85,10 +85,6 @@ export class CollageWorker {
           isDeleted: false,
         });
 
-        if (memories.length < 2) {
-          throw new Error(`Insufficient active memories found for collage (found ${memories.length}, required at least 2)`);
-        }
-
         // Preserve user's specified memory ordering
         const memoryMap = new Map(memories.map((m) => [String(m._id), m]));
         const orderedMemories = collage.memoryIds
@@ -97,21 +93,52 @@ export class CollageWorker {
 
         // 2. Fetch image buffers (preferring thumbnail/optimized to avoid huge downloads)
         const imageBuffers = [];
-        for (const mem of orderedMemories) {
-          // Use thumbnailUrl if available and high-res, else mediaUrl
-          const sourceUrl = mem.thumbnailUrl || mem.mediaUrl;
-          if (sourceUrl) {
-            try {
-              const buffer = await collageStorageService.fetchImageBuffer(sourceUrl);
-              imageBuffers.push(buffer);
-            } catch (dlErr) {
-              logger.warn(`[CollageWorker] Failed to download image for memory ${mem._id}: ${dlErr.message}`);
+
+        // Priority 1: explicitly selected photo URLs in collage.imageUrls
+        if (Array.isArray(collage.imageUrls) && collage.imageUrls.length >= 2) {
+          for (const url of collage.imageUrls) {
+            if (url) {
+              try {
+                const buffer = await collageStorageService.fetchImageBuffer(url);
+                imageBuffers.push(buffer);
+              } catch (dlErr) {
+                logger.warn(`[CollageWorker] Failed to download selected imageUrl ${url}: ${dlErr.message}`);
+              }
+            }
+          }
+        } else {
+          // Priority 2: Extract all photos from orderedMemories (supporting multi-media per memory)
+          for (const mem of orderedMemories) {
+            const memUrls = [];
+            if (Array.isArray(mem.media) && mem.media.length > 0) {
+              mem.media.forEach((item) => {
+                if (item && item.url && item.resourceType !== "video") {
+                  memUrls.push(item.url);
+                }
+              });
+            }
+            if (memUrls.length === 0 && Array.isArray(mem.mediaItems)) {
+              mem.mediaItems.forEach((item) => {
+                const u = item.storageUrl || item.url;
+                if (u && item.type !== "video") memUrls.push(u);
+              });
+            }
+            if (memUrls.length === 0 && mem.thumbnailUrl) memUrls.push(mem.thumbnailUrl);
+            if (memUrls.length === 0 && mem.mediaUrl) memUrls.push(mem.mediaUrl);
+
+            for (const sourceUrl of memUrls) {
+              try {
+                const buffer = await collageStorageService.fetchImageBuffer(sourceUrl);
+                imageBuffers.push(buffer);
+              } catch (dlErr) {
+                logger.warn(`[CollageWorker] Failed to download image for memory ${mem._id}: ${dlErr.message}`);
+              }
             }
           }
         }
 
         if (imageBuffers.length < 2) {
-          throw new Error(`Could not download sufficient images (successfully loaded ${imageBuffers.length})`);
+          throw new Error(`Insufficient images to compose collage (successfully loaded ${imageBuffers.length}, required at least 2)`);
         }
 
         // 3. Compose Collage using Sharp Engine

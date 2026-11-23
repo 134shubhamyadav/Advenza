@@ -77,6 +77,16 @@ export const THEME_OPTIONS = [
   { id: "blur", label: "Blurred Canvas", color: "linear-gradient(135deg, #1e293b, #0f172a)" },
 ];
 
+export interface CandidatePhoto {
+  id: string; // unique ID for selection in UI: `${memId}_${index}` or item._id
+  url: string;
+  thumbnailUrl: string;
+  memoryId: string;
+  place?: string;
+  date?: string;
+  caption?: string;
+}
+
 export interface CollageCreatorProps {
   tripId?: string;
   memory?: any;
@@ -84,6 +94,69 @@ export interface CollageCreatorProps {
   initialSelectedIds?: string[];
   onClose?: () => void;
   onCollageCreated?: (collage: any) => void;
+}
+
+/**
+ * Extracts all non-video photos from a memory document, supporting
+ * `media` (Cloudinary array), `mediaItems` (Firebase array), or legacy `mediaUrl`.
+ */
+export function extractPhotosFromMemory(mem: any): CandidatePhoto[] {
+  if (!mem) return [];
+  const memId = String(mem._id || mem.id || "mem");
+  const photos: CandidatePhoto[] = [];
+
+  // Check mem.media array (Cloudinary multi-media)
+  if (Array.isArray(mem.media) && mem.media.length > 0) {
+    mem.media.forEach((item: any, idx: number) => {
+      if (item && item.url && item.resourceType !== "video") {
+        photos.push({
+          id: item._id ? String(item._id) : `${memId}_media_${idx}`,
+          url: item.url,
+          thumbnailUrl: item.thumbnailUrl || item.url,
+          memoryId: memId,
+          place: mem.place,
+          date: mem.date,
+          caption: mem.caption || mem.highlight,
+        });
+      }
+    });
+  }
+
+  // Check mem.mediaItems array (used in trip-memories-tab)
+  if (photos.length === 0 && Array.isArray(mem.mediaItems) && mem.mediaItems.length > 0) {
+    mem.mediaItems.forEach((item: any, idx: number) => {
+      const url = item.storageUrl || item.url;
+      if (url && item.type !== "video" && item.resourceType !== "video") {
+        photos.push({
+          id: item.id ? String(item.id) : `${memId}_item_${idx}`,
+          url,
+          thumbnailUrl: url,
+          memoryId: memId,
+          place: mem.place,
+          date: mem.date,
+          caption: mem.highlight,
+        });
+      }
+    });
+  }
+
+  // Fallback single image
+  if (photos.length === 0) {
+    const singleUrl = mem.thumbnailUrl || mem.mediaUrl || mem.photo;
+    if (singleUrl && mem.mediaType !== "video") {
+      photos.push({
+        id: `${memId}_single_0`,
+        url: singleUrl,
+        thumbnailUrl: singleUrl,
+        memoryId: memId,
+        place: mem.place,
+        date: mem.date,
+        caption: mem.highlight || mem.caption,
+      });
+    }
+  }
+
+  return photos;
 }
 
 export function CollageCreator({
@@ -94,8 +167,8 @@ export function CollageCreator({
   onClose,
   onCollageCreated,
 }: CollageCreatorProps) {
-  // Candidate memories
-  const [candidates, setCandidates] = useState<any[]>([]);
+  // Candidate individual photos (extracted from memories)
+  const [candidates, setCandidates] = useState<CandidatePhoto[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -117,32 +190,70 @@ export function CollageCreator({
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize memories
-  useEffect(() => {
-    const effectiveTripId = tripId || memory?.tripId;
+  // Helper to extract photos from given memories
+  const buildPhotoList = (primaryMemory: any, sourceMemories: any[]): CandidatePhoto[] => {
+    const photos: CandidatePhoto[] = [];
 
-    if (allMemories.length > 0) {
-      setCandidates(allMemories);
-      const initialIds =
-        initialSelectedIds.length > 0
-          ? initialSelectedIds
-          : memory
-          ? [memory._id || memory.id]
-          : allMemories.slice(0, 6).map((m) => m._id || m.id);
-      setSelectedIds(initialIds.filter(Boolean));
+    // 1. If a specific memory is provided, extract ALL its photos first
+    if (primaryMemory) {
+      const primaryPhotos = extractPhotosFromMemory(primaryMemory);
+      photos.push(...primaryPhotos);
+    }
+
+    // 2. If other memories are available, also append their photos
+    if (Array.isArray(sourceMemories) && sourceMemories.length > 0) {
+      sourceMemories.forEach((mem) => {
+        const primaryMemId = primaryMemory ? String(primaryMemory._id || primaryMemory.id) : null;
+        const currentMemId = String(mem._id || mem.id);
+        if (primaryMemId && currentMemId === primaryMemId) {
+          // Already extracted as primary memory photos
+          return;
+        }
+        const memPhotos = extractPhotosFromMemory(mem);
+        photos.push(...memPhotos);
+      });
+    }
+
+    return photos;
+  };
+
+  // Initialize candidate photos
+  useEffect(() => {
+    const effectiveTripId =
+      tripId ||
+      (typeof memory?.tripId === "object" ? memory?.tripId?._id : memory?.tripId) ||
+      (allMemories.length > 0
+        ? typeof allMemories[0]?.tripId === "object"
+          ? allMemories[0]?.tripId?._id
+          : allMemories[0]?.tripId
+        : undefined);
+
+    if (memory || (allMemories && allMemories.length > 0)) {
+      const photoList = buildPhotoList(memory, allMemories);
+      setCandidates(photoList);
+
+      // Set initial selection
+      if (initialSelectedIds && initialSelectedIds.length > 0) {
+        const matched = photoList
+          .filter((p) => initialSelectedIds.includes(p.id) || initialSelectedIds.includes(p.memoryId))
+          .map((p) => p.id);
+        setSelectedIds(matched.length > 0 ? matched : photoList.slice(0, 12).map((p) => p.id));
+      } else if (memory) {
+        // When opening for a specific memory, select ALL photos belonging to that memory by default
+        const memId = String(memory._id || memory.id);
+        const thisMemPhotoIds = photoList.filter((p) => p.memoryId === memId).map((p) => p.id);
+        setSelectedIds(thisMemPhotoIds.slice(0, 20));
+      } else {
+        setSelectedIds(photoList.slice(0, 12).map((p) => p.id));
+      }
     } else if (effectiveTripId) {
       setLoadingCandidates(true);
       apiFetch(`/api/memories?tripId=${effectiveTripId}`)
         .then((data: any) => {
           const list = Array.isArray(data) ? data : data.memories || data.items || [];
-          setCandidates(list);
-          const initialIds =
-            initialSelectedIds.length > 0
-              ? initialSelectedIds
-              : memory
-              ? [memory._id || memory.id]
-              : list.slice(0, 6).map((m: any) => m._id || m.id);
-          setSelectedIds(initialIds.filter(Boolean));
+          const photoList = buildPhotoList(memory, list);
+          setCandidates(photoList);
+          setSelectedIds(photoList.slice(0, 12).map((p) => p.id));
         })
         .catch((err) => {
           console.error("Failed to load candidate memories:", err);
@@ -158,13 +269,13 @@ export function CollageCreator({
     };
   }, []);
 
-  const toggleSelectMemory = (id: string) => {
+  const toggleSelectPhoto = (id: string) => {
     setSelectedIds((prev) => {
       if (prev.includes(id)) {
         return prev.filter((item) => item !== id);
       } else {
         if (prev.length >= 20) {
-          toast.error("Maximum 20 memories allowed per collage");
+          toast.error("Maximum 20 photos allowed per collage");
           return prev;
         }
         return [...prev, id];
@@ -172,14 +283,35 @@ export function CollageCreator({
     });
   };
 
+  const handleSelectAllToggle = () => {
+    if (selectedIds.length === candidates.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(candidates.slice(0, 20).map((c) => c.id));
+    }
+  };
+
   // Start Generation
   const handleGenerate = async () => {
-    if (selectedIds.length < 2) {
-      toast.error("Please select at least 2 memories to create a collage.");
+    const selectedPhotos = candidates.filter((p) => selectedIds.includes(p.id));
+    if (selectedPhotos.length < 2) {
+      toast.error("Please select at least 2 photos to create a collage.");
       return;
     }
 
-    const effectiveTripId = tripId || memory?.tripId || candidates[0]?.tripId;
+    const selectedImageUrls = selectedPhotos.map((p) => p.url);
+    const selectedMemoryIds = [...new Set(selectedPhotos.map((p) => p.memoryId))];
+
+    const effectiveTripId =
+      tripId ||
+      (typeof memory?.tripId === "object" ? memory?.tripId?._id : memory?.tripId) ||
+      (allMemories.length > 0
+        ? typeof allMemories[0]?.tripId === "object"
+          ? allMemories[0]?.tripId?._id
+          : allMemories[0]?.tripId
+        : undefined) ||
+      selectedPhotos[0]?.memoryId;
+
     if (!effectiveTripId) {
       toast.error("No valid trip found for collage generation.");
       return;
@@ -196,7 +328,8 @@ export function CollageCreator({
         method: "POST",
         body: JSON.stringify({
           tripId: effectiveTripId,
-          memoryIds: selectedIds,
+          memoryIds: selectedMemoryIds,
+          imageUrls: selectedImageUrls,
           layout: selectedLayout,
           aspectRatio: selectedAspectRatio,
           theme: selectedTheme,
@@ -251,68 +384,43 @@ export function CollageCreator({
         if (pollAttempts >= maxPolls) {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
           setGenerating(false);
-          setGenerationError("Generation timed out. The server is still working in the background.");
+          setGenerationError("Generation timed out. Please try again with fewer photos.");
         }
-      } catch (pollErr: any) {
-        console.error("Polling error:", pollErr);
+      } catch (err: any) {
+        if (pollAttempts >= 3) {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          setGenerating(false);
+          setGenerationError(err.message || "Polling connection error.");
+        }
       }
     }, 1500);
   };
 
-  // Direct download
-  const handleDownload = () => {
-    if (!completedCollage?.output?.url) return;
-    const link = document.createElement("a");
-    link.href = completedCollage.output.url;
-    link.download = `Advenza_Collage_${completedCollage.layout}_${Date.now()}.webp`;
-    link.target = "_blank";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Native Web Share API with Link fallback
-  const handleShare = async () => {
-    if (!completedCollage) return;
+  const handleShareLink = async () => {
+    if (!completedCollage?._id) return;
 
     try {
-      const shareRes = await apiFetch(`/api/collages/${completedCollage._id}/share`, {
+      const res = await apiFetch(`/api/collages/${completedCollage._id}/share`, {
         method: "POST",
       });
-
-      const shareUrl = shareRes.shareUrl || completedCollage.output?.url;
-
-      if (navigator.share) {
-        await navigator.share({
-          title: completedCollage.title || "Advenza Travel Collage",
-          text: `Check out my travel collage for ${completedCollage.subtitle || "my trip"}!`,
-          url: shareUrl,
-        });
-        toast.success("Shared successfully!");
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
+      if (res?.shareUrl) {
+        await navigator.clipboard.writeText(res.shareUrl);
         setCopiedShare(true);
-        toast.success("Share link copied to clipboard!");
-        setTimeout(() => setCopiedShare(false), 2500);
+        toast.success("Public collage link copied to clipboard!");
+        setTimeout(() => setCopiedShare(false), 3000);
       }
-    } catch (shareErr) {
-      console.warn("Share failed, falling back to copy:", shareErr);
-      if (completedCollage.output?.url) {
-        await navigator.clipboard.writeText(completedCollage.output.url);
-        setCopiedShare(true);
-        toast.success("Image URL copied to clipboard!");
-        setTimeout(() => setCopiedShare(false), 2500);
-      }
+    } catch {
+      toast.error("Could not copy share link.");
     }
   };
 
   return (
-    <div className="flex flex-col gap-5 text-foreground">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border/40 pb-3">
-        <div className="flex items-center gap-2">
+    <div className="space-y-6">
+      {/* Studio Header */}
+      <div className="flex items-center justify-between border-b border-border/40 pb-4">
+        <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Wand2 className="h-5 w-5" />
+            <LayoutGrid className="h-5 w-5" />
           </div>
           <div>
             <h3 className="font-semibold text-base leading-tight">Server-Side Collage Studio</h3>
@@ -330,7 +438,7 @@ export function CollageCreator({
 
       {!completedCollage ? (
         <div className="space-y-5">
-          {/* Step 1: Select Memories */}
+          {/* Step 1: Select Photos */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-semibold flex items-center gap-1.5">
@@ -341,16 +449,10 @@ export function CollageCreator({
                 {candidates.length > 0 && (
                   <button
                     type="button"
-                    onClick={() =>
-                      setSelectedIds(
-                        selectedIds.length === candidates.length
-                          ? []
-                          : candidates.slice(0, 12).map((c) => c._id || c.id)
-                      )
-                    }
-                    className="text-primary hover:underline text-[11px]"
+                    onClick={handleSelectAllToggle}
+                    className="text-primary hover:underline text-[11px] font-medium"
                   >
-                    {selectedIds.length === candidates.length ? "Deselect All" : "Select First 12"}
+                    {selectedIds.length === candidates.length ? "Deselect All" : "Select All"}
                   </button>
                 )}
               </div>
@@ -363,29 +465,41 @@ export function CollageCreator({
               </div>
             ) : candidates.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground">
-                No memories found. Add trip memories first to generate a collage.
+                No photos found in this memory.
               </div>
             ) : (
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-44 overflow-y-auto p-1 border border-border/40 rounded-xl bg-background/50">
-                {candidates.map((mem) => {
-                  const id = mem._id || mem.id;
-                  const isSelected = selectedIds.includes(id);
-                  const thumb = mem.thumbnailUrl || mem.mediaUrl || mem.photo;
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-1.5 border border-border/40 rounded-xl bg-background/50">
+                {candidates.map((photo, index) => {
+                  const isSelected = selectedIds.includes(photo.id);
+                  const selectedOrder = selectedIds.indexOf(photo.id) + 1;
 
                   return (
                     <div
-                      key={id}
-                      onClick={() => toggleSelectMemory(id)}
-                      className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
+                      key={photo.id}
+                      onClick={() => toggleSelectPhoto(photo.id)}
+                      className={`group relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
                         isSelected
-                          ? "border-primary ring-2 ring-primary/30 scale-95"
-                          : "border-transparent opacity-75 hover:opacity-100"
+                          ? "border-primary ring-2 ring-primary/40 scale-95 shadow-md"
+                          : "border-border/40 opacity-70 hover:opacity-100 hover:border-primary/50"
                       }`}
+                      title={photo.place ? `${photo.place} (Photo ${index + 1})` : `Photo ${index + 1}`}
                     >
-                      <img src={thumb} alt={mem.place || "Photo"} className="h-full w-full object-cover" />
+                      <img
+                        src={photo.thumbnailUrl || photo.url}
+                        alt={`Photo ${index + 1}`}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="lazy"
+                      />
                       {isSelected && (
-                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                          <Check className="h-4 w-4 text-white drop-shadow-md stroke-[3]" />
+                        <div className="absolute inset-0 bg-primary/20 backdrop-blur-[0.5px] flex items-center justify-center">
+                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md">
+                            <Check className="h-3.5 w-3.5 stroke-[3]" />
+                          </div>
+                          {selectedIds.length > 1 && (
+                            <span className="absolute top-1 left-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/75 text-[9px] font-bold text-white shadow-sm">
+                              {selectedOrder}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -395,7 +509,7 @@ export function CollageCreator({
             )}
             {selectedIds.length < 2 && (
               <p className="text-[11px] text-amber-500 font-medium">
-                * Please select at least 2 memories for collage composition.
+                * Please select at least 2 photos to generate a collage.
               </p>
             )}
           </div>
@@ -419,10 +533,10 @@ export function CollageCreator({
                   }`}
                 >
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm">{layout.icon}</span>
+                    <span className="text-base">{layout.icon}</span>
                     <span className="text-xs font-semibold">{layout.label}</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">
+                  <p className="mt-1 text-[10px] text-muted-foreground line-clamp-1 leading-snug">
                     {layout.description}
                   </p>
                 </button>
@@ -430,43 +544,43 @@ export function CollageCreator({
             </div>
           </div>
 
-          {/* Step 3: Choose Aspect Ratio */}
+          {/* Step 3: Aspect Ratio */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold flex items-center gap-1.5">
               <Layers className="h-3.5 w-3.5 text-primary" />
               3. Aspect Ratio
             </Label>
-            <div className="flex flex-wrap gap-1.5">
-              {ASPECT_RATIOS.map((ratio) => (
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {ASPECT_RATIOS.map((ar) => (
                 <button
-                  key={ratio.id}
+                  key={ar.id}
                   type="button"
-                  onClick={() => setSelectedAspectRatio(ratio.id)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition-all ${
-                    selectedAspectRatio === ratio.id
-                      ? "border-primary bg-primary text-white shadow-sm"
-                      : "border-border/60 bg-background/50 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSelectedAspectRatio(ar.id)}
+                  className={`rounded-xl border p-2 text-center transition-all ${
+                    selectedAspectRatio === ar.id
+                      ? "border-primary bg-primary/10 shadow-sm"
+                      : "border-border/60 bg-background/50 hover:bg-background/80"
                   }`}
                 >
-                  <span>{ratio.label}</span>
-                  <span className="ml-1 opacity-70 text-[10px]">({ratio.sub})</span>
+                  <div className="text-xs font-semibold">{ar.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{ar.sub}</div>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Step 4: Choose Background Theme */}
+          {/* Step 4: Background Palette */}
           <div className="space-y-2">
-            <Label className="text-xs font-semibold">4. Background & Theme</Label>
-            <div className="flex flex-wrap gap-2">
+            <Label className="text-xs font-semibold">4. Background Palette</Label>
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
               {THEME_OPTIONS.map((th) => (
                 <button
                   key={th.id}
                   type="button"
                   onClick={() => setSelectedTheme(th.id)}
-                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-all ${
+                  className={`flex items-center justify-center gap-1.5 rounded-xl border p-2 text-xs font-medium transition-all ${
                     selectedTheme === th.id
-                      ? "border-primary ring-2 ring-primary/30"
+                      ? "border-primary bg-primary/10 ring-2 ring-primary/20 shadow-sm"
                       : "border-border/60 bg-background/50 opacity-80 hover:opacity-100"
                   }`}
                 >
@@ -558,78 +672,56 @@ export function CollageCreator({
       ) : (
         /* Completed State: Real Generated Image */
         <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
-          <div className="relative rounded-2xl overflow-hidden border border-border/70 shadow-xl bg-black/60 flex items-center justify-center max-h-[60vh]">
+          <div className="relative rounded-2xl overflow-hidden border border-border/60 bg-muted/20 shadow-xl max-h-[480px] flex items-center justify-center">
             <img
               src={completedCollage.output?.url}
-              alt="Generated Travel Collage"
-              className="w-full h-full object-contain max-h-[58vh]"
+              alt={completedCollage.title || "Generated Collage"}
+              className="max-h-[460px] w-auto object-contain rounded-lg shadow-inner"
             />
           </div>
 
-          {/* Metadata Card */}
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground border border-border/40">
-            <div className="flex items-center gap-3">
-              <span>
-                <strong>Resolution:</strong> {completedCollage.output?.width} × {completedCollage.output?.height}px
-              </span>
-              <span>
-                <strong>Format:</strong> {completedCollage.output?.format?.toUpperCase()}
-              </span>
-              <span>
-                <strong>Size:</strong> {((completedCollage.output?.fileSize || 0) / 1024).toFixed(1)} KB
-              </span>
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+              >
+                <a href={completedCollage.output?.url} target="_blank" rel="noopener noreferrer" download>
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Download
+                </a>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleShareLink}
+              >
+                {copiedShare ? (
+                  <>
+                    <Check className="mr-1.5 h-3.5 w-3.5 text-emerald-500" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="mr-1.5 h-3.5 w-3.5" />
+                    Share Link
+                  </>
+                )}
+              </Button>
             </div>
-            {completedCollage.processingTimeMs > 0 && (
-              <span className="text-[11px] text-primary font-medium">
-                Rendered in {completedCollage.processingTimeMs}ms
-              </span>
-            )}
-          </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/40">
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => {
                 setCompletedCollage(null);
                 setGenerating(false);
               }}
-              className="text-xs"
             >
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              Adjust & Re-generate
+              Create Another
             </Button>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleShare}
-                className="text-xs"
-              >
-                {copiedShare ? (
-                  <>
-                    <Check className="mr-1.5 h-3.5 w-3.5 text-emerald-500" />
-                    Link Copied
-                  </>
-                ) : (
-                  <>
-                    <Share2 className="mr-1.5 h-3.5 w-3.5" />
-                    Share
-                  </>
-                )}
-              </Button>
-
-              <Button
-                size="sm"
-                onClick={handleDownload}
-                className="bg-primary text-white text-xs shadow-md"
-              >
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-                Download Collage
-              </Button>
-            </div>
           </div>
         </div>
       )}

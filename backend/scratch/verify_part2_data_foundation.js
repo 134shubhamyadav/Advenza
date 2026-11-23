@@ -2,8 +2,6 @@ import mongoose from "mongoose";
 import { env } from "../config/env.js";
 import Trip from "../models/Trip.js";
 import { generateTripDates } from "../services/itinerary/itinerary-sanitizer.js";
-import { commanderService } from "../services/commander/commander.service.js";
-import { rulesEngine } from "../services/commanderRulesEngine.js";
 import { budgetService } from "../services/budget/budget.service.js";
 import { aiService } from "../services/ai/ai.service.js";
 
@@ -282,16 +280,8 @@ async function runPart2Tests() {
     assert(fetchedLegacy.returnJourney.ticketRef === "PNR_LEGACY_123", "Legacy ticketRef preserved");
     assert(fetchedLegacy.days.length === 1, "Legacy days loaded without error");
 
-    // ── TEST 8: Inter-feature Verification (Commander, Budget, Rules) ──────────
-    console.log("\n[TEST 8] Inter-Feature Compatibility Verification");
-    const ruleEvents = rulesEngine.evaluateTripEvents({
-      trip: fetchedTrip1,
-      weatherData: { status: "LIVE_VERIFIED", data: { temperatureC: 28, rainProbabilityPercent: 10, condition: "Sunny", source: "Open-Meteo" } },
-      flightData: null,
-      budgetData: { success: true, budgetTotal: 25000, totalSpent: 5000, remaining: 20000, pctUsed: 20, source: "Trip Ledger" },
-    });
-    assert(Array.isArray(ruleEvents), "Commander rules engine executed with updated Trip model");
-
+    // ── TEST 8: Budget Verification ──────────
+    console.log("\n[TEST 8] Budget Compatibility Verification");
     const budgetSummary = await budgetService.getBudgetSummary(trip1._id);
     assert(budgetSummary !== null, "Budget service getBudgetSummary works with updated Trip model");
 

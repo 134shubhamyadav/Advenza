@@ -95,7 +95,10 @@ async function main() {
       destination: "Ladakh",
     });
     assert.ok(res.status === "ESTIMATED" || res.status === "LIVE", "Status must be ESTIMATED or LIVE");
-    assert.ok(res.source === "ESTIMATE" || res.source === "LIVE_OSRM_ROUTING", "Source must be ESTIMATE or LIVE_OSRM_ROUTING");
+    assert.ok(
+      res.source === "ESTIMATE" || res.source === "LIVE_OSRM_ROUTING" || res.source === "HAVERSINE_STRAIGHT_LINE",
+      `Source must be ESTIMATE, LIVE_OSRM_ROUTING, or HAVERSINE_STRAIGHT_LINE, got ${res.source}`
+    );
     assert.ok(res.distanceKm > 1500, `Direct distance should exceed 1500 km, got ${res.distanceKm}`);
     assert.ok(res.estimatedDurationMins > 1000, `Duration should exceed 1000 mins, got ${res.estimatedDurationMins}`);
   });

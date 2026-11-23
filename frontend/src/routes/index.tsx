@@ -355,7 +355,7 @@ function Landing() {
           <div className="flex animate-marquee gap-16 whitespace-nowrap text-sm font-medium text-muted-foreground will-change-transform">
             {[...Array(2)].flatMap((_, k) =>
               [
-                "AI Trip Commander",
+                "AI Itinerary Synthesis",
                 "Decision Engine",
                 "What-If Simulator",
                 "AI Risk Radar",

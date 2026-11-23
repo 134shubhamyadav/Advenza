@@ -27,6 +27,12 @@ const CollageSchema = new mongoose.Schema(
         required: true,
       },
     ],
+    imageUrls: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
     layout: {
       type: String,
       enum: COLLAGE_LAYOUTS,

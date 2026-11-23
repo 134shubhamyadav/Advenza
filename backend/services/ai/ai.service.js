@@ -456,7 +456,7 @@ export class AIService {
       {
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        maxTokens: 4096,
+        maxTokens: 6000,
       },
       { maxAttempts: 2 }
     );
@@ -737,7 +737,7 @@ export class AIService {
       {
         messages: [{ role: "user", content: prompt }],
         temperature: 0.8,
-        maxTokens: 4096,
+        maxTokens: 6000,
       },
       { maxAttempts: 2 }
     );

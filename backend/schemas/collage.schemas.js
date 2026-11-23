@@ -10,8 +10,13 @@ export const createCollageSchema = z.object({
   tripId: z.string().trim().min(1, "tripId is required"),
   memoryIds: z
     .array(z.string().trim().min(1))
-    .min(2, "Collage requires at least 2 memories")
+    .min(1, "Collage requires at least 1 memory")
     .max(20, "Maximum 20 memories allowed per collage"),
+  imageUrls: z
+    .array(z.string().trim().min(1))
+    .min(2, "Collage requires at least 2 photos")
+    .max(20, "Maximum 20 photos allowed per collage")
+    .optional(),
   layout: z.enum(COLLAGE_LAYOUTS).default("grid"),
   aspectRatio: z.enum(COLLAGE_ASPECT_RATIOS).default("1:1"),
   theme: z.enum(COLLAGE_THEMES).default("dark"),

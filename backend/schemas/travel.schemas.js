@@ -40,11 +40,6 @@ export const flightSearchSchema = z.object({
   cabin: z.enum(["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]).default("ECONOMY"),
 });
 
-export const flightStatusSchema = z.object({
-  flightNumber: z.string().trim().min(2, "Flight number required").max(20),
-  date: flexibleDateSchema,
-});
-
 export const hotelSearchSchema = z.object({
   destination: z.string().trim().min(2, "Destination city required").max(60),
   checkIn: flexibleDateSchema,

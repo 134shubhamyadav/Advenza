@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/date-picker";
-import { StationCombobox } from "@/components/travel/station-combobox";
 import {
   Plane,
   Building2,
@@ -328,27 +327,25 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
                   <div>
                     <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
                       <Plane className="h-3 w-3 text-primary" />
-                      Origin Hub / Station
+                      Origin Hub / Airport
                     </Label>
-                    <StationCombobox
+                    <Input
                       value={flightOrigin}
-                      onChange={(code) => setFlightOrigin(code.toUpperCase())}
-                      valueType="code"
-                      icon="train"
-                      placeholder="Origin station / airport (e.g. BOM)"
+                      onChange={(e) => setFlightOrigin(e.target.value.toUpperCase())}
+                      placeholder="Origin airport (e.g. BOM)"
+                      className="h-9 text-xs"
                     />
                   </div>
                   <div>
                     <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
                       <MapPin className="h-3 w-3 text-primary" />
-                      Destination Hub / Station
+                      Destination Hub / Airport
                     </Label>
-                    <StationCombobox
+                    <Input
                       value={flightDestination}
-                      onChange={(code) => setFlightDestination(code.toUpperCase())}
-                      valueType="code"
-                      icon="train"
-                      placeholder="Destination station / airport (e.g. GOI)"
+                      onChange={(e) => setFlightDestination(e.target.value.toUpperCase())}
+                      placeholder="Destination airport (e.g. GOI)"
+                      className="h-9 text-xs"
                     />
                   </div>
                 </div>
@@ -481,14 +478,13 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
                 <div>
                   <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
                     <MapPin className="h-3 w-3 text-primary" />
-                    Destination City or Railhead
+                    Destination City
                   </Label>
-                  <StationCombobox
+                  <Input
                     value={hotelDestination}
-                    onChange={(dest) => setHotelDestination(dest)}
-                    valueType="name"
-                    icon="pin"
-                    placeholder="Search destination, city, or station (e.g. Ayodhya, Goa, Manali...)"
+                    onChange={(e) => setHotelDestination(e.target.value)}
+                    placeholder="Search destination or city (e.g. Ayodhya, Goa, Manali...)"
+                    className="h-9 text-xs"
                   />
                 </div>
 

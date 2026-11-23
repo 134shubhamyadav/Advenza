@@ -6,7 +6,6 @@ import { hotelProvider } from "../services/travel/providers/hotel.provider.js";
 import { weatherProvider } from "../services/travel/providers/weather.provider.js";
 import { transportProvider } from "../services/travel/providers/transport.provider.js";
 import { travelCache } from "../services/travel/travel-cache.service.js";
-import { rulesEngine } from "../services/commanderRulesEngine.js";
 
 async function runTests() {
   console.log("=== 1. TESTING FLIGHT PROVIDER ===");
@@ -25,13 +24,6 @@ async function runTests() {
       console.log(`  Price: ${f.currency} ${f.price} (Provider: ${f.provider})`);
       console.log(`  Disclaimer: "${flightSearch.disclaimer}"`);
     }
-
-    const status = await flightProvider.getFlightStatus({ flightNumber: "6E-205", date: "2026-09-28" });
-    console.log(`✓ Flight Status Succeeded:`, {
-      flightNumber: status.flightNumber,
-      status: status.status,
-      provider: status.provider,
-    });
   } catch (err) {
     console.error("Flight Provider Test Failed:", err);
   }

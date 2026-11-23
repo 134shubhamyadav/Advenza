@@ -44,24 +44,6 @@ router.post(
   aiController.orchestratedResearch
 );
 
-// GET /api/ai/trains (Live RailCore Indian Railways train search, fares & availability)
-router.get(
-  "/trains",
-  aiController.searchTrains
-);
-
-// GET /api/ai/stations (High-speed station & railhead autocomplete across 8,990+ Indian Railways stations)
-router.get(
-  "/stations",
-  aiController.searchStations
-);
-
-// GET /api/ai/trains/live/:trainNumber (Direct CRIS NTES Live Train Tracking - Free & Unlimited)
-router.get(
-  "/trains/live/:trainNumber",
-  aiController.trackLiveTrain
-);
-
 // GET /api/ai/estimate-budget
 router.get(
   "/estimate-budget",

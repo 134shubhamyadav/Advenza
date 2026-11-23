@@ -40,7 +40,8 @@ import {
 } from "lucide-react";
 import { InstagramModal } from "@/components/ai/instagram-modal";
 import { CollageCreator } from "@/components/trips/collage-creator";
-import { ReelStudio } from "@/components/reels/reel-studio";
+import { MemoryPhotoCollage } from "@/components/memories/memory-photo-collage";
+import { MemoryShareDialog } from "@/components/memories/memory-share-dialog";
 import { useAuth } from "../context/AuthContext";
 
 import { storage } from "../lib/firebase";
@@ -113,6 +114,10 @@ function MemoryErrorFallback({ error, reset }: { error: Error; reset: () => void
 }
 
 export const Route = createFileRoute("/memory")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    id: typeof search.id === "string" ? search.id : undefined,
+    tripId: typeof search.tripId === "string" ? search.tripId : undefined,
+  }),
   component: Memory,
   errorComponent: MemoryErrorFallback,
 });
@@ -207,6 +212,7 @@ interface CuratedCollageResponse {
 
 function Memory() {
   const { user } = useAuth();
+  const { id: sharedMemoryId, tripId: urlTripId } = Route.useSearch();
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [trips, setTrips] = useState<Array<{ _id: string; title?: string; destination?: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -228,13 +234,13 @@ function Memory() {
   const [detailMediaIndex, setDetailMediaIndex] = useState<number>(0);
   const [editItem, setEditItem] = useState<MemoryItem | null>(null);
   const [instagramItem, setInstagramItem] = useState<MemoryItem | null>(null);
+  const [shareMemoryItem, setShareMemoryItem] = useState<MemoryItem | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [curateOpen, setCurateOpen] = useState(false);
   const [collageStudioOpen, setCollageStudioOpen] = useState(false);
   const [collageInitialIds, setCollageInitialIds] = useState<string[]>([]);
-  const [reelStudioOpen, setReelStudioOpen] = useState(false);
-  const [reelInitialIds, setReelInitialIds] = useState<string[]>([]);
+  const [collageSelectedMemory, setCollageSelectedMemory] = useState<MemoryItem | null>(null);
 
   // Create Form State
   const [formTripId, setFormTripId] = useState<string>("");
@@ -311,6 +317,32 @@ function Memory() {
       })
       .finally(() => setLoading(false));
   }, [user]);
+
+  // Auto-open shared memory when ?id= is present in URL
+  useEffect(() => {
+    if (!sharedMemoryId) return;
+    // First try to find in already-loaded memories
+    const found = memories.find((m) => (m._id || m.id) === sharedMemoryId);
+    if (found) {
+      setDetailItem(found);
+      return;
+    }
+    // Fall back to public share endpoint (no auth required)
+    fetch(`/api/memories/share/${sharedMemoryId}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data) {
+          const item: MemoryItem = {
+            ...data,
+            id: data._id || sharedMemoryId,
+            photo: data.media?.[0]?.url || data.mediaUrl || "",
+            mediaType: data.media?.[0]?.resourceType || "image",
+          };
+          setDetailItem(item);
+        }
+      })
+      .catch(() => {/* silent — user may need to log in */});
+  }, [sharedMemoryId, memories]);
 
   // Handle Drag & Drop
   const handleDragOver = (e: React.DragEvent) => {
@@ -748,22 +780,6 @@ function Memory() {
               <LayoutGrid className="mr-1.5 h-4 w-4 text-primary" />
               Collage Studio
             </Button>
-            <Button
-              onClick={() => {
-                setReelInitialIds(
-                  memories
-                    .slice(0, 6)
-                    .map((m) => m._id || m.id)
-                    .filter((id): id is string => Boolean(id))
-                );
-                setReelStudioOpen(true);
-              }}
-              variant="outline"
-              className="border-violet-500/40 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 shadow-sm transition-all"
-            >
-              <Film className="mr-1.5 h-4 w-4 text-violet-400" />
-              Reels Studio
-            </Button>
 
             <Button
               onClick={() => setCurateOpen(true)}
@@ -978,16 +994,32 @@ function Memory() {
                 const itemId = item._id || item.id || `mem_${index}`;
                 const mediaList: MemoryMediaItem[] = (Array.isArray(item.media) && item.media.length > 0)
                   ? item.media
-                  : [{ url: item.thumbnailUrl || item.mediaUrl || item.photo || "", resourceType: item.mediaType || "image" }];
-                const primaryMedia = mediaList[0];
-                const displayPhoto = primaryMedia?.url || item.thumbnailUrl || item.mediaUrl || item.photo;
-                const isVideo = primaryMedia?.resourceType === "video" || item.mediaType === "video";
+                  : (Array.isArray((item as any).mediaItems) && (item as any).mediaItems.length > 0)
+                    ? (item as any).mediaItems.map((m: any) => ({
+                        url: m.storageUrl || m.url,
+                        resourceType: m.type === "video" || m.resourceType === "video" ? "video" : "image",
+                        originalName: m.originalName || "",
+                      }))
+                    : [{ url: item.thumbnailUrl || item.mediaUrl || item.photo || "", resourceType: item.mediaType || "image" }];
                 const mediaCount = mediaList.length;
                 const catDef =
                   CATEGORY_DEFINITIONS[(item.category || item.aiMetadata?.category || "OTHER").toUpperCase()] ||
                   CATEGORY_DEFINITIONS.OTHER;
                 const isAiPending = item.aiMetadata?.status === "PENDING";
                 const isAiReady = item.aiMetadata?.status === "READY";
+                const associatedTrip = trips.find(
+                  (t) => t._id === (typeof item.tripId === "object" ? (item.tripId as any)?._id : item.tripId)
+                );
+
+                // Responsive scrapbook collage aspect ratio based on count
+                const collageHeightClass =
+                  mediaCount === 1
+                    ? "aspect-[16/10] min-h-[220px]"
+                    : mediaCount === 2
+                    ? "aspect-[16/11] min-h-[240px]"
+                    : mediaCount === 3
+                    ? "aspect-[16/12] min-h-[260px]"
+                    : "aspect-[4/3] min-h-[280px]";
 
                 return (
                   <article
@@ -996,47 +1028,33 @@ function Memory() {
                     className="group relative flex flex-col justify-between overflow-hidden rounded-2xl glass-panel cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:ring-2 hover:ring-primary/40 animate-in fade-in slide-in-from-bottom-3"
                     style={{ animationDelay: `${index * 0.04}s` }}
                   >
-                    {/* Media Thumbnail Container */}
-                    <div className="relative aspect-[16/10] w-full overflow-hidden bg-muted">
-                      <img
-                        src={displayPhoto}
-                        alt={item.place}
-                        loading="lazy"
-                        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    {/* Media Thumbnail Container — Photo Collage */}
+                    <div className={`relative ${collageHeightClass} w-full overflow-hidden bg-muted`}>
+                      <MemoryPhotoCollage
+                        media={mediaList}
+                        place={item.place}
+                        date={item.date}
+                        onShare={() => {
+                          setShareMemoryItem(item);
+                        }}
+                        className="h-full"
                       />
 
-                      {/* Video Indicator */}
-                      {isVideo && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/25">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-md transition-transform group-hover:scale-110">
-                            <Play className="h-5 w-5 fill-white ml-0.5" />
-                          </div>
-                        </div>
-                      )}
-
                       {/* Day and Date Badge */}
-                      <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-background/85 backdrop-blur-md px-2.5 py-1 text-[11px] font-semibold text-foreground shadow-sm">
+                      <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-background/85 backdrop-blur-md px-2.5 py-1 text-[11px] font-semibold text-foreground shadow-sm z-10">
                         <Calendar className="h-3 w-3 text-primary" />
                         Day {item.n} · {item.date}
                       </span>
 
-                      {/* Multi-Media Count Badge */}
-                      {mediaCount > 1 && (
-                        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/75 backdrop-blur-md px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm border border-white/20">
-                          <Layers className="h-3 w-3" />
-                          {mediaCount} media
-                        </span>
-                      )}
-
                       {/* AI Status Badge */}
-                      {mediaCount <= 1 && isAiPending && (
-                        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-primary/90 backdrop-blur-md px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm animate-pulse">
+                      {isAiPending && (
+                        <span className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-primary/90 backdrop-blur-md px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm animate-pulse z-10">
                           <Sparkles className="h-3 w-3 animate-spin" />
                           AI Enriching…
                         </span>
                       )}
-                      {mediaCount <= 1 && isAiReady && (
-                        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-background/85 backdrop-blur-md px-2 py-0.5 text-[10px] font-semibold text-primary shadow-sm border border-primary/30">
+                      {!isAiPending && isAiReady && (
+                        <span className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-background/85 backdrop-blur-md px-2 py-0.5 text-[10px] font-semibold text-primary shadow-sm border border-primary/30 z-10">
                           <Sparkles className="h-3 w-3" />
                           AI Ready
                         </span>
@@ -1044,7 +1062,7 @@ function Memory() {
 
                       {/* Category Chip */}
                       <span
-                        className={`absolute left-3 bottom-3 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold backdrop-blur-md shadow-sm border ${catDef.badgeClass}`}
+                        className={`pointer-events-none absolute left-3 bottom-3 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold backdrop-blur-md shadow-sm border z-10 ${catDef.badgeClass}`}
                       >
                         <span>{catDef.icon}</span>
                         <span>{catDef.label}</span>
@@ -1054,16 +1072,23 @@ function Memory() {
                     {/* Card Body */}
                     <div className="flex flex-1 flex-col justify-between p-5">
                       <div>
-                        {/* Title and Weather */}
+                        {/* Title, Associated Trip, and Weather */}
                         <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <MapPin className="h-4 w-4 text-primary shrink-0" />
-                            <h3 className="font-semibold text-base line-clamp-1 text-foreground">
-                              {item.place}
-                            </h3>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <MapPin className="h-4 w-4 text-primary shrink-0" />
+                              <h3 className="font-semibold text-base line-clamp-1 text-foreground">
+                                {item.place}
+                              </h3>
+                              {associatedTrip?.title && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-medium text-primary">
+                                  ✈️ {associatedTrip.title}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           {item.weather && (
-                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap shrink-0">
                               <CloudSun className="h-3.5 w-3.5 text-amber-500" />
                               {item.weather}
                             </span>
@@ -1108,20 +1133,20 @@ function Memory() {
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => {
-                              setReelInitialIds([itemId]);
-                              setReelStudioOpen(true);
+                              setCollageSelectedMemory(item);
+                              setCollageStudioOpen(true);
                             }}
-                            title="Generate AI Travel Reel"
-                            className="p-1.5 rounded-full hover:bg-violet-500/10 text-violet-400 hover:text-violet-500 transition-colors"
+                            title="Open in Collage Studio"
+                            className="p-1.5 rounded-full hover:bg-primary/10 text-primary/70 hover:text-primary transition-colors"
                           >
-                            <Film className="h-3.5 w-3.5" />
+                            <LayoutGrid className="h-3.5 w-3.5" />
                           </button>
                           <button
-                            onClick={() => setInstagramItem(item)}
-                            title="Generate Instagram Reel/Post"
-                            className="p-1.5 rounded-full hover:bg-pink-500/10 text-pink-500 hover:text-pink-600 transition-colors"
+                            onClick={() => setShareMemoryItem(item)}
+                            title="Share memory"
+                            className="p-1.5 rounded-full hover:bg-primary/10 text-primary/70 hover:text-primary transition-colors"
                           >
-                            <Instagram className="h-3.5 w-3.5" />
+                            <Share2 className="h-3.5 w-3.5" />
                           </button>
 
                           <button
@@ -1151,7 +1176,13 @@ function Memory() {
               {filteredMemories.map((d, index) => {
                 const mediaList: MemoryMediaItem[] = (Array.isArray(d.media) && d.media.length > 0)
                   ? d.media
-                  : [{ url: d.thumbnailUrl || d.mediaUrl || d.photo || "", resourceType: d.mediaType || "image" }];
+                  : (Array.isArray((d as any).mediaItems) && (d as any).mediaItems.length > 0)
+                    ? (d as any).mediaItems.map((m: any) => ({
+                        url: m.storageUrl || m.url,
+                        resourceType: m.type === "video" || m.resourceType === "video" ? "video" : "image",
+                        originalName: m.originalName || "",
+                      }))
+                    : [{ url: d.thumbnailUrl || d.mediaUrl || d.photo || "", resourceType: d.mediaType || "image" }];
                 const primaryMedia = mediaList[0];
                 const displayPhoto = primaryMedia?.url || d.thumbnailUrl || d.mediaUrl || d.photo;
                 const itemId = d._id || d.id || `mem_${index}`;
@@ -1160,39 +1191,30 @@ function Memory() {
                 const catDef =
                   CATEGORY_DEFINITIONS[(d.category || d.aiMetadata?.category || "OTHER").toUpperCase()] ||
                   CATEGORY_DEFINITIONS.OTHER;
+                const associatedTrip = trips.find(
+                  (t) => t._id === (typeof d.tripId === "object" ? (d.tripId as any)?._id : d.tripId)
+                );
 
                 return (
                   <article
                     key={itemId}
                     onClick={() => setDetailItem(d)}
-                    className="grid gap-0 overflow-hidden rounded-2xl glass-panel md:grid-cols-[280px_1fr] cursor-pointer hover:ring-2 hover:ring-primary/40 transition-all hover:-translate-y-1 group animate-in fade-in slide-in-from-bottom-3"
+                    className="grid gap-0 overflow-hidden rounded-2xl glass-panel md:grid-cols-[340px_1fr] cursor-pointer hover:ring-2 hover:ring-primary/40 transition-all hover:-translate-y-1 group animate-in fade-in slide-in-from-bottom-3"
                     style={{ animationDelay: `${index * 0.03}s` }}
                   >
-                    <div className="relative h-56 md:h-full min-h-[220px] bg-muted">
-                      <img
-                        src={displayPhoto}
-                        alt={d.place}
-                        loading="lazy"
-                        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    <div className="relative h-64 md:h-full min-h-[240px] md:min-h-[280px] bg-muted overflow-hidden">
+                      <MemoryPhotoCollage
+                        media={mediaList}
+                        place={d.place}
+                        date={d.date}
+                        onShare={() => setShareMemoryItem(d)}
+                        className="h-full"
                       />
-                      {isVideo && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/25">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-md">
-                            <Play className="h-4 w-4 fill-white ml-0.5" />
-                          </div>
-                        </div>
-                      )}
-                      <span className="absolute left-3 top-3 rounded-full bg-background/90 backdrop-blur-md px-2.5 py-1 text-[11px] font-semibold text-foreground shadow-sm">
+                      <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-background/90 backdrop-blur-md px-2.5 py-1 text-[11px] font-semibold text-foreground shadow-sm z-10">
                         Day {d.n} · {d.date}
                       </span>
-                      {mediaCount > 1 && (
-                        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/75 backdrop-blur-md px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm border border-white/20">
-                          <Layers className="h-3 w-3" />
-                          {mediaCount} media
-                        </span>
-                      )}
                       <span
-                        className={`absolute left-3 bottom-3 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold backdrop-blur-md shadow-sm border ${catDef.badgeClass}`}
+                        className={`pointer-events-none absolute left-3 bottom-3 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold backdrop-blur-md shadow-sm border z-10 ${catDef.badgeClass}`}
                       >
                         <span>{catDef.icon}</span>
                         <span>{catDef.label}</span>
@@ -1202,9 +1224,14 @@ function Memory() {
                     <div className="p-6 flex flex-col justify-between min-h-[220px]">
                       <div>
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-primary" />
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <MapPin className="h-4 w-4 text-primary shrink-0" />
                             <h3 className="font-semibold text-lg">{d.place}</h3>
+                            {associatedTrip?.title && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-xs font-medium text-primary">
+                                ✈️ {associatedTrip.title}
+                              </span>
+                            )}
                           </div>
                           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                             {d.weather && (
@@ -1257,20 +1284,20 @@ function Memory() {
                           </button>
                           <button
                             onClick={() => {
-                              setReelInitialIds([itemId]);
-                              setReelStudioOpen(true);
+                              setCollageSelectedMemory(d);
+                              setCollageStudioOpen(true);
                             }}
-                            className="flex items-center gap-1.5 text-xs font-semibold text-violet-400 hover:text-white hover:bg-violet-500 bg-violet-500/10 px-3 py-1.5 rounded-full transition-all"
+                            className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary-foreground hover:bg-primary bg-primary/10 px-3 py-1.5 rounded-full transition-all"
                           >
-                            <Film className="h-3.5 w-3.5" />
-                            AI Reel
+                            <LayoutGrid className="h-3.5 w-3.5" />
+                            Collage
                           </button>
                           <button
-                            onClick={() => setInstagramItem(d)}
-                            className="flex items-center gap-1.5 text-xs font-semibold text-pink-500 hover:text-white hover:bg-pink-500 bg-pink-500/10 px-3 py-1.5 rounded-full transition-all"
+                            onClick={() => setShareMemoryItem(d)}
+                            className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary-foreground hover:bg-primary bg-primary/10 px-3 py-1.5 rounded-full transition-all"
                           >
-                            <Instagram className="h-3.5 w-3.5" />
-                            Social Post
+                            <Share2 className="h-3.5 w-3.5" />
+                            Share
                           </button>
 
                           <button
@@ -1519,12 +1546,26 @@ function Memory() {
                     onClick={() => {
                       const item = detailItem;
                       setDetailItem(null);
-                      setInstagramItem(item);
+                      setShareMemoryItem(item);
                     }}
-                    className="text-pink-500 border-pink-500/30 hover:bg-pink-500/10"
+                    className="text-primary border-primary/30 hover:bg-primary/10"
                   >
-                    <Instagram className="mr-1.5 h-3.5 w-3.5" />
-                    Instagram Post
+                    <Share2 className="mr-1.5 h-3.5 w-3.5" />
+                    Share Memory
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const item = detailItem;
+                      setDetailItem(null);
+                      setCollageSelectedMemory(item);
+                      setCollageStudioOpen(true);
+                    }}
+                    className="text-primary border-primary/30 hover:bg-primary/10"
+                  >
+                    <LayoutGrid className="mr-1.5 h-3.5 w-3.5" />
+                    Collage Studio
                   </Button>
                 </div>
 
@@ -2089,6 +2130,13 @@ function Memory() {
         />
       )}
 
+      {/* UNIFIED SHARE DIALOG — WhatsApp, Instagram, Facebook, X, Telegram, Copy Link, Native */}
+      <MemoryShareDialog
+        isOpen={!!shareMemoryItem}
+        onOpenChange={(open) => !open && setShareMemoryItem(null)}
+        memory={shareMemoryItem}
+      />
+
       {/* CONFIRM DELETE DIALOG */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
@@ -2110,26 +2158,23 @@ function Memory() {
         </AlertDialogContent>
       </AlertDialog>
       {/* REAL SERVER COLLAGE STUDIO DIALOG */}
-      <Dialog open={collageStudioOpen} onOpenChange={setCollageStudioOpen}>
+      <Dialog
+        open={collageStudioOpen}
+        onOpenChange={(open) => {
+          setCollageStudioOpen(open);
+          if (!open) setCollageSelectedMemory(null);
+        }}
+      >
         <DialogContent className="sm:max-w-[700px] max-h-[92vh] overflow-y-auto">
           <CollageCreator
             tripId={selectedTripId !== "ALL" ? selectedTripId : undefined}
+            memory={collageSelectedMemory}
             allMemories={memories}
             initialSelectedIds={collageInitialIds}
-            onClose={() => setCollageStudioOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* REAL AI TRAVEL REELS STUDIO DIALOG */}
-      <Dialog open={reelStudioOpen} onOpenChange={setReelStudioOpen}>
-        <DialogContent className="sm:max-w-[840px] max-h-[94vh] overflow-y-auto">
-          <ReelStudio
-            tripId={selectedTripId !== "ALL" ? selectedTripId : undefined}
-            allMemories={memories}
-            initialSelectedIds={reelInitialIds}
-            destinationName={selectedTrip?.destination || "Travel Memories"}
-            onClose={() => setReelStudioOpen(false)}
+            onClose={() => {
+              setCollageStudioOpen(false);
+              setCollageSelectedMemory(null);
+            }}
           />
         </DialogContent>
       </Dialog>
