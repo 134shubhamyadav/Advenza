@@ -106,7 +106,7 @@ export function SettlementView({ tripId, tripCurrency = "INR" }: SettlementViewP
                       )}
                       {!isCreditor && !isDebtor && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                          ✓ Settled
+                          <CheckCircle2 className="h-3 w-3 text-muted-foreground" /> Settled
                         </span>
                       )}
                     </div>

@@ -44,6 +44,11 @@ router.post(
   aiController.orchestratedResearch
 );
 
+// GET /api/ai/transport/research (Multi-modal transit research: Trains, Flights, Buses, Driving, Local)
+router.get(
+  "/transport/research",
+  aiController.researchTransport
+);
 // GET /api/ai/estimate-budget
 router.get(
   "/estimate-budget",

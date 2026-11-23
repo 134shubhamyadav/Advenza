@@ -110,7 +110,6 @@ router.get("/:type/:filename", async (req, res) => {
   }
 
   const relativePath = `${safeType}/${safeFilename}`;
-  const shareToken = req.query.shareToken ? String(req.query.shareToken).trim() : null;
 
   // 2. Check public share token first (Collages)
   if (shareToken) {
@@ -129,13 +128,13 @@ router.get("/:type/:filename", async (req, res) => {
   const auth = await authenticateMediaRequest(req, relativePath);
   if (!auth || !auth.uid) {
     return res.status(401).json({
-      error: "Authentication required to access private media. Provide Authorization header, ?token=, ?sig=, or a valid ?shareToken=",
+      error: "Authentication required to access private media. Provide Authorization header, ?token=, or ?sig=",
     });
   }
 
   const uid = auth.uid;
 
-  // 4. Verify Ownership & Authorization based on media category
+  // 3. Verify Ownership & Authorization for receipts
   try {
     if (safeType === "collages") {
       const idOrPart = safeFilename.split(".")[0];

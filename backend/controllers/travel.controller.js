@@ -3,6 +3,7 @@ import { hotelProvider } from "../services/travel/providers/hotel.provider.js";
 import { weatherProvider } from "../services/travel/providers/weather.provider.js";
 import { transportProvider } from "../services/travel/providers/transport.provider.js";
 import { travelCacheService, CACHE_TTLS } from "../services/travel/travel-cache.service.js";
+import { airportLookupService } from "../services/travel/airport-lookup.service.js";
 import PriceWatch from "../models/PriceWatch.js";
 import PriceHistory from "../models/PriceHistory.js";
 import Trip from "../models/Trip.js";
@@ -290,6 +291,54 @@ export async function deletePriceWatch(req, res, next) {
     return res.status(200).json({
       success: true,
       message: "Price watch cancelled",
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/travel/airports
+ * Operational airport lookup, search, and nearby geographic discovery
+ */
+export async function lookupAirports(req, res, next) {
+  try {
+    const { q, city, code, lat, lng, radiusKm, onlyScheduled } = req.query;
+    const isOnlyScheduled = onlyScheduled === "true" || onlyScheduled === true;
+
+    if (lat && lng) {
+      const nearby = airportLookupService.findNearbyAirports({
+        latitude: parseFloat(lat),
+        longitude: parseFloat(lng),
+        maxRadiusKm: radiusKm ? parseFloat(radiusKm) : 250,
+        onlyScheduled: isOnlyScheduled,
+      });
+      return res.status(200).json({ success: true, count: nearby.length, data: nearby });
+    }
+
+    if (code) {
+      const match = airportLookupService.findAirportByCode(code);
+      return res.status(200).json({ success: true, count: match ? 1 : 0, data: match ? [match] : [] });
+    }
+
+    if (city) {
+      const matches = airportLookupService.findAirportsByCity(city);
+      return res.status(200).json({ success: true, count: matches.length, data: matches });
+    }
+
+    if (q) {
+      const results = airportLookupService.searchAirports(q, {
+        onlyScheduled: isOnlyScheduled,
+      });
+      return res.status(200).json({ success: true, count: results.length, data: results });
+    }
+
+    const all = airportLookupService.getAllAirports({ onlyScheduled: isOnlyScheduled });
+    return res.status(200).json({
+      success: true,
+      count: all.length,
+      metadata: airportLookupService.getMetadata(),
+      data: all,
     });
   } catch (err) {
     next(err);

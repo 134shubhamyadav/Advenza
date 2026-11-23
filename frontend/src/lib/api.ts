@@ -54,9 +54,24 @@ export const apiFetch = async (
     if (networkErr.name === "AbortError") {
       throw new Error("Request timed out or was cancelled.");
     }
-    throw new Error(
-      "Cannot reach the Advenza server. Make sure the backend is running on port 5000."
-    );
+    // In local development, if proxy dropped or reset connection, attempt direct port 5000 connection
+    if (!BACKEND && typeof window !== "undefined" && window.location.hostname === "localhost") {
+      try {
+        res = await fetch(`http://localhost:5000${path}`, {
+          ...fetchOptions,
+          headers,
+          signal: combinedSignal,
+        });
+      } catch {
+        throw new Error(
+          "Cannot reach the Advenza server. Make sure the backend is running on port 5000."
+        );
+      }
+    } else {
+      throw new Error(
+        "Cannot reach the Advenza server. Make sure the backend is running on port 5000."
+      );
+    }
   } finally {
     clearTimeout(timeoutId);
   }

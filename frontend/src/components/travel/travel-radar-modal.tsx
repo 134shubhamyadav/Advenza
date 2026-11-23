@@ -40,6 +40,7 @@ import {
   Calendar,
   Sparkles,
   MapPin,
+  Star,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
@@ -332,8 +333,8 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
                     <Input
                       value={flightOrigin}
                       onChange={(e) => setFlightOrigin(e.target.value.toUpperCase())}
-                      placeholder="Origin airport (e.g. BOM)"
-                      className="h-9 text-xs"
+                      placeholder="Origin station / airport (e.g. BOM)"
+                      className="h-9 rounded-lg text-xs"
                     />
                   </div>
                   <div>
@@ -344,8 +345,8 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
                     <Input
                       value={flightDestination}
                       onChange={(e) => setFlightDestination(e.target.value.toUpperCase())}
-                      placeholder="Destination airport (e.g. GOI)"
-                      className="h-9 text-xs"
+                      placeholder="Destination station / airport (e.g. GOI)"
+                      className="h-9 rounded-lg text-xs"
                     />
                   </div>
                 </div>
@@ -483,8 +484,8 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
                   <Input
                     value={hotelDestination}
                     onChange={(e) => setHotelDestination(e.target.value)}
-                    placeholder="Search destination or city (e.g. Ayodhya, Goa, Manali...)"
-                    className="h-9 text-xs"
+                    placeholder="Search destination, city, or station (e.g. Ayodhya, Goa, Manali...)"
+                    className="h-9 rounded-lg text-xs"
                   />
                 </div>
 
@@ -586,8 +587,9 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
                         <div>
                           <div className="font-semibold text-sm flex items-center gap-2">
                             {h.name}
-                            <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">
-                              ⭐ {h.rating}
+                            <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
+                              <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+                              <span>{h.rating}</span>
                             </Badge>
                           </div>
                           <div className="text-xs text-muted-foreground mt-0.5">{h.location} · {h.roomType}</div>

@@ -2,6 +2,7 @@ import { aiRouter } from "../ai-router.service.js";
 import { parseAIJson } from "../ai-parser.js";
 import { osrmRoutingService } from "../../travel/osrm-routing.service.js";
 import { weatherProvider } from "../../travel/providers/weather.provider.js";
+import { transportResearchService } from "../../travel/transport-research.service.js";
 import { logger } from "../../../utils/logger.js";
 import { z } from "zod";
 
@@ -38,13 +39,15 @@ const TransportResearchSchema = z.object({
         estimatedFareINR: 500,
       }),
       priceType: z.enum(["LIVE_VERIFIED", "INDICATIVE_RESEARCH", "HISTORICAL_ESTIMATE"]).default("INDICATIVE_RESEARCH"),
+      priceClassification: z.enum(["actual published price", "retrieved estimate", "modelled estimate"]).default("modelled estimate"),
+      sourceName: z.string().default("Advenza Transport Research Intelligence"),
       bookingAdvice: z.string().default("Book in advance for best fares."),
       trainDetails: z.any().optional(),
     })
   ).default([]),
   bestOption: z.string().default("Flight"),
   summary: z.string().default("Transportation options evaluated between origin and destination."),
-  railcoreData: z.any().optional(),
+  transportResearch: z.any().optional(),
 });
 
 export class TransportationResearchAgent {
@@ -70,20 +73,31 @@ export class TransportationResearchAgent {
     const effectiveOrigin = rawOrigin || "Nearest Major Metropolitan Hub";
     logger.info(`[${this.name}] Researching transportation routes: ${effectiveOrigin} → ${rawDest} for ${travelers} traveler(s)`);
 
-    // 1. Concurrently check live OSRM road routing
+    // 1. Concurrently obtain multi-modal transport research and geocoded road routing
     let osrmRoute = null;
     let nearbyHubs = { station: null, airport: null };
+    let transportResearchData = null;
 
     try {
-      const [origGeo, destGeo] = await Promise.all([
+      const [researchRes, origGeo, destGeo] = await Promise.all([
+        transportResearchService.researchAllModes({
+          origin: effectiveOrigin,
+          destination: rawDest,
+          travelDate: journeyDate,
+          travelers,
+          preferredMode,
+        }).catch((err) => {
+          logger.warn(`[${this.name}] Transport research fallback note: ${err.message}`);
+          return null;
+        }),
         weatherProvider.geocode(effectiveOrigin).catch(() => null),
         weatherProvider.geocode(rawDest).catch(() => null),
       ]);
 
-      const tasks = [];
+      transportResearchData = researchRes;
 
       if (origGeo?.latitude && destGeo?.latitude) {
-        tasks.push(
+        await Promise.allSettled([
           osrmRoutingService.calculateDrivingRoute({
             origin: { lat: origGeo.latitude, lon: origGeo.longitude },
             destination: { lat: destGeo.latitude, lon: destGeo.longitude },
@@ -91,13 +105,11 @@ export class TransportationResearchAgent {
           osrmRoutingService.discoverNearbyTransitHubs(rawDest, {
             lat: destGeo.latitude,
             lon: destGeo.longitude,
-          }).then((h) => { nearbyHubs = h; }).catch(() => null)
-        );
+          }).then((h) => { nearbyHubs = h; }).catch(() => null),
+        ]);
       }
-
-      await Promise.allSettled(tasks);
     } catch (geoErr) {
-      logger.warn(`[${this.name}] Live transit lookups skipped: ${geoErr.message}`);
+      logger.warn(`[${this.name}] Live transit lookups note: ${geoErr.message}`);
     }
 
     let groundTruthNote = "";
@@ -107,7 +119,14 @@ export class TransportationResearchAgent {
 - Driving duration: ${osrmRoute.durationHours} hours (${osrmRoute.durationMins} mins)
 - Real estimated fuel cost: ~₹${osrmRoute.fuelCostINR} (passenger car, 14 km/L at standard fuel rates)
 - Real estimated highway tolls: ~₹${osrmRoute.estimatedTollsINR}
-Integrate this exact road distance into your "Drive" option and set priceType to "LIVE_VERIFIED".`;
+Integrate this exact road distance into your "Drive" option. Price classification: "modelled estimate".`;
+    }
+
+    if (transportResearchData?.recommendedModes?.length > 0) {
+      groundTruthNote += `\nVERIFIED MULTI-MODAL TRANSIT RESEARCH GROUND TRUTH:`;
+      for (const m of transportResearchData.recommendedModes) {
+        groundTruthNote += `\n- [${m.transportType}]: Duration ~${m.estimatedDurationHours}h, Distance ~${m.distanceKm}km, Est. One-Way Fare: ₹${m.estimatedFareINR}, Round-Trip Group Total: ₹${m.totalGroupFareINR}. Route: ${m.route}. Price classification: "${m.priceClassification}", Source: "${m.sourceName}".`;
+      }
     }
 
     if (nearbyHubs.station || nearbyHubs.airport) {
@@ -122,18 +141,18 @@ Research realistic transportation options between origin: "${effectiveOrigin}" a
 User preferred mode if any: "${preferredMode || "Any suitable mode"}".
 ${groundTruthNote}
 
-CRITICAL ROUTING RULES:
+CRITICAL ROUTING & PRICING RULES:
 1. Identify if the destination has its own commercial airport or railway junction, or if travelers must arrive at a nearby hub and take onward road transit (e.g. airport in Goa Dabolim/Mopa, train to Madgaon; or for hill stations arrive at Chandigarh/Kalka/Dehradun and drive).
 2. Calculate realistic round-trip indicative costs per person and total group costs in INR.
 3. Factor in last-mile transit duration and fare from the terminal/hub to the destination center.
 4. Categorize available modes: Flight, Train, Bus, Drive (car rental/taxi/self-drive), or Ferry where applicable.
-5. Set priceType to "LIVE_VERIFIED" if using the verified OSRM road calculations above, or "INDICATIVE_RESEARCH" for verified multi-LLM research estimates. Never fabricate live booking availability.
+5. Set priceClassification to "modelled estimate" or "retrieved estimate". Set priceType to "LIVE_VERIFIED" if using verified OSRM calculations, or "INDICATIVE_RESEARCH" for modelled estimates. Never fabricate exact live booking availability.
 
 Return strictly a valid JSON object matching this schema:
 {
   "origin": "${effectiveOrigin}",
   "destination": "${rawDest}",
-  "distanceKm": ${osrmRoute?.distanceKm || 450},
+  "distanceKm": ${osrmRoute?.distanceKm || transportResearchData?.distanceKm || 450},
   "recommendedModes": [
     {
       "mode": "Flight | Train | Bus | Drive | Ferry",
@@ -150,7 +169,9 @@ Return strictly a valid JSON object matching this schema:
         "estimatedFareINR": 600
       },
       "priceType": "INDICATIVE_RESEARCH",
-      "bookingAdvice": "Recommended advance booking window and airline/rail operators"
+      "priceClassification": "modelled estimate",
+      "sourceName": "Advenza Transport Intelligence",
+      "bookingAdvice": "Recommended advance booking window and operators"
     }
   ],
   "bestOption": "Mode name",
@@ -176,7 +197,7 @@ Return strictly a valid JSON object matching this schema:
 
     const parsedJson = parseAIJson(completionResult.content) || {};
 
-    // If OSRM provided live drive route, ensure Drive mode has live verified details
+    // If OSRM provided live drive route, ensure Drive mode has verified details
     if (osrmRoute && Array.isArray(parsedJson.recommendedModes)) {
       const driveMode = parsedJson.recommendedModes.find(
         (m) => String(m.mode).toLowerCase() === "drive"
@@ -184,7 +205,25 @@ Return strictly a valid JSON object matching this schema:
       if (driveMode) {
         driveMode.durationHours = osrmRoute.durationHours;
         driveMode.priceType = "LIVE_VERIFIED";
+        driveMode.priceClassification = "modelled estimate";
+        driveMode.sourceName = "Project-OSRM Highway Routing";
         driveMode.bookingAdvice = `Live OSRM highway route: ${osrmRoute.distanceKm} km (${osrmRoute.durationHours} hrs). Est. fuel: ₹${osrmRoute.fuelCostINR}, tolls: ~₹${osrmRoute.estimatedTollsINR}.`;
+      }
+    }
+
+    // Ensure Train mode has realistic grounded figures from transportResearchService
+    if (transportResearchData) {
+      const trainResearch = transportResearchData.recommendedModes?.find((m) => m.transportType === "Train");
+      if (trainResearch && Array.isArray(parsedJson.recommendedModes)) {
+        const trainMode = parsedJson.recommendedModes.find(
+          (m) => String(m.mode).toLowerCase() === "train"
+        );
+        if (trainMode) {
+          trainMode.durationHours = trainMode.durationHours || trainResearch.estimatedDurationHours;
+          trainMode.priceClassification = "modelled estimate";
+          trainMode.sourceName = trainResearch.sourceName;
+          trainMode.bookingAdvice = `${trainResearch.limitations} Available classes: SL, 3A, 2A, 1A.`;
+        }
       }
     }
 
@@ -192,8 +231,9 @@ Return strictly a valid JSON object matching this schema:
       ...parsedJson,
       origin: parsedJson.origin || effectiveOrigin,
       destination: parsedJson.destination || rawDest,
-      distanceKm: osrmRoute?.distanceKm || parsedJson.distanceKm || 0,
+      distanceKm: osrmRoute?.distanceKm || transportResearchData?.distanceKm || parsedJson.distanceKm || 0,
       summary: parsedJson.summary || parsedJson.overview || `Travel options connecting ${effectiveOrigin} and ${rawDest}.`,
+      transportResearch: transportResearchData || undefined,
     });
 
     // Attach provider telemetry for Final AI Judge
@@ -202,6 +242,7 @@ Return strictly a valid JSON object matching this schema:
       model: completionResult.model,
       durationMs: completionResult.durationMs,
       hasLiveRouting: Boolean(osrmRoute),
+      hasTransportResearch: Boolean(transportResearchData),
     };
 
     return validated;

@@ -3,6 +3,7 @@ import { destinationDisambiguationService } from "../services/places/destination
 import { orchestratorService } from "../services/ai/orchestrator/orchestrator.service.js";
 import { budgetIntelligenceAgent } from "../services/ai/orchestrator/budget-intelligence.agent.js";
 import { accommodationAgent } from "../services/ai/orchestrator/accommodation.agent.js";
+import { transportResearchService } from "../services/travel/transport-research.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 export const generate = asyncHandler(async (req, res) => {
@@ -50,8 +51,28 @@ export const risk = asyncHandler(async (req, res) => {
 });
 
 export const estimateBudget = asyncHandler(async (req, res) => {
-  const { destination, startDate, endDate, travelers } = req.query;
-  const result = await aiService.estimateBudget({ destination, startDate, endDate, travelers });
+  const {
+    destination,
+    startDate,
+    endDate,
+    travelers,
+    accommodation,
+    travelMode,
+    transportCost,
+    stayCost,
+    origin,
+  } = req.query;
+  const result = await aiService.estimateBudget({
+    destination,
+    startDate,
+    endDate,
+    travelers,
+    accommodation,
+    travelMode,
+    transportCost,
+    stayCost,
+    origin,
+  });
   res.json(result);
 });
 
@@ -106,4 +127,27 @@ export const orchestratedResearch = asyncHandler(async (req, res) => {
   res.json(result);
 });
 
+export const researchTransport = asyncHandler(async (req, res) => {
+  const origin = req.query.origin || req.body?.origin;
+  const destination = req.query.destination || req.body?.destination;
+  const date = req.query.date || req.body?.date;
+  const travelers = Number(req.query.travelers || req.query.passengers || req.body?.travelers) || 1;
+  const preferredMode = req.query.preferredMode || req.body?.preferredMode;
 
+  if (!destination) {
+    return res.status(400).json({
+      success: false,
+      error: "Destination is required for transport research.",
+    });
+  }
+
+  const result = await transportResearchService.researchAllModes({
+    origin,
+    destination,
+    travelDate: date,
+    travelers,
+    preferredMode,
+  });
+
+  res.json({ success: true, ...result });
+});

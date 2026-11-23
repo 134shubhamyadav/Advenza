@@ -350,7 +350,7 @@ function Risk() {
                 {t.title} ({t.destination})
               </option>
             ))}
-            <option value="custom">🔍 Search custom city...</option>
+            <option value="custom">Search custom city...</option>
           </select>
         </div>
 

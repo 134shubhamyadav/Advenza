@@ -8,6 +8,7 @@ import {
   getPriceWatchDetails,
   updatePriceWatch,
   deletePriceWatch,
+  lookupAirports,
 } from "../controllers/travel.controller.js";
 import { verifyToken } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -45,6 +46,12 @@ router.get(
   travelSearchLimiter,
   validate({ query: weatherQuerySchema }),
   getWeatherForecast
+);
+
+router.get(
+  "/airports",
+  travelSearchLimiter,
+  lookupAirports
 );
 
 // ─── Price Watch Endpoints ───────────────────────────────────────────────────

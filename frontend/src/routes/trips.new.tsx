@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,11 @@ import {
   Gem,
   Star,
   Info,
-  AlertCircle
+  Radio,
+  Bed,
+  Wallet,
+  Building2,
+  Home
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -36,17 +40,18 @@ import { TripGenerationLoader } from "@/components/travel/trip-generation-loader
 import { cn, normalizeTimeTo24h, calculateInclusiveDays } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import { fetchDestinationOverview, type DestinationOverview } from "@/services/tripService";
+import { getLocalityInterests } from "@/lib/locality-interests";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
 export const Route = createFileRoute("/trips/new")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { destination?: string } => ({
     destination:
       typeof search.destination === "string"
         ? search.destination
         : typeof search.dest === "string"
           ? search.dest
-          : "",
+          : undefined,
   }),
   component: NewTrip,
 });
@@ -55,6 +60,7 @@ const steps = [
   "Destination",
   "Destination Insights",
   "Dates & travelers",
+  "Stay & Leaving Prices",
   "Budget",
   "Interests & pace",
   "Review",
@@ -162,102 +168,6 @@ const ACCOMMODATION_OPTIONS = [
   },
 ];
 
-interface TravelModeRadioGroupProps {
-  value: string;
-  onChange: (mode: string) => void;
-  label?: string;
-  routeText?: string;
-  required?: boolean;
-  hasError?: boolean;
-  errorMessage?: string;
-}
-
-function TravelModeRadioGroup({
-  value,
-  onChange,
-  label = "Preferred Mode of Travel",
-  routeText,
-  required = true,
-  hasError = false,
-  errorMessage,
-}: TravelModeRadioGroupProps) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between flex-wrap gap-1">
-        <Label className="text-xs font-medium flex items-center gap-1.5">
-          <span>{label}</span>
-          {required && (
-            <span className="text-destructive font-bold text-xs" title="Required">*</span>
-          )}
-          {required && (
-            <Badge variant="outline" className="text-[9px] uppercase font-mono px-1.5 py-0 h-4 border-primary/30 text-primary">
-              Required
-            </Badge>
-          )}
-        </Label>
-        {routeText && (
-          <span className="text-[11px] text-muted-foreground font-mono">{routeText}</span>
-        )}
-      </div>
-
-      <div
-        role="radiogroup"
-        aria-label={label}
-        aria-required={required}
-        className="flex flex-wrap gap-2.5"
-      >
-        {MODES.map(({ id, icon: Icon, label: modeLabel }) => {
-          const isSelected = value === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              role="radio"
-              aria-checked={isSelected}
-              onClick={() => onChange(id)}
-              className={cn(
-                "group flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-xs font-medium transition-all text-left cursor-pointer select-none",
-                isSelected
-                  ? "border-primary bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/25 font-semibold"
-                  : hasError && !value
-                    ? "border-destructive/60 bg-destructive/5 hover:border-destructive text-foreground/80"
-                    : "border-border bg-background/80 hover:border-primary/40 text-foreground/80 hover:text-foreground hover:bg-muted/30"
-              )}
-            >
-              {/* Radio circle indicator */}
-              <div
-                className={cn(
-                  "flex h-4 w-4 items-center justify-center rounded-full border transition-all shrink-0",
-                  isSelected
-                    ? "border-primary-foreground bg-primary-foreground text-primary"
-                    : hasError && !value
-                      ? "border-destructive/60 bg-background"
-                      : "border-muted-foreground/40 bg-background group-hover:border-primary/60"
-                )}
-              >
-                {isSelected && <span className="h-2 w-2 rounded-full bg-primary" />}
-              </div>
-
-              {/* Mode Icon */}
-              <Icon className={cn("h-3.5 w-3.5 shrink-0 transition-colors", isSelected ? "text-primary-foreground" : "text-muted-foreground group-hover:text-primary")} />
-
-              {/* Mode Label */}
-              <span>{modeLabel}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {hasError && !value && (
-        <p className="text-xs font-medium text-destructive flex items-center gap-1.5 animate-fadeIn">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-          {errorMessage || "Please select exactly one travel mode to proceed."}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function NewTrip() {
   const nav = useNavigate();
   const search = Route.useSearch();
@@ -284,18 +194,64 @@ function NewTrip() {
     }
   }, [search?.destination]);
 
+  // ── Transport Research & Leaving Prices State ─────────────────────────────
+  const [transportResearchData, setTransportResearchData] = useState<any>(null);
+  const [isFetchingTransport, setIsFetchingTransport] = useState(false);
+
+  const fetchTransportResearch = async () => {
+    if (!destination.trim()) return;
+    setIsFetchingTransport(true);
+    try {
+      const res = await apiFetch(
+        `/api/ai/transport/research?destination=${encodeURIComponent(destination.trim())}&origin=${encodeURIComponent(originCity.trim() || "Mumbai")}&travelers=${travelers || 1}&date=${startDate || ""}`
+      );
+      if (res && res.recommendedModes) {
+        setTransportResearchData(res);
+      }
+    } catch (err) {
+      console.warn("Transport research failed:", err);
+    } finally {
+      setIsFetchingTransport(false);
+    }
+  };
+
+  const getStayEstimatedCost = (accType: string, nights: number, pax: number) => {
+    const rooms = Math.ceil(Math.max(1, pax) / 2);
+    const effNights = Math.max(1, nights);
+    if (accType === "OWN_HOME" || accType === "NATIVE_HOME" || accType === "RELATIVES_HOME") {
+      return { perNight: 0, total: 0, isFree: true, label: "₹0 (Free Personal Stay)" };
+    }
+    if (accType === "RESORT") {
+      return { perNight: 11000, total: 11000 * effNights * rooms, isFree: false, label: "Luxury (₹11,000/nt)" };
+    }
+    if (accType === "HOSTEL") {
+      return { perNight: 1500, total: 1500 * effNights * rooms, isFree: false, label: "Budget (₹1,500/nt)" };
+    }
+    if (accType === "OTHER") {
+      return { perNight: 2500, total: 2500 * effNights * rooms, isFree: false, label: "Unique (₹2,500/nt)" };
+    }
+    return { perNight: 4200, total: 4200 * effNights * rooms, isFree: false, label: "Mid-Range (₹4,200/nt)" };
+  };
+
+  const getLeavingEstimatedCost = () => {
+    const pax = parseInt(travelers) || 1;
+    if (transportResearchData?.recommendedModes) {
+      const active = transportResearchData.recommendedModes.find(
+        (m: any) => m.transportType?.toLowerCase() === (travelMode || "Flight").toLowerCase()
+      );
+      if (active) {
+        return active.totalGroupFareINR || (active.estimatedFareINR ? active.estimatedFareINR * 2 * pax : 3500 * pax);
+      }
+    }
+    if (travelMode === "Train") return 1900 * pax;
+    if (travelMode === "Bus") return 1500 * pax;
+    if (travelMode === "Car") return 4500;
+    return 7000 * pax;
+  };
+
   // ── Budget Feasibility State ───────────────────────────────────────────────
   const [budgetFeasibility, setBudgetFeasibility] = useState<BudgetFeasibilityData | null>(null);
   const [isCheckingBudgetFeasibility, setIsCheckingBudgetFeasibility] = useState(false);
-  const budgetAbortRef = useRef<AbortController | null>(null);
-  const budgetDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (budgetDebounceTimerRef.current) clearTimeout(budgetDebounceTimerRef.current);
-      if (budgetAbortRef.current) budgetAbortRef.current.abort();
-    };
-  }, []);
 
   // ── Step 1: Destination Insights ───────────────────────────────────────────
   const [destinationOverview, setDestinationOverview] = useState<DestinationOverview | null>(null);
@@ -329,25 +285,53 @@ function NewTrip() {
   const [budget, setBudget] = useState<string>("");
 
   // ── Step 3: Outbound Travel Details ────────────────────────────────────────
-  const [travelMode, setTravelMode] = useState("");        // primary intercity mode (mandatory single-select)
-  const [travelModeTouched, setTravelModeTouched] = useState(false);
+  const [travelMode, setTravelMode] = useState("Flight");        // primary intercity mode
   const [departureHub, setDepartureHub] = useState("");    // airport / station / terminal (origin)
   const [arrivalHub, setArrivalHub] = useState("");        // airport / station / terminal (destination)
   const [transitRef, setTransitRef] = useState("");        // flight no / train name
+  const [outboundDepartureDate, setOutboundDepartureDate] = useState("");
+  const [outboundArrivalDate, setOutboundArrivalDate] = useState("");
   const [departureTime, setDepartureTime] = useState(""); // HH:MM
   const [arrivalTime, setArrivalTime] = useState("");     // HH:MM
   const [outboundBooked, setOutboundBooked] = useState(false);
 
   // ── Return Journey ─────────────────────────────────────────────────────────
-  const [hasReturnTravel, setHasReturnTravel] = useState(false);
+  const [hasReturnTravel, setHasReturnTravel] = useState(true);
   const [returnBooked, setReturnBooked] = useState(false);
   const [returnDate, setReturnDate] = useState("");
+  const [returnArrivalDate, setReturnArrivalDate] = useState("");
   const [returnTime, setReturnTime] = useState("");
   const [returnArrivalTime, setReturnArrivalTime] = useState("");
   const [returnDepartureLocation, setReturnDepartureLocation] = useState("");
   const [returnArrivalLocation, setReturnArrivalLocation] = useState("");
   const [returnTransportType, setReturnTransportType] = useState("");
   const [returnTicketRef, setReturnTicketRef] = useState("");
+
+  // Sync default departure & return dates when trip start/end dates change
+  useEffect(() => {
+    if (startDate) {
+      if (!outboundDepartureDate) {
+        setOutboundDepartureDate(startDate);
+      }
+      if (!outboundArrivalDate) {
+        setOutboundArrivalDate(startDate);
+      }
+      if (!departureTime) {
+        setDepartureTime(travelMode === "Flight" ? "08:00" : "06:30");
+      }
+    }
+    if (endDate) {
+      if (!returnDate) {
+        setReturnDate(endDate);
+      }
+      if (!returnArrivalDate) {
+        setReturnArrivalDate(endDate);
+      }
+      if (!returnTime) {
+        setReturnTime("16:30");
+      }
+    }
+  }, [startDate, endDate]);
 
   // Keep legacy multi-select for local transport
   const [transport, setTransport] = useState<string[]>([]);
@@ -363,6 +347,81 @@ function NewTrip() {
   const [style, setStyle] = useState("Balanced");
   const [interests, setInterests] = useState<string[]>([]);
   const [special, setSpecial] = useState("");
+  const [generationStatus, setGenerationStatus] = useState<"loading" | "success" | "error">("loading");
+  const [generationProgress, setGenerationProgress] = useState<number | undefined>(undefined);
+
+  const localityInterestsList = useMemo(() => {
+    return getLocalityInterests(destination, destinationOverview);
+  }, [destination, destinationOverview]);
+
+  const handleSelectMode = (modeId: string) => {
+    setTravelMode(modeId);
+    const recModes = transportResearchData?.recommendedModes || [];
+
+    if (modeId === "Train") {
+      const trainMode = recModes.find((m: any) => m.transportType === "Train");
+      const depH = trainMode?.departure?.hub || `${originCity || "Origin"} Railway Station`;
+      const arrH = trainMode?.arrival?.hub || `${destination} Railway Station`;
+      setDepartureHub(depH);
+      setArrivalHub(arrH);
+      setTransitRef("Express / Superfast Train");
+      setReturnDepartureLocation(arrH);
+      setReturnArrivalLocation(depH);
+      setReturnTicketRef("Express / Superfast Train (Return)");
+    } else if (modeId === "Flight") {
+      const flightMode = recModes.find((m: any) => m.transportType === "Flight");
+      const depH = flightMode?.departure?.hub || `${originCity || "Origin"} Airport`;
+      const arrH = flightMode?.arrival?.hub || `${destination} Airport`;
+      setDepartureHub(depH);
+      setArrivalHub(arrH);
+      setTransitRef("Scheduled Domestic Flight");
+      setReturnDepartureLocation(arrH);
+      setReturnArrivalLocation(depH);
+      setReturnTicketRef("Domestic Flight (Return)");
+      if (!departureTime) setDepartureTime("08:00");
+      if (flightMode?.estimatedDurationMinutes) {
+        const depHNum = 8, depM = 0;
+        const totalM = depHNum * 60 + depM + flightMode.estimatedDurationMinutes;
+        const arrHNum = Math.floor(totalM / 60) % 24;
+        const arrMin = totalM % 60;
+        setArrivalTime(`${String(arrHNum).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`);
+      }
+    } else if (modeId === "Bus") {
+      const busMode = recModes.find((m: any) => m.transportType === "Bus");
+      const depH = busMode?.departure?.hub || `${originCity || "Origin"} Bus Stand / ISBT`;
+      const arrH = busMode?.arrival?.hub || `${destination} Bus Stand / Intercity Terminal`;
+      setDepartureHub(depH);
+      setArrivalHub(arrH);
+      setTransitRef("Intercity AC Sleeper Bus");
+      setReturnDepartureLocation(arrH);
+      setReturnArrivalLocation(depH);
+      setReturnTicketRef("Intercity AC Sleeper Bus (Return)");
+      if (!departureTime) setDepartureTime("07:00");
+    } else if (modeId === "Car") {
+      const driveMode = recModes.find((m: any) => m.transportType === "Drive" || m.transportType === "Car");
+      const depH = driveMode?.departure?.hub || `${originCity || "Origin"} (Self-drive / Private Cab)`;
+      const arrH = driveMode?.arrival?.hub || `${destination} City Center`;
+      setDepartureHub(depH);
+      setArrivalHub(arrH);
+      setTransitRef("Personal Vehicle / Private Taxi");
+      setReturnDepartureLocation(`${destination} (Self-drive / Private Cab)`);
+      setReturnArrivalLocation(`${originCity || "Origin"} City Center`);
+      setReturnTicketRef("Personal Vehicle / Private Taxi (Return)");
+      setOutboundBooked(false);
+      setReturnBooked(false);
+      if (!departureTime) setDepartureTime("06:30");
+    } else if (modeId === "Ferry") {
+      const ferryMode = recModes.find((m: any) => m.transportType === "Ferry");
+      const depH = ferryMode?.departure?.hub || `${originCity || "Origin"} Passenger Ferry Terminal`;
+      const arrH = ferryMode?.arrival?.hub || `${destination} Ferry Terminal / Pier`;
+      setDepartureHub(depH);
+      setArrivalHub(arrH);
+      setTransitRef("Passenger Ferry / Catamaran");
+      setReturnDepartureLocation(arrH);
+      setReturnArrivalLocation(depH);
+      setReturnTicketRef("Passenger Ferry (Return)");
+    }
+  };
 
   // Cycle loading messages smoothly
   useEffect(() => {
@@ -385,22 +444,21 @@ function NewTrip() {
 
   // ── Per-step validation ────────────────────────────────────────────────────
   const canProceed = () => {
-    if (step === 0) return destination.trim().length > 0 && Boolean(travelMode);
+    if (step === 0) return destination.trim().length > 0;
     if (step === 1) {
       if (isFetchingOverview) return false;
       if (!startDate || !endDate || endDate < startDate) return false;
       return true;
     }
     if (step === 2) return startDate && endDate && endDate >= startDate && parseInt(travelers) >= 1;
-    if (step === 3) {
+    if (step === 3) return true; // Step 3: Stay & Leaving Prices
+    if (step === 4) {
       if (budget === "") return false;
       const b = parseInt(budget);
-      if (isNaN(b) || b < 100) return false; // Block 2 digit numbers
+      if (isNaN(b) || b < 100) return false;
       return true;
     }
-    if (step === 4) return Boolean(travelMode);
-    if (step === 5) return Boolean(travelMode);
-    return true; // Step 4 (Interests & Travel) and Step 5 (Review)
+    return true; // Step 5 (Interests) and Step 6 (Review)
   };
 
   const checkDisambiguation = async (query: string): Promise<boolean> => {
@@ -466,18 +524,12 @@ function NewTrip() {
     const val = budgetVal !== undefined ? budgetVal : budget;
     const bNum = parseInt(val);
     if (isNaN(bNum) || bNum < 100 || !destination) return;
-
-    if (budgetAbortRef.current) {
-      budgetAbortRef.current.abort();
-    }
-    const controller = new AbortController();
-    budgetAbortRef.current = controller;
-
     setIsCheckingBudgetFeasibility(true);
     try {
+      const stayingCost = getStayEstimatedCost(accommodation, tripDays, parseInt(travelers) || 1).total;
+      const leavingCost = getLeavingEstimatedCost();
       const res = await apiFetch("/api/ai/budget-feasibility", {
         method: "POST",
-        signal: controller.signal,
         body: JSON.stringify({
           destination: destination.trim(),
           origin: originCity.trim() || undefined,
@@ -485,29 +537,18 @@ function NewTrip() {
           durationDays: tripDays,
           travelers: parseInt(travelers) || 1,
           accommodationPreference: accommodation || "HOTEL",
+          transportCost: leavingCost,
+          lastMileCost: Math.min(2500, Math.round(leavingCost * 0.15)),
         }),
       });
       if (res) {
         setBudgetFeasibility(res);
       }
-    } catch (err: any) {
-      if (err.name !== "AbortError") {
-        console.warn("Budget feasibility check failed:", err);
-      }
+    } catch (err) {
+      console.warn("Budget feasibility check failed:", err);
     } finally {
-      if (budgetAbortRef.current === controller) {
-        setIsCheckingBudgetFeasibility(false);
-      }
+      setIsCheckingBudgetFeasibility(false);
     }
-  };
-
-  const debouncedFetchBudgetFeasibility = (val: string) => {
-    if (budgetDebounceTimerRef.current) {
-      clearTimeout(budgetDebounceTimerRef.current);
-    }
-    budgetDebounceTimerRef.current = setTimeout(() => {
-      fetchBudgetFeasibility(val);
-    }, 400);
   };
 
   const handleApplySavingsOption = (opt: any) => {
@@ -534,9 +575,20 @@ function NewTrip() {
     if (!destination || !startDate || !endDate) return;
     setIsFetchingBudget(true);
     try {
-      const res = await apiFetch(
-        `/api/ai/estimate-budget?destination=${encodeURIComponent(destination)}&startDate=${startDate}&endDate=${endDate}&travelers=${travelers}`
-      );
+      const stayingCost = getStayEstimatedCost(accommodation, tripDays, parseInt(travelers) || 1).total;
+      const leavingCost = getLeavingEstimatedCost();
+      const params = new URLSearchParams({
+        destination: destination.trim(),
+        startDate,
+        endDate,
+        travelers: travelers || "1",
+        accommodation: accommodation || "HOTEL",
+        travelMode: travelMode || "Flight",
+        transportCost: String(leavingCost),
+        stayCost: String(stayingCost),
+        origin: originCity.trim() || "Mumbai",
+      });
+      const res = await apiFetch(`/api/ai/estimate-budget?${params.toString()}`);
       if (res && res.minimumBudget) {
         setMinBudget(res.minimumBudget);
       }
@@ -547,17 +599,16 @@ function NewTrip() {
     }
   };
 
+  useEffect(() => {
+    if (step === 4) {
+      fetchBudgetEstimate();
+      if (budget && parseInt(budget) >= 100) {
+        fetchBudgetFeasibility(budget);
+      }
+    }
+  }, [step, destination, startDate, endDate, travelers, accommodation, travelMode]);
+
   const handleNext = async () => {
-    if (step === 0 && !travelMode) {
-      setTravelModeTouched(true);
-      setError("Please select a preferred mode of travel to proceed.");
-      return;
-    }
-    if (step === 4 && !travelMode) {
-      setTravelModeTouched(true);
-      setError("Please select a preferred mode of travel to proceed.");
-      return;
-    }
     if (!canProceed()) return;
     if (step === 0 && destination.trim()) {
       if (disambiguationCandidates.length > 0) {
@@ -594,49 +645,68 @@ function NewTrip() {
           setIsFetchingOverview(false);
         });
     }
-    if (step === 2 && minBudget === null && !isFetchingBudget) {
-      fetchBudgetEstimate();
+    if (step === 2) {
+      fetchTransportResearch();
     }
-    if (step === 3 && budget) {
+    if (step === 3) {
+      fetchBudgetEstimate();
+      if (budget) {
+        fetchBudgetFeasibility(budget);
+      }
+    }
+    if (step === 4 && budget) {
       fetchBudgetFeasibility(budget);
     }
     setStep((s) => s + 1);
   };
 
   const handleDraftTrip = async () => {
+    let progressTimer: any = null;
     try {
-      if (!travelMode) {
-        setTravelModeTouched(true);
-        setError("Please select a preferred mode of travel before creating your trip.");
-        return;
-      }
-
       setLoading(true);
       setError("");
+      setGenerationStatus("loading");
+      setGenerationProgress(10);
+
+      // Realistic stage-based progress tracking during AI generation
+      progressTimer = setInterval(() => {
+        setGenerationProgress((p) => {
+          if (p === undefined) return 14;
+          if (p < 28) return p + 2.5;
+          if (p < 55) return p + 1.8;
+          if (p < 82) return p + 1.1;
+          if (p < 96) return p + 0.35;
+          return p;
+        });
+      }, 250);
 
       const outboundLeg = {
-        transportType: travelMode,
+        transportType: travelMode || "Flight",
         departureLocation: departureHub || originCity || "",
         arrivalLocation: arrivalHub || destination || "",
-        departureDate: startDate || "",
+        departureDate: outboundDepartureDate || startDate || "",
+        arrivalDate: outboundArrivalDate || outboundDepartureDate || startDate || "",
         departureTime: normalizeTimeTo24h(departureTime),
         arrivalTime: normalizeTimeTo24h(arrivalTime),
-        transitRef: transitRef || "",
+        transitRef: transitRef.trim(),
         booked: outboundBooked,
-        status: outboundBooked ? "CONFIRMED" : "ESTIMATED",
+        status: (outboundBooked || (departureTime && arrivalTime) || transitRef) ? "CONFIRMED" : "ESTIMATED",
+        durationSource: (departureTime && arrivalTime) ? "USER_SPECIFIED" : undefined,
       };
 
       const returnLeg = hasReturnTravel
         ? {
-            transportType: returnTransportType || travelMode,
-            departureLocation: returnDepartureLocation || arrivalHub || destination || "",
-            arrivalLocation: returnArrivalLocation || departureHub || originCity || "",
+            transportType: returnTransportType || travelMode || "Flight",
+            departureLocation: returnDepartureLocation || destination || "",
+            arrivalLocation: returnArrivalLocation || originCity || "",
             departureDate: returnDate || endDate || "",
+            arrivalDate: returnArrivalDate || returnDate || endDate || "",
             departureTime: normalizeTimeTo24h(returnTime),
             arrivalTime: normalizeTimeTo24h(returnArrivalTime),
-            transitRef: returnTicketRef || "",
+            transitRef: returnTicketRef.trim(),
             booked: returnBooked,
-            status: returnBooked ? "CONFIRMED" : "ESTIMATED",
+            status: (returnBooked || (returnTime && returnArrivalTime) || returnTicketRef) ? "CONFIRMED" : "ESTIMATED",
+            durationSource: (returnTime && returnArrivalTime) ? "USER_SPECIFIED" : undefined,
           }
         : { booked: false };
 
@@ -652,13 +722,13 @@ function NewTrip() {
           budget: parseInt(budget) || 0,
           travelers: parseInt(travelers) || 1,
           // Travel detail fields (flat + structured)
-          travelMode: travelMode,
+          travelMode: travelMode || undefined,
           departureHub: departureHub || undefined,
           arrivalHub: arrivalHub || undefined,
           transitRef: transitRef || undefined,
           departureTime: normalizeTimeTo24h(departureTime) || undefined,
           arrivalTime: normalizeTimeTo24h(arrivalTime) || undefined,
-          transport: [travelMode],
+          transport: transport.length > 0 ? transport : travelMode ? [travelMode] : [],
           outboundJourney: outboundLeg,
           returnJourney: returnLeg,
           // Accommodation detail fields
@@ -675,14 +745,24 @@ function NewTrip() {
         }),
       });
 
+      if (progressTimer) clearInterval(progressTimer);
+
       queryClient.invalidateQueries({ queryKey: queryKeys.trips() });
       queryClient.setQueryData(queryKeys.tripDetails(tripData._id), tripData);
 
-      nav({ to: `/trips/${tripData._id}` });
+      // Trigger fluid 100% completion & green checkmark animation
+      setGenerationStatus("success");
+      setGenerationProgress(100);
+
+      // Smooth settling and animated checkmark display before navigation
+      setTimeout(() => {
+        nav({ to: `/trips/${tripData._id}` });
+      }, 1200);
     } catch (err: any) {
+      if (progressTimer) clearInterval(progressTimer);
       console.error("Trip generation error:", err);
+      setGenerationStatus("error");
       setError(err.message || "Something went wrong generating your itinerary. Please try again.");
-    } finally {
       setLoading(false);
     }
   };
@@ -789,67 +869,6 @@ function NewTrip() {
                     ))}
                   </div>
                 </div>
-
-                {/* Accommodation Selection (Selectable Visual Cards) */}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-medium">Where would you prefer to stay?</Label>
-                    <span className="text-[11px] text-muted-foreground">Selectable Choice</span>
-                  </div>
-                  <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                    {ACCOMMODATION_OPTIONS.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setAccommodation(t.id)}
-                        className={cn(
-                          "rounded-xl border p-3.5 text-left transition-all flex flex-col justify-between",
-                          accommodation === t.id
-                            ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
-                            : "border-border bg-background/80 hover:border-primary/40",
-                        )}
-                      >
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm">{t.icon}</span>
-                            <p className="font-semibold text-xs text-foreground">{t.title}</p>
-                          </div>
-                          <p className="mt-1 text-[11px] text-muted-foreground leading-normal">{t.desc}</p>
-                        </div>
-                        {t.isFree && (
-                          <Badge variant="outline" className="mt-2 text-[10px] w-fit border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
-                            ₹0 Lodging Cost
-                          </Badge>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  {(accommodation === "OWN_HOME" || accommodation === "NATIVE_HOME" || accommodation === "RELATIVES_HOME") && (
-                    <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                      <span>🏡</span>
-                      <span>
-                        <strong>Zero Lodging Expense:</strong> Staying with family, relatives, or at your own / native home incurs ₹0 accommodation fees. Your budget will be reserved for travel, dining, and activities.
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Primary Transportation Mode (Mandatory Single-Select Radio Control) */}
-                <TravelModeRadioGroup
-                  value={travelMode}
-                  onChange={(id) => {
-                    setTravelMode(id);
-                    setTravelModeTouched(false);
-                    if (error && error.toLowerCase().includes("travel mode")) {
-                      setError("");
-                    }
-                  }}
-                  label="Preferred Mode of Travel"
-                  routeText={originCity && destination ? `${originCity} → ${destination}` : undefined}
-                  required={true}
-                  hasError={travelModeTouched && !travelMode}
-                  errorMessage="Please select a preferred mode of travel to proceed."
-                />
 
                 {originCity && destination && (
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 flex items-center gap-3">
@@ -1533,7 +1552,571 @@ function NewTrip() {
             )}
 
             {/* ── Step 3: Budget ── */}
+            {/* ── Step 3: Stay & Leaving Prices ── */}
             {step === 3 && (
+              <div className="space-y-6">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-foreground">Choose Accommodation & Analyze Leaving Prices</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Select your stay option and evaluate departure travel costs before setting your total budget.
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="border-primary/30 text-primary bg-primary/5 text-xs">
+                      Step 4 of 7
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* ── Section 1: Choose Stay Option ── */}
+                <div className="space-y-3 rounded-2xl border border-border/80 bg-background/60 p-4 md:p-5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <Bed className="h-4 w-4 text-primary" /> 1. Where will you stay in {destination}?
+                    </Label>
+                    <span className="text-[11px] text-muted-foreground">Selectable Choice</span>
+                  </div>
+
+                  <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                    {ACCOMMODATION_OPTIONS.map((t) => {
+                      const isSelected = accommodation === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setAccommodation(t.id)}
+                          className={cn(
+                            "rounded-xl border p-3.5 text-left transition-all flex flex-col justify-between cursor-pointer",
+                            isSelected
+                              ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
+                              : "border-border bg-background/80 hover:border-primary/40"
+                          )}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-base">{t.icon}</span>
+                              {t.isFree ? (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-emerald-500/40 text-emerald-700 bg-emerald-500/10 font-bold">
+                                  ₹0 Free Stay
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-border/80 text-muted-foreground">
+                                  Commercial
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="font-semibold text-xs text-foreground mt-2">{t.title}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground leading-normal">{t.desc}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Personal Stays Special Highlight */}
+                  {(accommodation === "OWN_HOME" || accommodation === "NATIVE_HOME" || accommodation === "RELATIVES_HOME") && (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-900 dark:text-emerald-200 flex items-start gap-2.5">
+                      <span className="text-lg">🏡</span>
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-emerald-950 dark:text-emerald-100">
+                          Zero Lodging Expense Applied (Personal Stay)
+                        </p>
+                        <p className="text-[11px] opacity-90 leading-relaxed">
+                          Staying at your own home, ancestral native village, or with relatives/friends incurs <strong>₹0 commercial accommodation expense</strong>. Your trip budget will be preserved entirely for transport, sightseeing, dining, and shopping.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Optional Stay Details */}
+                  <div className="pt-2 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="text-xs">Hotel / Residence name (optional)</Label>
+                      <Input
+                        value={hotelName}
+                        onChange={(e) => setHotelName(e.target.value)}
+                        className="mt-1 h-9 rounded-lg text-xs"
+                        placeholder={
+                          accommodation === "OWN_HOME" || accommodation === "RELATIVES_HOME" || accommodation === "NATIVE_HOME"
+                            ? "e.g. Uncle's flat / Family residence"
+                            : "e.g. Taj Fort Aguada / Radisson Blu"
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Locality / Area (optional)</Label>
+                      <Input
+                        value={hotelLocation}
+                        onChange={(e) => setHotelLocation(e.target.value)}
+                        className="mt-1 h-9 rounded-lg text-xs"
+                        placeholder={destination ? `e.g. Central ${destination}` : "e.g. Near City Center"}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Section 2: Analyze the Prices of Leaving ── */}
+                {(() => {
+                  const ActiveModeIcon =
+                    travelMode === "Train"
+                      ? Train
+                      : travelMode === "Bus"
+                      ? Bus
+                      : travelMode === "Car"
+                      ? Car
+                      : travelMode === "Ferry"
+                      ? Ship
+                      : Plane;
+                  const activeModeLabel =
+                    travelMode === "Car"
+                      ? "Drive / Road Trip"
+                      : travelMode === "Flight"
+                      ? "Flight"
+                      : travelMode === "Train"
+                      ? "Train"
+                      : travelMode === "Bus"
+                      ? "Bus"
+                      : "Ferry";
+
+                  const displayedModes: Array<{
+                    id: string;
+                    icon: any;
+                    label: string;
+                    modeData: any;
+                  }> =
+                    transportResearchData?.recommendedModes?.length > 0
+                      ? transportResearchData.recommendedModes.map((m: any) => {
+                          const type = m.transportType;
+                          const icon =
+                            type === "Train"
+                              ? Train
+                              : type === "Flight"
+                              ? Plane
+                              : type === "Bus"
+                              ? Bus
+                              : type === "Drive" || type === "Car"
+                              ? Car
+                              : Ship;
+                          const label = type === "Drive" ? "Car / Drive" : type;
+                          const id = type === "Drive" ? "Car" : type;
+                          return { id, icon, label, modeData: m };
+                        })
+                      : [
+                          { id: "Flight", icon: Plane, label: "Flight", modeData: null },
+                          { id: "Train", icon: Train, label: "Train", modeData: null },
+                          { id: "Bus", icon: Bus, label: "Bus", modeData: null },
+                          { id: "Car", icon: Car, label: "Car / Drive", modeData: null },
+                        ];
+
+                  return (
+                    <div className="space-y-4 rounded-2xl border border-border/80 bg-background/60 p-4 md:p-5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <ActiveModeIcon className="h-4 w-4 text-primary" /> 2. Analyze Prices of Leaving & Preferred Mode
+                          </Label>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Route: <strong>{originCity || "Origin"}</strong> → <strong>{destination}</strong> (~{transportResearchData?.distanceKm || 280} km)
+                            <span className="hidden sm:inline opacity-75"> · Indicative fares & real-world durations</span>
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          type="button"
+                          onClick={fetchTransportResearch}
+                          disabled={isFetchingTransport}
+                          className="h-7 text-xs text-primary"
+                        >
+                          <RotateCcw className={cn("h-3 w-3 mr-1", isFetchingTransport && "animate-spin")} />
+                          {isFetchingTransport ? "Analyzing..." : "Re-analyze Fares"}
+                        </Button>
+                      </div>
+
+                      {/* Multi-modal Price Comparison Cards (strictly genuine modes, no orphan cards) */}
+                      <div
+                        className={cn(
+                          "grid gap-2.5 sm:grid-cols-2",
+                          displayedModes.length >= 4 ? "lg:grid-cols-4" : displayedModes.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-2"
+                        )}
+                      >
+                        {displayedModes.map(({ id, icon: Icon, label, modeData }) => {
+                          const isSelected = travelMode === id;
+                          const estFare = modeData?.estimatedFareINR
+                            ? `₹${modeData.estimatedFareINR.toLocaleString("en-IN")}`
+                            : id === "Flight"
+                            ? "≈ ₹2,800"
+                            : id === "Train"
+                            ? "≈ ₹650"
+                            : id === "Bus"
+                            ? "≈ ₹550"
+                            : "≈ ₹2,600 total";
+                          const estDur = modeData?.estimatedDurationHours
+                            ? `${modeData.estimatedDurationHours}h`
+                            : id === "Flight"
+                            ? "≈ 1.1h"
+                            : id === "Train"
+                            ? "≈ 3.5h"
+                            : id === "Bus"
+                            ? "≈ 5.5h"
+                            : "≈ 4h";
+
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => handleSelectMode(id)}
+                              className={cn(
+                                "rounded-xl border p-3.5 text-left transition-all flex flex-col justify-between cursor-pointer",
+                                isSelected
+                                  ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
+                                  : "border-border bg-background/80 hover:border-primary/40"
+                              )}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5">
+                                    <Icon className="h-4 w-4 text-primary" />
+                                    <span className="font-semibold text-xs text-foreground">{label}</span>
+                                  </div>
+                                  <Badge variant="outline" className="text-[10px] h-4 py-0">
+                                    {estDur}
+                                  </Badge>
+                                </div>
+                                <p className="mt-2 text-sm font-bold text-foreground">
+                                  {estFare}{" "}
+                                  <span className="text-[10px] font-normal text-muted-foreground">
+                                    {id === "Car" ? "fuel & toll" : "/ person"}
+                                  </span>
+                                </p>
+                              </div>
+                              <Badge variant="outline" className="mt-2 text-[9px] w-fit font-normal border-border/60 text-muted-foreground/80 py-0 h-4">
+                                {modeData?.priceClassification || "modelled estimate"}
+                              </Badge>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Outbound & Return Journey Schedule Pickers */}
+                      <div className="grid gap-4 md:grid-cols-2 pt-2 border-t border-border/40">
+                        {/* Outbound Schedule */}
+                        <div className="rounded-xl border border-border/70 bg-card p-3.5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold text-primary uppercase tracking-wide flex items-center gap-1.5">
+                              <ActiveModeIcon className="h-3.5 w-3.5" /> Outbound {activeModeLabel} Schedule
+                            </Label>
+                            <Badge variant="outline" className="text-[10px] py-0 h-4">
+                              {travelMode === "Car" ? "Personal / Cab" : outboundBooked ? "Booked" : "Planned"}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" /> Departure Date
+                              </Label>
+                              <div className="mt-1">
+                                <DatePicker
+                                  value={outboundDepartureDate || startDate}
+                                  onChange={(d) => setOutboundDepartureDate(d)}
+                                  placeholder="Departure Date"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-muted-foreground" /> Departure Time
+                              </Label>
+                              <Input
+                                type="time"
+                                value={departureTime}
+                                onChange={(e) => setDepartureTime(e.target.value)}
+                                className="mt-1 h-9 rounded-xl text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" /> Arrival Date
+                              </Label>
+                              <div className="mt-1">
+                                <DatePicker
+                                  value={outboundArrivalDate || outboundDepartureDate || startDate}
+                                  onChange={(d) => setOutboundArrivalDate(d)}
+                                  placeholder="Arrival Date"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-muted-foreground" /> Arrival Time
+                              </Label>
+                              <Input
+                                type="time"
+                                value={arrivalTime}
+                                onChange={(e) => setArrivalTime(e.target.value)}
+                                className="mt-1 h-9 rounded-xl text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Hubs & Identifier Inputs */}
+                          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border/40">
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Building2 className="h-3 w-3 text-muted-foreground" />
+                                {travelMode === "Flight"
+                                  ? "Departure Airport"
+                                  : travelMode === "Train"
+                                  ? "Departure Station"
+                                  : travelMode === "Bus"
+                                  ? "Boarding Terminal"
+                                  : "Starting Location"}
+                              </Label>
+                              <Input
+                                value={departureHub}
+                                onChange={(e) => setDepartureHub(e.target.value)}
+                                placeholder={
+                                  travelMode === "Flight"
+                                    ? "e.g. Mumbai (BOM)"
+                                    : travelMode === "Train"
+                                    ? "e.g. Mumbai Central (MMCT)"
+                                    : "e.g. Mumbai"
+                                }
+                                className="mt-1 h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Building2 className="h-3 w-3 text-muted-foreground" />
+                                {travelMode === "Flight"
+                                  ? "Arrival Airport"
+                                  : travelMode === "Train"
+                                  ? "Arrival Station"
+                                  : travelMode === "Bus"
+                                  ? "Drop Terminal"
+                                  : "Destination Location"}
+                              </Label>
+                              <Input
+                                value={arrivalHub}
+                                onChange={(e) => setArrivalHub(e.target.value)}
+                                placeholder={
+                                  travelMode === "Flight"
+                                    ? `e.g. ${destination} Airport`
+                                    : travelMode === "Train"
+                                    ? `e.g. ${destination} Junction`
+                                    : `e.g. ${destination}`
+                                }
+                                className="mt-1 h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 pt-1">
+                            <div className="flex-1">
+                              <Input
+                                value={transitRef}
+                                onChange={(e) => setTransitRef(e.target.value)}
+                                placeholder={
+                                  travelMode === "Flight"
+                                    ? "Flight No (optional, e.g. 6E 213)"
+                                    : travelMode === "Train"
+                                    ? "Train No / Name (optional, e.g. 20901 Vande Bharat)"
+                                    : travelMode === "Car"
+                                    ? "Vehicle / Cab Model (optional, e.g. Innova / Swift)"
+                                    : "Service name (optional)"
+                                }
+                                className="h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                            {travelMode !== "Car" && (
+                              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none whitespace-nowrap text-muted-foreground">
+                                <input
+                                  type="checkbox"
+                                  checked={outboundBooked}
+                                  onChange={(e) => setOutboundBooked(e.target.checked)}
+                                  className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
+                                />
+                                <span>Ticket Confirmed</span>
+                              </label>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Return Schedule */}
+                        <div className="rounded-xl border border-border/70 bg-card p-3.5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold text-primary uppercase tracking-wide flex items-center gap-1.5">
+                              <ActiveModeIcon className="h-3.5 w-3.5 text-primary" /> Return {activeModeLabel} Schedule
+                            </Label>
+                            <Badge variant="outline" className="text-[10px] py-0 h-4">
+                              {travelMode === "Car" ? "Personal / Cab" : returnBooked ? "Booked" : "Planned"}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" /> Return Date
+                              </Label>
+                              <div className="mt-1">
+                                <DatePicker
+                                  value={returnDate || endDate}
+                                  onChange={(d) => setReturnDate(d)}
+                                  placeholder="Return Date"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-muted-foreground" /> Return Dep. Time
+                              </Label>
+                              <Input
+                                type="time"
+                                value={returnTime}
+                                onChange={(e) => setReturnTime(e.target.value)}
+                                className="mt-1 h-9 rounded-xl text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" /> Return Arrival Date
+                              </Label>
+                              <div className="mt-1">
+                                <DatePicker
+                                  value={returnArrivalDate || returnDate || endDate}
+                                  onChange={(d) => setReturnArrivalDate(d)}
+                                  placeholder="Arrival Date"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-muted-foreground" /> Return Arr. Time
+                              </Label>
+                              <Input
+                                type="time"
+                                value={returnArrivalTime}
+                                onChange={(e) => setReturnArrivalTime(e.target.value)}
+                                className="mt-1 h-9 rounded-xl text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Hubs & Identifier Inputs */}
+                          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border/40">
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Building2 className="h-3 w-3 text-muted-foreground" />
+                                {travelMode === "Flight"
+                                  ? "Return Airport"
+                                  : travelMode === "Train"
+                                  ? "Return Station"
+                                  : travelMode === "Bus"
+                                  ? "Boarding Terminal"
+                                  : "Start Location"}
+                              </Label>
+                              <Input
+                                value={returnDepartureLocation}
+                                onChange={(e) => setReturnDepartureLocation(e.target.value)}
+                                placeholder={
+                                  arrivalHub ||
+                                  (travelMode === "Flight" ? `e.g. ${destination} Airport` : `e.g. ${destination}`)
+                                }
+                                className="mt-1 h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Building2 className="h-3 w-3 text-muted-foreground" />
+                                {travelMode === "Flight"
+                                  ? "Arrival Airport"
+                                  : travelMode === "Train"
+                                  ? "Arrival Station"
+                                  : travelMode === "Bus"
+                                  ? "Drop Terminal"
+                                  : "Final Location"}
+                              </Label>
+                              <Input
+                                value={returnArrivalLocation}
+                                onChange={(e) => setReturnArrivalLocation(e.target.value)}
+                                placeholder={
+                                  departureHub ||
+                                  (travelMode === "Flight"
+                                    ? `e.g. ${originCity || "Origin"} Airport`
+                                    : `e.g. ${originCity || "Origin"}`)
+                                }
+                                className="mt-1 h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 pt-1">
+                            <div className="flex-1">
+                              <Input
+                                value={returnTicketRef}
+                                onChange={(e) => setReturnTicketRef(e.target.value)}
+                                placeholder={
+                                  travelMode === "Flight"
+                                    ? "Return Flight No (optional)"
+                                    : travelMode === "Train"
+                                    ? "Return Train No / Name (optional)"
+                                    : travelMode === "Car"
+                                    ? "Return Vehicle / Cab (optional)"
+                                    : "Return Service name (optional)"
+                                }
+                                className="h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                            {travelMode !== "Car" && (
+                              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none whitespace-nowrap text-muted-foreground">
+                                <input
+                                  type="checkbox"
+                                  checked={returnBooked}
+                                  onChange={(e) => setReturnBooked(e.target.checked)}
+                                  className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
+                                />
+                                <span>Ticket Confirmed</span>
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── Section 3: Pre-Budget Price Intelligence Strip ── */}
+                <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-semibold text-primary uppercase tracking-wider flex items-center gap-1">
+                      <Wallet className="h-3.5 w-3.5" /> Calculated Pre-Trip Expenses ({travelers} pax · {tripDays} days)
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-4 text-xs text-foreground">
+                      <span>
+                        Leaving & Return Travel: <strong>₹{getLeavingEstimatedCost().toLocaleString("en-IN")}</strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Stay ({tripDays} nights): <strong>{getStayEstimatedCost(accommodation, tripDays, parseInt(travelers)).label}</strong>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-muted-foreground">Estimated Baseline Cost</p>
+                    <p className="text-base font-bold text-foreground">
+                      ₹{(getLeavingEstimatedCost() + getStayEstimatedCost(accommodation, tripDays, parseInt(travelers)).total).toLocaleString("en-IN")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Step 4: Budget ── */}
+            {step === 4 && (
               <div className="space-y-6">
                 <div>
                   <Label className="text-xs font-medium">Total budget (₹ INR)</Label>
@@ -1555,12 +2138,12 @@ function NewTrip() {
                       onChange={(e) => {
                         setBudget(e.target.value);
                         if (e.target.value && parseInt(e.target.value) >= 100) {
-                          debouncedFetchBudgetFeasibility(e.target.value);
+                          fetchBudgetFeasibility(e.target.value);
                         }
                       }}
                       onBlur={() => {
                         if (budget && parseInt(budget) >= 100) {
-                          debouncedFetchBudgetFeasibility(budget);
+                          fetchBudgetFeasibility(budget);
                         }
                       }}
                       className="h-12 rounded-xl text-base"
@@ -1649,7 +2232,7 @@ function NewTrip() {
                               <button
                                 type="button"
                                 onClick={() => handleApplySavingsOption(opt)}
-                                className="mt-2 w-full rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 py-1.5 px-2.5 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1 border border-emerald-500/20"
+                                className="mt-2 w-full rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 py-1.5 px-2.5 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1 border border-emerald-500/20 cursor-pointer"
                               >
                                 <span>✓</span> Apply this recommendation
                               </button>
@@ -1672,8 +2255,8 @@ function NewTrip() {
               </div>
             )}
 
-            {/* ── Step 4: Interests, Pace & Travel Details ── */}
-            {step === 4 && (
+            {/* ── Step 5: Interests & Pace ── */}
+            {step === 5 && (
               <div className="space-y-6">
                 <div>
                   <Label className="text-xs font-medium">Trip pace / style</Label>
@@ -1688,9 +2271,9 @@ function NewTrip() {
                         type="button"
                         onClick={() => setStyle(id)}
                         className={cn(
-                          "rounded-xl border p-4 text-left transition-all",
+                          "rounded-xl border p-4 text-left transition-all cursor-pointer",
                           style === id
-                            ? "border-primary bg-primary/10 shadow-sm"
+                            ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
                             : "border-border bg-background/80 hover:border-primary/40",
                         )}
                       >
@@ -1701,77 +2284,21 @@ function NewTrip() {
                   </div>
                 </div>
 
-                {/* Accommodation Selection (Selectable Visual Cards) */}
                 <div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-medium">Where would you prefer to stay?</Label>
-                    <span className="text-[11px] text-muted-foreground">Selectable Choice</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      Locality & Experiential Interests
+                    </Label>
+                    <span className="text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20 self-start sm:self-auto">
+                      Curated for {destination || "Destination"}
+                    </span>
                   </div>
-                  <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                    {ACCOMMODATION_OPTIONS.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setAccommodation(t.id)}
-                        className={cn(
-                          "rounded-xl border p-3.5 text-left transition-all flex flex-col justify-between",
-                          accommodation === t.id
-                            ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
-                            : "border-border bg-background/80 hover:border-primary/40",
-                        )}
-                      >
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm">{t.icon}</span>
-                            <p className="font-semibold text-xs text-foreground">{t.title}</p>
-                          </div>
-                          <p className="mt-1 text-[11px] text-muted-foreground leading-normal">{t.desc}</p>
-                        </div>
-                        {t.isFree && (
-                          <Badge variant="outline" className="mt-2 text-[10px] w-fit border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
-                            ₹0 Lodging Cost
-                          </Badge>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  {(accommodation === "OWN_HOME" || accommodation === "NATIVE_HOME" || accommodation === "RELATIVES_HOME") && (
-                    <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                      <span>🏡</span>
-                      <span>
-                        <strong>Zero Lodging Expense:</strong> Staying with family, relatives, or at your own / native home incurs ₹0 accommodation fees. Your budget will be reserved for travel, dining, and activities.
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Primary Transportation Mode (Mandatory Single-Select Radio Control) */}
-                <TravelModeRadioGroup
-                  value={travelMode}
-                  onChange={(id) => {
-                    setTravelMode(id);
-                    setTravelModeTouched(false);
-                    if (error && error.toLowerCase().includes("travel mode")) {
-                      setError("");
-                    }
-                  }}
-                  label="Preferred Mode of Travel"
-                  routeText={originCity && destination ? `${originCity} → ${destination}` : undefined}
-                  required={true}
-                  hasError={travelModeTouched && !travelMode}
-                  errorMessage="Please select a preferred mode of travel to proceed."
-                />
-
-                <div>
-                  <Label className="text-xs font-medium">
-                    Interests <span className="text-muted-foreground">(select any that apply)</span>
-                  </Label>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {[
-                      "Food", "Nature", "History", "Nightlife", "Museums",
-                      "Beaches", "Hiking", "Photography", "Wellness", "Adventure",
-                      "Shopping", "Architecture", "Culture", "Cafes",
-                    ].map((c) => {
+                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                    Select authentic local experiences, street food specialties, and cultural highlights you would like prioritized in your itinerary:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {localityInterestsList.map((c) => {
                       const on = interests.includes(c);
                       return (
                         <button
@@ -1779,10 +2306,10 @@ function NewTrip() {
                           type="button"
                           onClick={() => toggle(c, interests, setInterests)}
                           className={cn(
-                            "rounded-full border px-3.5 py-1.5 text-sm transition-all",
+                            "rounded-full border px-3.5 py-1.5 text-xs sm:text-sm transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95",
                             on
-                              ? "border-primary bg-primary text-primary-foreground font-medium shadow-sm"
-                              : "border-border bg-background/80 hover:border-primary/40",
+                              ? "border-primary bg-primary text-primary-foreground font-semibold ring-2 ring-primary/30"
+                              : "border-border/80 bg-background/80 hover:border-primary/50 hover:bg-muted/40 text-foreground",
                           )}
                         >
                           {c}
@@ -1801,250 +2328,16 @@ function NewTrip() {
                     placeholder="e.g. Traveling with elderly parents, celebrating an anniversary, pure vegetarian food…"
                   />
                 </div>
-
-                {/* Advanced Travel & Accommodation Section */}
-                <div className="pt-4 border-t border-border/50">
-                  <button 
-                    type="button"
-                    onClick={() => setShowAdvanced(!showAdvanced)} 
-                    className="flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
-                  >
-                    {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    {showAdvanced ? "Hide Travel & Accommodation Details" : "Add Travel & Accommodation Details (Optional)"}
-                  </button>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Provide your transport or hotel timings if known, or leave blank to let Advenza calculate the best estimates.
-                  </p>
-
-                  {showAdvanced && (
-                    <div className="mt-6 space-y-6">
-                      {/* Outbound Travel Details */}
-                      <div className="rounded-2xl border border-border/70 bg-muted/20 p-5 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-semibold flex items-center gap-2">
-                            <Plane className="h-4 w-4 text-primary" /> Outbound Journey ({originCity || "Origin"} → {destination})
-                          </h3>
-                          <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={outboundBooked}
-                              onChange={(e) => setOutboundBooked(e.target.checked)}
-                              className="rounded border-border"
-                            />
-                            <span>Booked / Confirmed</span>
-                          </label>
-                        </div>
-
-                        <TravelModeRadioGroup
-                          value={travelMode}
-                          onChange={(id) => {
-                            setTravelMode(id);
-                            setTravelModeTouched(false);
-                            if (error && error.toLowerCase().includes("travel mode")) {
-                              setError("");
-                            }
-                          }}
-                          label={`How are you travelling to ${destination}?`}
-                          required={true}
-                          hasError={travelModeTouched && !travelMode}
-                          errorMessage="Please select a travel mode."
-                        />
-
-                        {hubs && (
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <div>
-                              <Label className="text-xs">{hubs.dep}</Label>
-                              <Input
-                                value={departureHub}
-                                onChange={(e) => setDepartureHub(e.target.value)}
-                                placeholder={originCity ? `e.g. ${originCity} Hub` : "e.g. Departure terminal / hub"}
-                                className="mt-1 h-9 rounded-lg text-xs"
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs">{hubs.arr}</Label>
-                              <Input
-                                value={arrivalHub}
-                                onChange={(e) => setArrivalHub(e.target.value)}
-                                placeholder={`e.g. ${destination} Hub`}
-                                className="mt-1 h-9 rounded-lg text-xs"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="grid gap-4 sm:grid-cols-3">
-                          <div>
-                            <Label className="text-xs">Departure time (optional)</Label>
-                            <Input
-                              type="time"
-                              value={departureTime}
-                              onChange={(e) => setDepartureTime(e.target.value)}
-                              className="mt-1 h-9 rounded-lg text-xs"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Arrival time (optional)</Label>
-                            <Input
-                              type="time"
-                              value={arrivalTime}
-                              onChange={(e) => setArrivalTime(e.target.value)}
-                              className="mt-1 h-9 rounded-lg text-xs"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs">{hubs ? hubs.ref : "Transit Name / Number"}</Label>
-                            <Input
-                              value={transitRef}
-                              onChange={(e) => setTransitRef(e.target.value)}
-                              className="mt-1 h-9 rounded-lg text-xs"
-                              placeholder="e.g. AI-804 / Shatabdi"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Return Travel Details */}
-                      <div className="rounded-2xl border border-border/70 bg-muted/20 p-5 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-semibold flex items-center gap-2">
-                            <RotateCcw className="h-4 w-4 text-primary" /> Return Journey ({destination} → {originCity || "Home"})
-                          </h3>
-                          <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={hasReturnTravel}
-                              onChange={(e) => setHasReturnTravel(e.target.checked)}
-                              className="rounded border-border"
-                            />
-                            <span>Specify return travel</span>
-                          </label>
-                        </div>
-
-                        {hasReturnTravel && (
-                          <div className="space-y-4 pt-2 border-t border-border/50">
-                            <TravelModeRadioGroup
-                              value={returnTransportType || travelMode}
-                              onChange={(id) => setReturnTransportType(id)}
-                              label="Return transport mode"
-                              required={false}
-                            />
-
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <div>
-                                <Label className="text-xs">{returnHubs?.dep || "Departure location at destination"}</Label>
-                                <Input
-                                  value={returnDepartureLocation}
-                                  onChange={(e) => setReturnDepartureLocation(e.target.value)}
-                                  className="mt-1 h-9 rounded-lg text-xs"
-                                  placeholder={arrivalHub || `e.g. ${destination} Station`}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs">{returnHubs?.arr || "Arrival location at home"}</Label>
-                                <Input
-                                  value={returnArrivalLocation}
-                                  onChange={(e) => setReturnArrivalLocation(e.target.value)}
-                                  className="mt-1 h-9 rounded-lg text-xs"
-                                  placeholder={departureHub || (originCity ? `e.g. ${originCity}` : "Home city")}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="grid gap-4 sm:grid-cols-3">
-                              <div>
-                                <Label className="text-xs">Return departure time</Label>
-                                <Input
-                                  type="time"
-                                  value={returnTime}
-                                  onChange={(e) => setReturnTime(e.target.value)}
-                                  className="mt-1 h-9 rounded-lg text-xs"
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs">Return transit reference</Label>
-                                <Input
-                                  value={returnTicketRef}
-                                  onChange={(e) => setReturnTicketRef(e.target.value)}
-                                  className="mt-1 h-9 rounded-lg text-xs"
-                                  placeholder="Flight # / Train name"
-                                />
-                              </div>
-                              <div className="flex items-end pb-1.5">
-                                <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
-                                  <input
-                                    type="checkbox"
-                                    checked={returnBooked}
-                                    onChange={(e) => setReturnBooked(e.target.checked)}
-                                    className="rounded border-border"
-                                  />
-                                  <span>Return is Confirmed / Booked</span>
-                                </label>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Hotel Name & Timings */}
-                      <div className="rounded-2xl border border-border/70 bg-muted/20 p-5 space-y-4">
-                        <h3 className="text-sm font-semibold">Stay Timings & Custom Venue (Optional)</h3>
-
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div>
-                            <Label className="text-xs">Hotel / Stay name (optional)</Label>
-                            <Input
-                              value={hotelName}
-                              onChange={(e) => setHotelName(e.target.value)}
-                              className="mt-1 h-9 rounded-lg text-xs"
-                              placeholder={accommodation === "OWN_HOME" ? "e.g. Uncle's house / Family residence" : "e.g. Taj Fort Aguada / Radisson"}
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Hotel area / address (optional)</Label>
-                            <Input
-                              value={hotelLocation}
-                              onChange={(e) => setHotelLocation(e.target.value)}
-                              className="mt-1 h-9 rounded-lg text-xs"
-                              placeholder={destination ? `e.g. Central ${destination}` : "e.g. Candolim, North Goa"}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div>
-                            <Label className="text-xs">Expected Check-in time</Label>
-                            <Input
-                              type="time"
-                              value={checkInTime}
-                              onChange={(e) => setCheckInTime(e.target.value)}
-                              className="mt-1 h-9 rounded-lg text-xs"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Expected Check-out time</Label>
-                            <Input
-                              type="time"
-                              value={checkOutTime}
-                              onChange={(e) => setCheckOutTime(e.target.value)}
-                              className="mt-1 h-9 rounded-lg text-xs"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
             )}
 
-            {/* ── Step 5: Review ── */}
-            {step === 5 && (
+            {/* ── Step 6: Review & Generate ── */}
+            {step === 6 && (
               <div className="space-y-5">
                 <div className="rounded-2xl glass-tile p-5 flex flex-wrap items-center justify-between gap-4 border border-primary/20 bg-primary/5">
                   <div>
                     <p className="text-xs text-muted-foreground font-medium">Trip Route</p>
-                    <p className="text-xl font-display font-bold text-foreground">
+                    <p className="text-xl font-semibold tracking-tight text-foreground">
                       {originCity ? `${originCity} (Home)` : "Your Location"} → {destination}
                     </p>
                   </div>
@@ -2072,39 +2365,105 @@ function NewTrip() {
                     <p className="mt-1 text-sm font-semibold">{style || "Balanced"} Pace</p>
                   </div>
 
-                  {travelMode && (
-                    <div className="rounded-xl glass-tile p-4">
-                      <p className="text-xs text-muted-foreground">Outbound Travel</p>
-                      <p className="mt-1 text-sm font-semibold flex items-center gap-1.5">
-                        {travelMode} {departureTime ? `@ ${departureTime}` : ""}
-                        <Badge variant="outline" className="text-[10px] py-0 h-4">
-                          {outboundBooked ? "✓ Confirmed" : "≈ Estimated"}
-                        </Badge>
+                  {/* Accommodation Summary */}
+                  <div className="rounded-xl glass-tile p-4">
+                    <p className="text-xs text-muted-foreground">Accommodation</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">
+                      {accommodation === "OWN_HOME" || accommodation === "NATIVE_HOME" || accommodation === "RELATIVES_HOME" ? (
+                        <span className="text-emerald-700 dark:text-emerald-300 font-bold">
+                          {accommodation === "OWN_HOME" ? "Own Home" : accommodation === "NATIVE_HOME" ? "Native Village" : "Relatives' Home"} (₹0 Free Stay)
+                        </span>
+                      ) : accommodation ? (
+                        ACCOMMODATION_OPTIONS.find((a) => a.id === accommodation)?.title || accommodation
+                      ) : (
+                        "AI Recommended"
+                      )}
+                    </p>
+                    {hotelName && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {hotelName} {hotelLocation ? `(${hotelLocation})` : ""}
                       </p>
-                      {(departureHub || arrivalHub) && (
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          {departureHub || originCity} → {arrivalHub || destination}
-                        </p>
-                      )}
-                      {transitRef && (
-                        <p className="text-[11px] font-medium text-primary mt-1 flex items-center gap-1">
-                          🚆 {transitRef}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                    )}
+                  </div>
 
-                  {hasReturnTravel && (
-                    <div className="rounded-xl glass-tile p-4">
-                      <p className="text-xs text-muted-foreground">Return Travel</p>
-                      <p className="mt-1 text-sm font-semibold flex items-center gap-1.5">
-                        {returnTransportType || travelMode || "Transport"} {returnTime ? `@ ${returnTime}` : ""}
-                        <Badge variant="outline" className="text-[10px] py-0 h-4">
-                          {returnBooked ? "✓ Confirmed" : "≈ Estimated"}
-                        </Badge>
-                      </p>
-                    </div>
-                  )}
+                  {travelMode && (() => {
+                    const OutboundIcon =
+                      travelMode === "Train"
+                        ? Train
+                        : travelMode === "Bus"
+                        ? Bus
+                        : travelMode === "Car"
+                        ? Car
+                        : travelMode === "Ferry"
+                        ? Ship
+                        : Plane;
+                    const outLabel = transitRef
+                      ? (transitRef.toLowerCase().includes(travelMode.toLowerCase()) ? transitRef : `${transitRef} (${travelMode})`)
+                      : travelMode;
+                    return (
+                      <div className="rounded-xl glass-tile p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5 uppercase tracking-wide">
+                            <OutboundIcon className="h-3.5 w-3.5 text-primary" /> Outbound Travel
+                          </p>
+                          <Badge variant="outline" className="text-[10px] py-0 h-4">
+                            {travelMode === "Car" ? "Personal / Cab" : outboundBooked ? "✓ Confirmed" : "≈ Estimated"}
+                          </Badge>
+                        </div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {outLabel}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Route: <strong>{departureHub || originCity || "Origin"}</strong> → <strong>{arrivalHub || destination || "Destination"}</strong>
+                        </p>
+                        <div className="pt-1 text-[11px] font-mono text-muted-foreground border-t border-border/40">
+                          <span>Dep: {outboundDepartureDate || startDate} {departureTime ? `@ ${departureTime}` : ""}</span>
+                          <span className="mx-1.5">·</span>
+                          <span>Arr: {outboundArrivalDate || outboundDepartureDate || startDate} {arrivalTime ? `@ ${arrivalTime}` : ""}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {hasReturnTravel && (() => {
+                    const effReturnMode = returnTransportType || travelMode || "Transit";
+                    const ReturnIcon =
+                      effReturnMode === "Train"
+                        ? Train
+                        : effReturnMode === "Bus"
+                        ? Bus
+                        : effReturnMode === "Car"
+                        ? Car
+                        : effReturnMode === "Ferry"
+                        ? Ship
+                        : Plane;
+                    const retLabel = returnTicketRef
+                      ? (returnTicketRef.toLowerCase().includes(effReturnMode.toLowerCase()) ? returnTicketRef : `${returnTicketRef} (${effReturnMode})`)
+                      : `${effReturnMode} (Return)`;
+                    return (
+                      <div className="rounded-xl glass-tile p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5 uppercase tracking-wide">
+                            <ReturnIcon className="h-3.5 w-3.5 text-primary" /> Return Travel
+                          </p>
+                          <Badge variant="outline" className="text-[10px] py-0 h-4">
+                            {effReturnMode === "Car" ? "Personal / Cab" : returnBooked ? "✓ Confirmed" : "≈ Estimated"}
+                          </Badge>
+                        </div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {retLabel}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Route: <strong>{returnDepartureLocation || destination || "Destination"}</strong> → <strong>{returnArrivalLocation || originCity || "Home"}</strong>
+                        </p>
+                        <div className="pt-1 text-[11px] font-mono text-muted-foreground border-t border-border/40">
+                          <span>Dep: {returnDate || endDate} {returnTime ? `@ ${returnTime}` : ""}</span>
+                          <span className="mx-1.5">·</span>
+                          <span>Arr: {returnArrivalDate || returnDate || endDate} {returnArrivalTime ? `@ ${returnArrivalTime}` : ""}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {interests.length > 0 && (
                     <div className="rounded-xl glass-tile p-4 sm:col-span-2">
@@ -2119,24 +2478,6 @@ function NewTrip() {
                     </div>
                   )}
                 </div>
-
-                {(accommodation || hotelName) && (
-                  <div className="rounded-xl glass-tile p-4">
-                    <p className="text-xs text-muted-foreground">Accommodation</p>
-                    <p className="mt-1 text-sm font-semibold text-foreground">
-                      {accommodation === "OWN_HOME"
-                        ? "Own Home / Relative's Home (₹0 Free Lodging)"
-                        : accommodation
-                        ? ACCOMMODATION_OPTIONS.find((a) => a.id === accommodation)?.title || accommodation
-                        : hotelName}
-                    </p>
-                    {(hotelName || hotelLocation) && accommodation !== "OWN_HOME" && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {hotelName} {hotelLocation ? `(${hotelLocation})` : ""}
-                      </p>
-                    )}
-                  </div>
-                )}
 
                 {special && (
                   <div className="rounded-xl glass-tile p-4">
@@ -2156,7 +2497,9 @@ function NewTrip() {
                     loading={loading}
                     origin={departureHub || originCity || "Your Origin"}
                     destination={arrivalHub || destination || "Destination"}
-                    travelMode={travelMode || "Flight"}
+                    travelMode={travelMode || "Train"}
+                    customProgress={generationProgress}
+                    status={generationStatus}
                   />
                 ) : (
                   <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5 flex items-center gap-2.5 text-xs text-muted-foreground">
@@ -2202,7 +2545,6 @@ function NewTrip() {
           </div>
         </div>
       </div>
-
     </AppShell>
   );
 }

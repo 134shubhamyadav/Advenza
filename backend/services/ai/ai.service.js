@@ -1159,51 +1159,95 @@ Output STRICTLY a JSON object with this exact structure:
    * Estimate minimum reasonable budget using verified travel provider data + structured destination models.
    * Completely eliminates brittle Google Search scraping.
    */
-  async estimateBudget({ destination, startDate, endDate, travelers }) {
+  async estimateBudget({
+    destination,
+    startDate,
+    endDate,
+    travelers,
+    accommodation = "HOTEL",
+    travelMode = "Flight",
+    transportCost = null,
+    stayCost = null,
+    origin = "Mumbai",
+  }) {
     const days = Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / 86400000));
     const numTravelers = parseInt(travelers, 10) || 1;
     const destClean = (destination || "Goa").split(",")[0].trim();
+    const roomsNeeded = Math.ceil(numTravelers / 2);
 
-    // 1. Fetch real hotel stay estimate from HotelProvider
-    let hotelDailyRate = 3500;
-    try {
-      const hotelRes = await hotelProvider.searchHotels({
-        destination: destClean,
-        checkIn: startDate,
-        checkOut: endDate,
-        guests: numTravelers,
-      });
-      if (hotelRes?.results?.length > 0) {
-        // Average affordable tier hotel
-        const sortedRates = hotelRes.results
-          .map((h) => Number(h.pricePerNight) || 0)
-          .filter((p) => p > 0)
-          .sort((a, b) => a - b);
-        if (sortedRates.length > 0) {
-          hotelDailyRate = sortedRates[0]; // Baseline affordable rate
+    // 1. Calculate realistic hotel stay based on user's selected accommodation tier
+    let totalHotels = 0;
+    if (stayCost !== null && stayCost !== undefined && !isNaN(Number(stayCost))) {
+      totalHotels = Number(stayCost);
+    } else if (
+      accommodation === "OWN_HOME" ||
+      accommodation === "NATIVE_HOME" ||
+      accommodation === "RELATIVES_HOME"
+    ) {
+      totalHotels = 0;
+    } else if (accommodation === "HOSTEL") {
+      totalHotels = 1400 * days * roomsNeeded;
+    } else if (accommodation === "RESORT") {
+      totalHotels = 9500 * days * roomsNeeded;
+    } else if (accommodation === "OTHER") {
+      totalHotels = 2400 * days * roomsNeeded;
+    } else {
+      // Standard / Mid-range Hotel
+      let hotelDailyRate = 3500;
+      try {
+        const hotelRes = await hotelProvider.searchHotels({
+          destination: destClean,
+          checkIn: startDate,
+          checkOut: endDate,
+          guests: numTravelers,
+        });
+        if (hotelRes?.results?.length > 0) {
+          const sortedRates = hotelRes.results
+            .map((h) => Number(h.pricePerNight) || 0)
+            .filter((p) => p > 0)
+            .sort((a, b) => a - b);
+          if (sortedRates.length > 0) {
+            hotelDailyRate = sortedRates[0];
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+      totalHotels = hotelDailyRate * days * roomsNeeded;
+    }
 
-    // 2. Fetch baseline flight/intercity transport from FlightProvider
-    let transportPerPerson = 4500;
-    try {
-      const flightRes = await flightProvider.searchFlights({
-        origin: "DEL",
-        destination: destClean,
-        date: startDate,
-        passengers: 1,
-      });
-      if (flightRes?.results?.length > 0) {
-        const sortedFlights = flightRes.results
-          .map((f) => Number(f.price) || 0)
-          .filter((p) => p > 0)
-          .sort((a, b) => a - b);
-        if (sortedFlights.length > 0) {
-          transportPerPerson = sortedFlights[0];
+    // 2. Calculate realistic intercity transport based on user's selected mode
+    let totalTransport = 0;
+    if (transportCost !== null && transportCost !== undefined && !isNaN(Number(transportCost)) && Number(transportCost) > 0) {
+      totalTransport = Number(transportCost);
+    } else if (travelMode === "Train") {
+      totalTransport = 750 * 2 * numTravelers;
+    } else if (travelMode === "Bus") {
+      totalTransport = 650 * 2 * numTravelers;
+    } else if (travelMode === "Car") {
+      totalTransport = 4500; // Estimated fuel & FASTag toll per car
+    } else if (travelMode === "Ferry") {
+      totalTransport = 1800 * 2 * numTravelers;
+    } else {
+      // Flight
+      let transportPerPerson = 4500;
+      try {
+        const flightRes = await flightProvider.searchFlights({
+          origin: "DEL",
+          destination: destClean,
+          date: startDate,
+          passengers: 1,
+        });
+        if (flightRes?.results?.length > 0) {
+          const sortedFlights = flightRes.results
+            .map((f) => Number(f.price) || 0)
+            .filter((p) => p > 0)
+            .sort((a, b) => a - b);
+          if (sortedFlights.length > 0) {
+            transportPerPerson = sortedFlights[0];
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+      totalTransport = transportPerPerson * numTravelers;
+    }
 
     // 3. Destination Cost Index for daily living expenses (Food, Local Transit, Activities)
     const isInternational = ["paris", "tokyo", "london", "dubai", "singapore", "new york"].some((c) =>
@@ -1213,31 +1257,27 @@ Output STRICTLY a JSON object with this exact structure:
     const dailyLocalTransit = isInternational ? 1500 : 500;
     const dailyActivities = isInternational ? 2500 : 800;
 
-    // Room sharing: 2 travelers per room typically
-    const roomsNeeded = Math.ceil(numTravelers / 2);
-    const totalHotels = hotelDailyRate * days * roomsNeeded;
-    const totalFlights = transportPerPerson * numTravelers;
     const totalFood = dailyFood * days * numTravelers;
     const totalActivities = dailyActivities * days * numTravelers;
     const totalLocalTransport = dailyLocalTransit * days * numTravelers;
-    const totalMisc = Math.round((totalFood + totalActivities) * 0.1);
+    const totalMisc = Math.round((totalFood + totalActivities) * 0.08);
 
-    const totalMinimum = totalHotels + totalFlights + totalFood + totalActivities + totalLocalTransport + totalMisc;
+    const totalMinimum = totalHotels + totalTransport + totalFood + totalActivities + totalLocalTransport + totalMisc;
 
     return {
-      minimumBudget: Math.round(totalMinimum),
+      minimumBudget: Math.max(500, Math.round(totalMinimum)),
       type: "ESTIMATED",
       currency: "INR",
       perPersonPerDay: Math.round(totalMinimum / (days * numTravelers)),
       categoryEstimates: {
         hotels: totalHotels,
-        flights: totalFlights,
+        flights: totalTransport,
         food: totalFood,
         activities: totalActivities,
         localTransport: totalLocalTransport,
         miscellaneous: totalMisc,
       },
-      assumptions: `Calculated for ${numTravelers} traveler(s) across ${days} day(s) in ${destClean}.`,
+      assumptions: `Calculated for ${numTravelers} traveler(s) across ${days} day(s) in ${destClean} (${accommodation || "Hotel"} stay, ${travelMode || "Transit"}).`,
       source: "Advenza Travel Data Engine & Normalized Stays",
       disclaimer: "This is an ESTIMATED budget. Actual prices may change before booking.",
     };

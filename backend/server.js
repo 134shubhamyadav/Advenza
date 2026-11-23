@@ -142,7 +142,6 @@ const server = app.listen(PORT, () => {
     const isSet = Boolean(process.env[k]);
     logger.info(`🔑 ${k}: ${isSet ? "✅ configured" : "⚠️  not set"}`);
   }
-
 });
 
 // ─── Graceful Shutdown ─────────────────────────────────────────────────────────

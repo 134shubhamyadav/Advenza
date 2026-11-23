@@ -20,6 +20,7 @@
 
 import { transportProvider } from "./providers/transport.provider.js";
 import { flightProvider, resolveAirportCode } from "./providers/flight.provider.js";
+import { transportResearchService } from "./transport-research.service.js";
 import { travelCacheService, CACHE_TTLS } from "./travel-cache.service.js";
 import { calculateDestinationWindows } from "./destination-window.service.js";
 import { logger } from "../../utils/logger.js";
@@ -118,17 +119,20 @@ export async function calculateJourneyLeg(leg, options = {}) {
     const arrivalDt = buildDateTime(result.arrivalDate, result.arrivalTime);
 
     const isSuspiciousSameDayTrain =
-      isTrainMode && result.departureDate && result.arrivalDate && result.departureDate === result.arrivalDate;
+      isTrainMode &&
+      result.durationSource !== "USER_SPECIFIED" &&
+      result.departureDate &&
+      result.arrivalDate &&
+      result.departureDate === result.arrivalDate &&
+      (!result.departureTime || !result.arrivalTime);
 
     if (!isSuspiciousSameDayTrain && departureDt && arrivalDt) {
       const userDuration = durationBetween(departureDt, arrivalDt);
       if (userDuration != null && userDuration >= 0) {
         result.durationMinutes = userDuration;
-        result.durationSource = result.durationSource || "USER_SPECIFIED";
-        // Status: if booked or has a transit reference, mark CONFIRMED
-        if (result.booked || result.transitRef) {
-          result.status = "CONFIRMED";
-        }
+        result.durationSource = "USER_SPECIFIED";
+        // Status: if user specified times or booked or has a transit reference, mark CONFIRMED
+        result.status = "CONFIRMED";
         return result;
       }
     }
@@ -237,6 +241,24 @@ async function _calculateFlightJourney(result, origin, destination) {
       return await _estimateFlightDuration(result, origin, destination);
     }
 
+    // If we have a specific transit reference, try to look it up
+    if (result.transitRef && result.departureDate) {
+      const statusData = await flightProvider.getFlightStatus({
+        flightNumber: result.transitRef,
+        date: result.departureDate,
+      });
+      if (statusData?.status === "LIVE" && statusData.scheduledDeparture && statusData.scheduledArrival) {
+        const depDt = new Date(statusData.scheduledDeparture);
+        const arrDt = new Date(statusData.scheduledArrival);
+        if (!isNaN(depDt.getTime()) && !isNaN(arrDt.getTime())) {
+          result.durationMinutes = durationBetween(depDt, arrDt);
+          result.durationSource = "SCHEDULED";
+          result.status = "CONFIRMED";
+          return result;
+        }
+      }
+    }
+
     // Search for flights on the route
     if (result.departureDate) {
       const cacheKey = travelCacheService.flightSearchKey({
@@ -331,6 +353,31 @@ async function _estimateFlightDuration(result, origin, destination) {
  * These are NOT presented as live data. They are clearly labelled ESTIMATED_HAVERSINE.
  */
 async function _calculateScheduleBasedJourney(result, origin, destination, mode) {
+  // If train mode, use provider-agnostic transportResearchService
+  if (mode === "train" || mode === "rail") {
+    try {
+      const trainEstimate = await transportResearchService.estimateTrainRoute({
+        origin,
+        destination,
+        travelDate: result.departureDate,
+      });
+      if (trainEstimate && trainEstimate.estimatedDurationMinutes > 0) {
+        result.durationMinutes = trainEstimate.estimatedDurationMinutes;
+        result.durationSource = "SCHEDULED_ESTIMATE";
+        result.status = result.booked ? "CONFIRMED" : "SCHEDULED";
+        if (!result.transitRef) {
+          result.transitRef = trainEstimate.route;
+        }
+        result.priceClassification = trainEstimate.priceClassification;
+        result.estimatedFareINR = trainEstimate.estimatedFareINR;
+        result.sourceName = trainEstimate.sourceName;
+        return result;
+      }
+    } catch (trainErr) {
+      logger.warn(`[JourneyEngine] transportResearchService train note: ${trainErr.message}`);
+    }
+  }
+
   const speeds = { train: 55, bus: 45, ferry: 30 };
   const avgSpeed = speeds[mode] || 50;
 
@@ -573,7 +620,7 @@ export async function computeJourneys(tripData) {
     arrivalLocation: rawReturn.arrivalLocation || tripData.departureHub || origin,
     departureDate: rawReturn.departureDate || rawReturn.date || tripData.endDate || "",
     departureTime: rawReturn.departureTime || rawReturn.time || "",
-    arrivalDate: rawReturn.arrivalDate || rawReturn.date || "",
+    arrivalDate: rawReturn.arrivalDate || rawReturn.departureDate || rawReturn.date || tripData.endDate || "",
     arrivalTime: rawReturn.arrivalTime || "",
     durationMinutes: rawReturn.durationMinutes ?? null,
     durationSource: rawReturn.durationSource || "",

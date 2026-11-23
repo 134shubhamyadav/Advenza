@@ -1,3 +1,36 @@
+export interface RailwayStop {
+  stopIndex?: number;
+  stationCode?: string;
+  stationName?: string;
+  arrivalTime?: string;
+  departureTime?: string;
+  haltMinutes?: number;
+  distanceKm?: number;
+  dayCount?: number;
+  isBoardingStation?: boolean;
+  isDestinationStation?: boolean;
+}
+
+export interface LiveTrackingInfo {
+  trainNumber?: string;
+  trainName?: string;
+  currentStation?: string;
+  status?: string;
+  delayMinutes?: number;
+  platform?: string;
+  lastUpdated?: string;
+}
+
+export interface RailwayTimelineData {
+  trainNumber?: string;
+  trainName?: string;
+  totalDurationMinutes?: number;
+  totalDurationHours?: number;
+  stops?: RailwayStop[];
+  liveTracking?: LiveTrackingInfo;
+  [key: string]: any;
+}
+
 export type PlaceType =
   | "POPULAR_ATTRACTION"
   | "HIDDEN_GEM"

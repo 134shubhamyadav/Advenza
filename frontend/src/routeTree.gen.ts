@@ -13,8 +13,8 @@ import { Route as SimulatorRouteImport } from './routes/simulator'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as RiskRouteImport } from './routes/risk'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PackingRouteImport } from './routes/packing'
-import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ItineraryRouteImport } from './routes/itinerary'
 import { Route as GroupRouteImport } from './routes/group'
@@ -47,14 +47,14 @@ const ProfileRoute = ProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PackingRoute = PackingRouteImport.update({
   id: '/packing',
   path: '/packing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MemoryRoute = MemoryRouteImport.update({
-  id: '/memory',
-  path: '/memory',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -122,8 +122,8 @@ export interface FileRoutesByFullPath {
   '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
-  '/memory': typeof MemoryRoute
   '/packing': typeof PackingRoute
+  '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
@@ -141,8 +141,8 @@ export interface FileRoutesByTo {
   '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
-  '/memory': typeof MemoryRoute
   '/packing': typeof PackingRoute
+  '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
@@ -161,8 +161,8 @@ export interface FileRoutesById {
   '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
-  '/memory': typeof MemoryRoute
   '/packing': typeof PackingRoute
+  '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/risk': typeof RiskRoute
   '/signup': typeof SignupRoute
@@ -182,8 +182,8 @@ export interface FileRouteTypes {
     | '/group'
     | '/itinerary'
     | '/login'
-    | '/memory'
     | '/packing'
+    | '/pricing'
     | '/profile'
     | '/risk'
     | '/signup'
@@ -201,8 +201,8 @@ export interface FileRouteTypes {
     | '/group'
     | '/itinerary'
     | '/login'
-    | '/memory'
     | '/packing'
+    | '/pricing'
     | '/profile'
     | '/risk'
     | '/signup'
@@ -220,8 +220,8 @@ export interface FileRouteTypes {
     | '/group'
     | '/itinerary'
     | '/login'
-    | '/memory'
     | '/packing'
+    | '/pricing'
     | '/profile'
     | '/risk'
     | '/signup'
@@ -240,8 +240,8 @@ export interface RootRouteChildren {
   GroupRoute: typeof GroupRoute
   ItineraryRoute: typeof ItineraryRoute
   LoginRoute: typeof LoginRoute
-  MemoryRoute: typeof MemoryRoute
   PackingRoute: typeof PackingRoute
+  PricingRoute: typeof PricingRoute
   ProfileRoute: typeof ProfileRoute
   RiskRoute: typeof RiskRoute
   SignupRoute: typeof SignupRoute
@@ -281,18 +281,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/packing': {
       id: '/packing'
       path: '/packing'
       fullPath: '/packing'
       preLoaderRoute: typeof PackingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/memory': {
-      id: '/memory'
-      path: '/memory'
-      fullPath: '/memory'
-      preLoaderRoute: typeof MemoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -384,8 +384,8 @@ const rootRouteChildren: RootRouteChildren = {
   GroupRoute: GroupRoute,
   ItineraryRoute: ItineraryRoute,
   LoginRoute: LoginRoute,
-  MemoryRoute: MemoryRoute,
   PackingRoute: PackingRoute,
+  PricingRoute: PricingRoute,
   ProfileRoute: ProfileRoute,
   RiskRoute: RiskRoute,
   SignupRoute: SignupRoute,
