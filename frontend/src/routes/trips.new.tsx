@@ -1714,11 +1714,11 @@ function NewTrip() {
                       <div className="flex items-center justify-between">
                         <div>
                           <Label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                            <ActiveModeIcon className="h-4 w-4 text-primary" /> 2. Analyze Prices of Leaving & Preferred Mode
+                            <ActiveModeIcon className="h-4 w-4 text-primary" /> 2. Preferred Travel Mode & Journey Schedule
                           </Label>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             Route: <strong>{originCity || "Origin"}</strong> → <strong>{destination}</strong> (~{transportResearchData?.distanceKm || 280} km)
-                            <span className="hidden sm:inline opacity-75"> · Indicative fares & real-world durations</span>
+                            <span className="hidden sm:inline opacity-75"> · Select your preferred mode of transport</span>
                           </p>
                         </div>
                         <Button
@@ -1730,7 +1730,7 @@ function NewTrip() {
                           className="h-7 text-xs text-primary"
                         >
                           <RotateCcw className={cn("h-3 w-3 mr-1", isFetchingTransport && "animate-spin")} />
-                          {isFetchingTransport ? "Analyzing..." : "Re-analyze Fares"}
+                          {isFetchingTransport ? "Refreshing..." : "Refresh Durations"}
                         </Button>
                       </div>
 
@@ -1743,15 +1743,6 @@ function NewTrip() {
                       >
                         {displayedModes.map(({ id, icon: Icon, label, modeData }) => {
                           const isSelected = travelMode === id;
-                          const estFare = modeData?.estimatedFareINR
-                            ? `₹${modeData.estimatedFareINR.toLocaleString("en-IN")}`
-                            : id === "Flight"
-                            ? "≈ ₹2,800"
-                            : id === "Train"
-                            ? "≈ ₹650"
-                            : id === "Bus"
-                            ? "≈ ₹550"
-                            : "≈ ₹2,600 total";
                           const estDur = modeData?.estimatedDurationHours
                             ? `${modeData.estimatedDurationHours}h`
                             : id === "Flight"
@@ -1768,31 +1759,31 @@ function NewTrip() {
                               type="button"
                               onClick={() => handleSelectMode(id)}
                               className={cn(
-                                "rounded-xl border p-3.5 text-left transition-all flex flex-col justify-between cursor-pointer",
+                                "rounded-xl border p-4 text-left transition-all flex flex-col gap-3 cursor-pointer",
                                 isSelected
                                   ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
                                   : "border-border bg-background/80 hover:border-primary/40"
                               )}
                             >
-                              <div>
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-1.5">
-                                    <Icon className="h-4 w-4 text-primary" />
-                                    <span className="font-semibold text-xs text-foreground">{label}</span>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className={cn(
+                                    "rounded-lg p-1.5",
+                                    isSelected ? "bg-primary/15" : "bg-muted/60"
+                                  )}>
+                                    <Icon className={cn("h-4 w-4", isSelected ? "text-primary" : "text-muted-foreground")} />
                                   </div>
-                                  <Badge variant="outline" className="text-[10px] h-4 py-0">
-                                    {estDur}
-                                  </Badge>
+                                  <span className="font-semibold text-sm text-foreground">{label}</span>
                                 </div>
-                                <p className="mt-2 text-sm font-bold text-foreground">
-                                  {estFare}{" "}
-                                  <span className="text-[10px] font-normal text-muted-foreground">
-                                    {id === "Car" ? "fuel & toll" : "/ person"}
-                                  </span>
-                                </p>
+                                {isSelected && (
+                                  <div className="h-2 w-2 rounded-full bg-primary" />
+                                )}
                               </div>
-                              <Badge variant="outline" className="mt-2 text-[9px] w-fit font-normal border-border/60 text-muted-foreground/80 py-0 h-4">
-                                {modeData?.priceClassification || "modelled estimate"}
+                              <Badge variant="outline" className={cn(
+                                "text-[11px] h-5 py-0 w-fit font-medium",
+                                isSelected ? "border-primary/40 text-primary bg-primary/5" : "border-border/60 text-muted-foreground"
+                              )}>
+                                {estDur} journey
                               </Badge>
                             </button>
                           );
