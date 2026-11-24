@@ -9,7 +9,7 @@ export async function fetchDestinationOverview(
 ): Promise<DestinationOverview> {
   const params = new URLSearchParams({ destination });
   if (interests.length > 0) params.set("interests", interests.join(","));
-  return apiFetch(`/api/ai/destination-overview?${params.toString()}`);
+  return apiFetch(`/api/ai/destination-overview?${params.toString()}`, { timeoutMs: 15000 });
 }
 
 export const tripService = {

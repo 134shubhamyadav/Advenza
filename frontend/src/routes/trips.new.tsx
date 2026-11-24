@@ -569,10 +569,12 @@ function NewTrip() {
     if (step === 0) return destination.trim().length > 0;
     if (step === 1) {
       if (isFetchingOverview) return false;
-      if (!startDate || !endDate || endDate < startDate) return false;
+      // Step 1 is Destination Insights; dates are formally configured in Step 2.
+      // Only block here if the user explicitly configured custom dates with an invalid inverted range.
+      if (startDate && endDate && endDate < startDate) return false;
       return true;
     }
-    if (step === 2) return startDate && endDate && endDate >= startDate && parseInt(travelers) >= 1;
+    if (step === 2) return Boolean(startDate && endDate && endDate >= startDate && parseInt(travelers) >= 1);
     if (step === 3) return true; // Step 3: Stay & Leaving Prices
     if (step === 4) {
       if (budget === "") return false;
@@ -766,6 +768,19 @@ function NewTrip() {
         .finally(() => {
           setIsFetchingOverview(false);
         });
+    }
+    if (step === 1) {
+      if (!startDate) {
+        const defaultStart = getDefaultStartDate();
+        setStartDate(defaultStart);
+        if (!endDate) {
+          const recDays = destinationOverview?.durationRecommendation?.recommendedDays || 5;
+          setEndDate(addDaysToDate(defaultStart, recDays - 1));
+        }
+      } else if (!endDate) {
+        const recDays = destinationOverview?.durationRecommendation?.recommendedDays || 5;
+        setEndDate(addDaysToDate(startDate, recDays - 1));
+      }
     }
     if (step === 2) {
       fetchTransportResearch();
