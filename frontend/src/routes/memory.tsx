@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, type ErrorComponentProps } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { inr } from "@/lib/utils";
 import {
@@ -85,7 +85,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-function MemoryErrorFallback({ error, reset }: { error: Error; reset: () => void }) {
+function MemoryErrorFallback({ error, reset }: ErrorComponentProps) {
   return (
     <AppShell
       title="Trip Scrapbook & Memories"
@@ -97,7 +97,7 @@ function MemoryErrorFallback({ error, reset }: { error: Error; reset: () => void
         </div>
         <h2 className="text-xl font-semibold text-foreground">Scrapbook encountered an issue</h2>
         <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-          {error?.message || "There was a problem loading your travel memories. Please refresh or try again."}
+          {(error instanceof Error ? error.message : null) || "There was a problem loading your travel memories. Please refresh or try again."}
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <Button onClick={reset} className="bg-primary text-primary-foreground hover:bg-primary/90">
