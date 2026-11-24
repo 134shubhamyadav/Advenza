@@ -67,9 +67,13 @@ export const apiFetch = async (
           "Cannot reach the Advenza server. Make sure the backend is running on port 5000."
         );
       }
+    } else if (!BACKEND && typeof window !== "undefined" && window.location.hostname !== "localhost") {
+      throw new Error(
+        "Backend URL is not configured. Please set VITE_BACKEND_URL in your deployment environment variables."
+      );
     } else {
       throw new Error(
-        "Cannot reach the Advenza server. Make sure the backend is running on port 5000."
+        `Cannot reach the Advenza backend (${BACKEND || "server"}). Please verify backend is awake and CORS is allowed.`
       );
     }
   } finally {

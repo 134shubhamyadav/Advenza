@@ -52,7 +52,13 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (config.NODE_ENV !== "production" || allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+      if (
+        config.NODE_ENV !== "production" ||
+        allowedOrigins.includes(origin) ||
+        allowedOrigins.includes("*") ||
+        /\.netlify\.app$/.test(origin) ||
+        /\.vercel\.app$/.test(origin)
+      ) {
         return callback(null, true);
       }
       return callback(new Error("CORS origin not allowed by Advenza security policy"), false);
