@@ -8,7 +8,6 @@ const memoryCache = new Map();
 export const CACHE_TTLS = {
   WEATHER: 30 * 60,       // 30 minutes
   FLIGHT_SEARCH: 15 * 60, // 15 minutes
-  FLIGHT_STATUS: 10 * 60, // 10 minutes
   HOTEL_SEARCH: 30 * 60,  // 30 minutes
   TRANSPORT: 15 * 60,     // 15 minutes
 };
@@ -36,11 +35,6 @@ export class TravelCacheService {
   flightSearchKey(params) {
     const hash = this.hashParams(params);
     return `travel:flights:${params.origin || "any"}:${params.destination || "any"}:${hash}`;
-  }
-
-  flightStatusKey(flightNumber, date = "today") {
-    const fn = (flightNumber || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    return `travel:flight_status:${fn}:${date}`;
   }
 
   hotelSearchKey(params) {

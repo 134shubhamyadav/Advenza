@@ -36,6 +36,18 @@ export const aiChatLimiter = rateLimit({
   },
 });
 
+export const collageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Max 20 collage operations per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: "Collage generation rate limit reached. Please wait a few minutes before creating more collages.",
+    code: "COLLAGE_RATE_LIMIT",
+  },
+});
+
 export const travelSearchLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 40, // Max 40 searches per minute

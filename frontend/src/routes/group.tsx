@@ -24,7 +24,7 @@ const COLORS = [
 ];
 
 type Member = { _id?: string; name?: string; initials?: string; role?: string; email?: string; userId?: string };
-type VoteOption = { name: string; votes: number; voters?: string[] };
+type VoteOption = { name: string; description?: string; votes: number; voters?: string[] };
 type Trip = {
   _id: string;
   title: string;

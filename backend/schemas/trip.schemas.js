@@ -10,6 +10,9 @@ export const createTripSchema = z.object({
   durationMode: z.enum(["RECOMMENDED", "CUSTOM"]).optional().default("RECOMMENDED"),
   budgetTotal: z.coerce.number().min(0).default(0),
   style: z.string().trim().default("Balanced"),
+  travelPace: z.string().trim().default("Balanced"),
+  interests: z.array(z.string()).optional(),
+  experiencePreferences: z.array(z.string()).optional(),
   travelMode: z.string().trim().max(100).optional(),
   departureHub: z.string().trim().max(150).optional(),
   arrivalHub: z.string().trim().max(150).optional(),
@@ -46,7 +49,8 @@ export const voteSchema = z.object({
 });
 
 export const addOptionSchema = z.object({
-  name: z.string().trim().min(1, "Option name is required").max(150),
+  name: z.string().trim().min(1, "Option title is required").max(150),
+  description: z.string().trim().max(500).optional(),
 });
 
 export const updateItinerarySchema = z.object({

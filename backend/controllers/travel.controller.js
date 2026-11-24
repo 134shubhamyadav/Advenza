@@ -44,36 +44,6 @@ export async function searchFlights(req, res, next) {
 }
 
 /**
- * GET /api/travel/flights/status
- */
-export async function getFlightStatus(req, res, next) {
-  try {
-    const { flightNumber, date } = req.query;
-    const cacheKey = travelCacheService.flightStatusKey(flightNumber, date);
-    const cached = await travelCacheService.get(cacheKey);
-
-    if (cached) {
-      return res.status(200).json({
-        success: true,
-        status: cached.data,
-        isCached: true,
-      });
-    }
-
-    const status = await flightProvider.getFlightStatus({ flightNumber, date });
-    await travelCacheService.set(cacheKey, status, CACHE_TTLS.FLIGHT_STATUS, status.provider);
-
-    return res.status(200).json({
-      success: true,
-      status,
-      isCached: false,
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-/**
  * GET /api/travel/hotels/search
  */
 export async function searchHotels(req, res, next) {

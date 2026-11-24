@@ -41,10 +41,19 @@ export class AIRetryService {
           attemptsSummary.push({ provider: provider.name, attempt, error: jsonErr.message });
 
           if (attempt < maxAttempts) {
-            const repairPrompt = `The previous response was not valid JSON (${jsonErr.message}). Return ONLY a valid, raw JSON object matching the required structure. Do not include markdown code fences, thoughts, or conversational prose.`;
+            // If response was severely truncated (long output that cut off), don't reinject 16k chars into context
+            const isTruncated = (response.content || "").length > 4000;
+            const assistantSnippet = isTruncated
+              ? (response.content || "").slice(0, 500) + "... [truncated]"
+              : response.content || "{}";
+
+            const repairPrompt = isTruncated
+              ? `Your previous response was truncated before completion. Please output the complete, valid JSON structure from start to finish. Ensure all brackets are closed and do not truncate.`
+              : `The previous response was not valid JSON (${jsonErr.message}). Return ONLY a valid, raw JSON object matching the required structure. Do not include markdown code fences, thoughts, or conversational prose.`;
+
             currentMessages = [
               ...messages,
-              { role: "assistant", content: response.content || "{}" },
+              { role: "assistant", content: assistantSnippet },
               { role: "user", content: repairPrompt },
             ];
             continue; // Retry once on same provider

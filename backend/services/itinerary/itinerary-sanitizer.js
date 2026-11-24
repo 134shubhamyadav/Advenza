@@ -383,6 +383,17 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
   const interestsList = (interestProfile?.selected || []).map((s) => String(s || "").toLowerCase());
   const normalizedDomainSet = new Set(interestProfile?.normalizedDomains || []);
 
+  const rawPace = String(context?.travelPace || context?.style || "Balanced").trim().toLowerCase();
+  const travelPaceNormalized = rawPace === "relaxed" || rawPace === "slow" ? "Relaxed" : rawPace === "packed" ? "Packed" : "Balanced";
+  const rawExpPrefs = Array.isArray(context?.experiencePreferences)
+    ? context.experiencePreferences
+    : context?.experiencePreferences ? [String(context.experiencePreferences)] : [];
+  const expPrefsList = rawExpPrefs.map((p) => String(p || "").toLowerCase());
+  const wantsHiddenGems = expPrefsList.some((p) => p.includes("hidden") || p.includes("gem"));
+  const wantsNightExperiences = expPrefsList.some((p) => p.includes("night"));
+  const wantsPhotoSpots = expPrefsList.some((p) => p.includes("photo"));
+  const wantsFoodExp = expPrefsList.some((p) => p.includes("food") || p.includes("culinary"));
+
   const hasInterest = (keyword) => {
     const k = String(keyword || "").toLowerCase();
     if (interestsList.some((i) => i.includes(k))) return true;
@@ -861,6 +872,62 @@ export const validateAndSanitizeItinerary = (parsedData, expectedDates, context 
               : [],
           },
         ];
+      }
+    }
+
+    // ── Pace & Experience Preferences Harmonization ─────────────────
+    if (dayStatus === "FULL_DESTINATION_DAY" || dayStatus === "DESTINATION_DAY") {
+      if (travelPaceNormalized === "Relaxed" && activities.length > 3) {
+        // Relaxed pace: keep 3 primary relaxed experiences (morning, midday dining/leisure, afternoon/evening)
+        // Ensure hidden gems, verified places, or distinct time-slots are retained
+        const scoredActivities = activities.map((act, i) => {
+          let score = 0;
+          if (act.isPlaceHiddenGem && wantsHiddenGems) score += 10;
+          if (act.placeName) score += 3;
+          if (act.interestTags?.length) score += 2;
+          const [h] = (act.time || "12:00").split(":").map(Number);
+          // Prefer balanced morning (8-11), midday (12-15), evening (17-21) spread
+          if (h >= 8 && h <= 11) score += 2;
+          if (h >= 12 && h <= 15) score += 2;
+          if (h >= 17 && h <= 21) score += 2;
+          return { act, score, origIndex: i };
+        });
+
+        // Pick highest scored activity across morning, midday, and evening
+        const morning = scoredActivities.filter(s => {
+          const [h] = (s.act.time || "12:00").split(":").map(Number);
+          return h < 12;
+        }).sort((a, b) => b.score - a.score)[0];
+
+        const midday = scoredActivities.filter(s => {
+          const [h] = (s.act.time || "12:00").split(":").map(Number);
+          return h >= 12 && h < 17;
+        }).sort((a, b) => b.score - a.score)[0];
+
+        const evening = scoredActivities.filter(s => {
+          const [h] = (s.act.time || "12:00").split(":").map(Number);
+          return h >= 17;
+        }).sort((a, b) => b.score - a.score)[0];
+
+        const selectedActs = [morning, midday, evening].filter(Boolean);
+        if (selectedActs.length >= 2) {
+          activities = selectedActs.map(s => s.act);
+        }
+      }
+
+      // If user selected Night Experiences, ensure an evening/night venue or promenade is present
+      if (wantsNightExperiences && activities.length > 0) {
+        const hasEvening = activities.some(a => {
+          const [h] = (a.time || "00:00").split(":").map(Number);
+          return h >= 19;
+        });
+        if (!hasEvening && activities.length <= 4) {
+          activities.push({
+            time: "20:30",
+            description: `Evening night experience in ${destination}: illuminated landmark walk, night market exploration, or rooftop ambiance with regional refreshments.`,
+            interestTags: hasInterest("nightlife") ? ["Nightlife", "Local Experiences"] : ["Night Experiences"],
+          });
+        }
       }
     }
 

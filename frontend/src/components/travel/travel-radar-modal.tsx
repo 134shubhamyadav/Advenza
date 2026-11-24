@@ -328,7 +328,7 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
                   <div>
                     <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
                       <Plane className="h-3 w-3 text-primary" />
-                      Origin Hub / Station
+                      Origin Hub / Airport
                     </Label>
                     <Input
                       value={flightOrigin}
@@ -340,7 +340,7 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
                   <div>
                     <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
                       <MapPin className="h-3 w-3 text-primary" />
-                      Destination Hub / Station
+                      Destination Hub / Airport
                     </Label>
                     <Input
                       value={flightDestination}
@@ -479,7 +479,7 @@ export function TravelRadarModal({ isOpen, onOpenChange, activeTrip }: TravelRad
                 <div>
                   <Label className="text-[11px] text-muted-foreground uppercase font-semibold flex items-center gap-1.5 mb-1.5">
                     <MapPin className="h-3 w-3 text-primary" />
-                    Destination City or Railhead
+                    Destination City
                   </Label>
                   <Input
                     value={hotelDestination}

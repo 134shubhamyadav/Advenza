@@ -62,13 +62,18 @@ export class CohereProvider extends BaseAIProvider {
       } catch (err) {
         clearTimeout(perModelTimer);
         lastError = err;
+        const status = err.status || err.statusCode;
         logger.warn(`[Cohere] Model ${model} failed: ${err.message}`, {
           model,
-          status: err.status || err.statusCode,
+          status,
           isTimeout: modelController.signal.aborted,
         });
 
         if (signal?.aborted) {
+          throw err;
+        }
+
+        if (status === 401 || status === 402 || status === 429) {
           throw err;
         }
       }

@@ -49,7 +49,6 @@ router.get(
   "/transport/research",
   aiController.researchTransport
 );
-
 // GET /api/ai/estimate-budget
 router.get(
   "/estimate-budget",

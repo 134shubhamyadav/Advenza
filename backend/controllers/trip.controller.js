@@ -8,16 +8,28 @@ import { fetchDestinationImage } from "../services/media/destination-image.servi
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { NotFoundError, ForbiddenError, ValidationError } from "../utils/errors.js";
 
-const DEFAULT_VOTE_OPTIONS = [
-  { name: "Sightseeing & Cultural Landmarks", votes: 0, voters: [] },
-  { name: "Relaxed Beach & Local Food Tour", votes: 0, voters: [] },
-  { name: "Vibrant Nightlife & Evening Experiences", votes: 0, voters: [] },
-  { name: "Nature, Hiking & Outdoor Adventure", votes: 0, voters: [] },
-];
+const LEGACY_DEFAULT_OPTION_NAMES = new Set([
+  "sightseeing & cultural landmarks",
+  "relaxed beach & local food tour",
+  "vibrant nightlife & evening experiences",
+  "nature, hiking & outdoor adventure",
+]);
 
-const ensureVoteOptions = (trip) => {
-  if (!trip.voteOptions || trip.voteOptions.length === 0) {
-    trip.voteOptions = DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] }));
+const cleanLegacyVoteOptions = (trip) => {
+  if (Array.isArray(trip.voteOptions)) {
+    const hasLegacy = trip.voteOptions.some((o) =>
+      LEGACY_DEFAULT_OPTION_NAMES.has(String(o.name || "").trim().toLowerCase())
+    );
+    if (hasLegacy) {
+      trip.voteOptions = trip.voteOptions.filter(
+        (o) => !LEGACY_DEFAULT_OPTION_NAMES.has(String(o.name || "").trim().toLowerCase())
+      );
+      if (trip._id) {
+        Trip.findByIdAndUpdate(trip._id, { $set: { voteOptions: trip.voteOptions } }).catch(() => {});
+      }
+    }
+  } else {
+    trip.voteOptions = [];
   }
 };
 
@@ -65,9 +77,7 @@ export const listTrips = asyncHandler(async (req, res) => {
         }
       }
 
-      if (!trip.voteOptions || trip.voteOptions.length === 0) {
-        trip.voteOptions = DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] }));
-      }
+      cleanLegacyVoteOptions(trip);
 
       const isOrganizer = String(trip.createdBy) === String(req.uid);
       trip.isOrganizer = isOrganizer;
@@ -104,9 +114,7 @@ export const getTripById = asyncHandler(async (req, res) => {
     }
   }
 
-  if (!trip.voteOptions || trip.voteOptions.length === 0) {
-    trip.voteOptions = DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] }));
-  }
+  cleanLegacyVoteOptions(trip);
 
   const isOrganizer = String(trip.createdBy) === String(req.uid);
   trip.isOrganizer = isOrganizer;
@@ -130,10 +138,7 @@ export const createTrip = asyncHandler(async (req, res) => {
     ...req.body,
     heroImage: heroImage || undefined,
     createdBy: req.uid,
-    voteOptions:
-      req.body.voteOptions && req.body.voteOptions.length > 0
-        ? req.body.voteOptions
-        : DEFAULT_VOTE_OPTIONS.map((o) => ({ ...o, voters: [] })),
+    voteOptions: Array.isArray(req.body.voteOptions) ? req.body.voteOptions : [],
   };
   const newTrip = new Trip(tripData);
   const savedTrip = await newTrip.save();
@@ -249,7 +254,7 @@ export const deleteExpense = asyncHandler(async (req, res) => {
 
 export const castVote = asyncHandler(async (req, res) => {
   const { optionName } = req.body;
-  const voterId = req.uid;
+  const voterId = String(req.uid);
 
   const trip = await Trip.findById(req.params.id);
   if (!trip) throw new NotFoundError("Trip not found");
@@ -258,25 +263,31 @@ export const castVote = asyncHandler(async (req, res) => {
     throw new ForbiddenError("Forbidden: You do not have access to this trip");
   }
 
-  ensureVoteOptions(trip);
+  cleanLegacyVoteOptions(trip);
 
+  const targetOption = trip.voteOptions.find(
+    (o) => o.name.toLowerCase() === String(optionName || "").trim().toLowerCase()
+  );
+  if (!targetOption) {
+    throw new NotFoundError("Option not found");
+  }
+
+  const alreadyVotedOnThis = (targetOption.voters || []).map(String).includes(voterId);
+
+  // Remove voter from all options (allows changing votes smoothly)
   trip.voteOptions.forEach((o) => {
-    o.voters = (o.voters || []).filter((v) => String(v) !== String(voterId));
+    o.voters = (o.voters || []).filter((v) => String(v) !== voterId);
     o.votes = o.voters.length;
   });
 
-  let option = trip.voteOptions.find((o) => o.name === optionName);
-  if (!option) {
-    trip.voteOptions.push({ name: optionName, votes: 0, voters: [] });
-    option = trip.voteOptions[trip.voteOptions.length - 1];
-  }
-
-  if (!option.voters.map(String).includes(String(voterId))) {
-    option.voters.push(String(voterId));
+  // If they were not already voted on this option, add their vote.
+  // If they clicked the same option they already voted for, it toggles off.
+  if (!alreadyVotedOnThis) {
+    targetOption.voters.push(voterId);
   }
 
   trip.voteOptions.forEach((o) => {
-    o.votes = o.voters.length;
+    o.votes = (o.voters || []).length;
   });
 
   await trip.save();
@@ -284,7 +295,11 @@ export const castVote = asyncHandler(async (req, res) => {
 });
 
 export const addVoteOption = asyncHandler(async (req, res) => {
-  const { name } = req.body;
+  const { name, description } = req.body;
+  if (!name || typeof name !== "string" || !name.trim()) {
+    throw new ValidationError("Option title is required");
+  }
+
   const trip = await Trip.findById(req.params.id);
   if (!trip) throw new NotFoundError("Trip not found");
 
@@ -292,14 +307,42 @@ export const addVoteOption = asyncHandler(async (req, res) => {
     throw new ForbiddenError("Forbidden: You do not have access to this trip");
   }
 
-  ensureVoteOptions(trip);
+  cleanLegacyVoteOptions(trip);
 
-  const trimmed = name.trim();
-  if (trip.voteOptions.some((o) => o.name.toLowerCase() === trimmed.toLowerCase())) {
-    throw new ValidationError("Option already exists");
+  const trimmedTitle = name.trim();
+  if (trip.voteOptions.some((o) => o.name.toLowerCase() === trimmedTitle.toLowerCase())) {
+    throw new ValidationError("An option with this title already exists");
   }
 
-  trip.voteOptions.push({ name: trimmed, votes: 0, voters: [] });
+  const trimmedDesc = typeof description === "string" ? description.trim() : "";
+
+  trip.voteOptions.push({
+    name: trimmedTitle,
+    description: trimmedDesc,
+    votes: 0,
+    voters: [],
+    createdBy: String(req.uid),
+    createdAt: new Date(),
+  });
+
+  await trip.save();
+  res.json(trip);
+});
+
+export const deleteVoteOption = asyncHandler(async (req, res) => {
+  const { optionName } = req.params;
+  const trip = await Trip.findById(req.params.id);
+  if (!trip) throw new NotFoundError("Trip not found");
+
+  if (!userHasTripAccess(trip, req.uid, req.userEmail)) {
+    throw new ForbiddenError("Forbidden: You do not have access to this trip");
+  }
+
+  cleanLegacyVoteOptions(trip);
+
+  const decodedName = decodeURIComponent(optionName || "").trim().toLowerCase();
+  trip.voteOptions = trip.voteOptions.filter((o) => o.name.toLowerCase() !== decodedName);
+
   await trip.save();
   res.json(trip);
 });

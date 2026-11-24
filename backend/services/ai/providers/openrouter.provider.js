@@ -44,7 +44,13 @@ export class OpenRouterProvider extends BaseAIProvider {
       throw new Error("OpenRouter API key is not configured");
     }
 
-    const modelsToTry = preferredModel ? [preferredModel, ...this.models.filter((m) => m !== preferredModel)] : this.models;
+    const hasImages = Array.isArray(messages) && messages.some(
+      (m) => Array.isArray(m?.content) && m.content.some((c) => c?.type === "image_url")
+    );
+    const visionModels = ["openai/gpt-4o-mini", "google/gemini-2.5-flash", "google/gemini-flash-1.5"];
+
+    const baseModels = hasImages ? visionModels : this.models;
+    const modelsToTry = preferredModel ? [preferredModel, ...baseModels.filter((m) => m !== preferredModel)] : baseModels;
     const effectiveMaxTokens = Math.min(Number(maxTokens) || 4096, 4096);
     const PER_MODEL_TIMEOUT_MS = 15_000;
     let lastError = null;
@@ -76,13 +82,18 @@ export class OpenRouterProvider extends BaseAIProvider {
       } catch (err) {
         clearTimeout(perModelTimer);
         lastError = err;
+        const status = err.status || err.statusCode;
         logger.warn(`[OpenRouter] Model ${model} failed: ${err.message}`, {
           model,
-          status: err.status || err.statusCode,
+          status,
           isTimeout: modelController.signal.aborted,
         });
 
         if (signal?.aborted) throw err;
+
+        if (status === 401 || status === 402 || status === 429) {
+          throw err;
+        }
       }
     }
 

@@ -111,7 +111,9 @@ export const buildItineraryPrompt = (params, expectedDates) => {
     perDayBudget,
     perPersonBudget,
     style = "Balanced",
+    travelPace,
     interests = [],
+    experiencePreferences = [],
     accommodationLine,
     journeyLine,
     transportList,
@@ -134,31 +136,66 @@ export const buildItineraryPrompt = (params, expectedDates) => {
 
   const numDays = expectedDates.length;
   const interestProfile = normalizeInterests(interests);
-  const styleNormalized = String(style || "Balanced").trim();
+  const paceNormalized = String(travelPace || style || "Balanced").trim();
+  const styleNormalized = paceNormalized;
 
   // ── 1. Format Interest Guidance via Part 7 Intelligence Engine ─────────────
   const interestsBlock = buildInterestPromptSection(interestProfile, verifiedPlaces);
 
+  // ── 1b. Format Experience Preferences Guidance ────────────────────────────
+  const expPrefs = Array.isArray(experiencePreferences)
+    ? experiencePreferences
+    : typeof experiencePreferences === "string" && experiencePreferences.trim()
+    ? [experiencePreferences.trim()]
+    : [];
+
+  const experiencePreferencesBlock = expPrefs.length > 0
+    ? `EXPERIENCE PREFERENCES (CRITICAL FOCUS):
+${expPrefs.map((pref) => {
+  const p = pref.toLowerCase();
+  if (p.includes("hidden")) {
+    return "• HIDDEN GEMS: Actively feature lesser-known, authentic local spots, secret viewpoints, artisan courtyards, and tranquil non-commercial treasures. Tag every genuine hidden gem with placeType: 'HIDDEN_GEM', isPlaceHiddenGem: true, and provide an insightful 'whySpecial' explaining why this spot is special.";
+  }
+  if (p.includes("popular") || p.includes("must")) {
+    return "• POPULAR MUST-VISIT ATTRACTIONS: Ensure top iconic destination landmarks, world-famous monuments, and essential sights are prioritized and properly scheduled.";
+  }
+  if (p.includes("local")) {
+    return "• LOCAL EXPERIENCES: Emphasize genuine neighborhood life, community tea stalls, traditional craft workshops, residential walking lanes, and deep authentic cultural immersion.";
+  }
+  if (p.includes("night")) {
+    return "• NIGHT EXPERIENCES: When feasible and safe, incorporate vibrant evening markets, waterfront promenades, illuminated monument views, live music venues, or night food trails into post-dinner hours.";
+  }
+  if (p.includes("photo")) {
+    return "• PHOTOGRAPHY SPOTS: Strictly position scenic viewpoints, architectural wonders, and picturesque locations during golden hours (early morning light 07:00-09:00 or sunset 17:00-18:30) for peak visual appeal.";
+  }
+  if (p.includes("food")) {
+    return "• FOOD EXPERIENCES: Elevate culinary discovery — recommend iconic regional dishes, renowned heritage bakeries/sweet shops, bustling street food bazaars, and authentic dining institutions.";
+  }
+  return `• ${pref}: Actively tailor places and activities to emphasize ${pref}.`;
+}).join("\n")}`
+    : "";
+
   // ── 2. Format Trip Style / Pacing Guidance ─────────────────────────────────
   const pacingGuidance = (() => {
-    const s = styleNormalized.toLowerCase();
+    const s = paceNormalized.toLowerCase();
     if (s.includes("slow") || s.includes("relaxed") || s.includes("leisure")) {
-      return `SLOW / RELAXED PACE:
+      return `RELAXED PACE:
 • Maximum 2 to 3 main activities per day.
 • Schedule generous 1.5 to 2 hour meal breaks and unhurried rest periods.
 • Focus on deep immersion in one area per day rather than rushing between distant sights.
-• Zero jam-packed schedules; allow free time for wandering and relaxation.`;
+• Focus on experiences rather than quantity; allow ample free time for wandering and relaxation.`;
     }
     if (s.includes("packed") || s.includes("fast") || s.includes("active") || s.includes("intense")) {
-      return `PACKED / ACTIVE PACE:
-• 5 to 6 distinct activities per day during available usable hours.
-• Maximize daytime exploration while maintaining realistic transit buffers (30-45 mins between spots).
-• Pack in early morning highlights, midday cultural/food stops, late afternoon activities, and evening experiences.
+      return `PACKED PACE:
+• 4 to 6 distinct activities per day during available usable hours.
+• Explore more attractions with efficient geographic grouping.
+• Minimize unnecessary idle time without creating unrealistic schedules.
+• Factor in realistic 30 to 45 min transit buffers between spots.
 • STRICT REQUIREMENT: Even in Packed mode, activities MUST NEVER exceed the day's usable window or return cutoff!`;
     }
     return `BALANCED PACE:
 • 3 to 4 well-curated activities per day.
-• Thoughtful balance of key attractions, authentic local dining, scenic stops, and comfortable rest intervals.
+• Mix of sightseeing, activities, authentic local dining, and comfortable relaxation.
 • Group activities by geographic neighborhood to minimize transit fatigue.`;
   })();
 
@@ -276,8 +313,9 @@ You craft hyper-personalized, realistic, time-aware itineraries that deeply resp
 - Dates: ${startDate} to ${endDate} (EXACTLY ${numDays} calendar days, Mode: ${durationMode})
 - Total Budget: ₹${budgetNum} INR (${perDayBudget ? `~₹${perDayBudget}/day` : "budget controlled"})
 - Travelers: ${travelersNum} person(s) (${perPersonBudget ? `~₹${perPersonBudget}/person` : ""})
-- Travel Pace / Density: ${styleNormalized}
+- Travel Pace: ${paceNormalized} (${paceNormalized === "Relaxed" ? "2-3 stops/day, unhurried, more free time" : paceNormalized === "Packed" ? "4-6 stops/day, maximum coverage, tight geographic clustering" : "3-4 stops/day, balanced mix of sightseeing & relaxation"})
 - Selected Interests: ${interestProfile.hasInterests ? interestProfile.selected.join(", ") : "General Sightseeing & Local Dining"}
+- Experience Preferences: ${expPrefs.length > 0 ? expPrefs.join(", ") : "Balanced discovery & exploration"}
 - Focus Domains: ${interestProfile.normalizedDomains.length > 0 ? interestProfile.domainLabels.join(", ") : "General Exploration"}
 - Accommodation: ${accommodationLine}
 - Special Requests: ${special || "None"}
@@ -306,11 +344,11 @@ CRITICAL SCHEDULING RULES:
 4. TIME FORMAT: Every activity "time" MUST be in 24-hour HH:mm format (e.g. "09:00", "14:30", "19:00").
 
 ==================================================
-4. USER INTEREST ALIGNMENT (PART 5 & PART 7)
+4. USER INTEREST ALIGNMENT & EXPERIENCE PREFERENCES
 ==================================================
 DO NOT generate a generic "top 10 tourist landmarks" checklist. The itinerary MUST be actively driven by the traveler's stated interests:
 ${interestsBlock}
-
+${experiencePreferencesBlock ? `\n${experiencePreferencesBlock}\n` : ""}
 MULTI-INTEREST HARMONY:
 If multiple interests are selected (e.g. Food + Culture + Photography), blend them cohesively throughout each day rather than dumping isolated items:
 - Morning: Cultural landmark or nature trail during optimal light (Photography + Culture/Nature)

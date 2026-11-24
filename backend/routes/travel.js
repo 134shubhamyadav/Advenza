@@ -1,7 +1,6 @@
 import express from "express";
 import {
   searchFlights,
-  getFlightStatus,
   searchHotels,
   getWeatherForecast,
   createPriceWatch,
@@ -16,7 +15,6 @@ import { validate } from "../middleware/validate.js";
 import { travelSearchLimiter, priceWatchLimiter } from "../middleware/rateLimiter.js";
 import {
   flightSearchSchema,
-  flightStatusSchema,
   hotelSearchSchema,
   weatherQuerySchema,
   createPriceWatchSchema,
@@ -34,13 +32,6 @@ router.get(
   travelSearchLimiter,
   validate({ query: flightSearchSchema }),
   searchFlights
-);
-
-router.get(
-  "/flights/status",
-  travelSearchLimiter,
-  validate({ query: flightStatusSchema }),
-  getFlightStatus
 );
 
 router.get(

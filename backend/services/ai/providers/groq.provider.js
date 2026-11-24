@@ -72,13 +72,19 @@ export class GroqProvider extends BaseAIProvider {
       } catch (err) {
         clearTimeout(perModelTimer);
         lastError = err;
+        const status = err.status || err.statusCode;
         logger.warn(`[Groq] Model ${model} failed: ${err.message}`, {
           model,
-          status: err.status || err.statusCode,
+          status,
           isTimeout: modelController.signal.aborted,
         });
 
         if (signal?.aborted) {
+          throw err;
+        }
+
+        // Account-level errors (401, 402, 429 TPM) affect all models in same account
+        if (status === 401 || status === 402 || status === 429) {
           throw err;
         }
       }

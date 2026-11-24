@@ -8,6 +8,16 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { queryKeys } from "@/lib/queryKeys";
@@ -32,6 +42,7 @@ import {
   Share2,
   Copy,
   UserMinus,
+  Trash2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/consensus")({ component: Consensus });
@@ -57,8 +68,11 @@ type Member = {
 
 type VoteOption = {
   name: string;
+  description?: string;
   votes: number;
   voters: string[];
+  createdBy?: string;
+  createdAt?: string;
 };
 
 type Activity = {
@@ -160,6 +174,7 @@ function Consensus() {
 
   // New proposal/option state
   const [newOptionName, setNewOptionName] = useState("");
+  const [newOptionDescription, setNewOptionDescription] = useState("");
   const [addingOption, setAddingOption] = useState(false);
   const [showAddOption, setShowAddOption] = useState(false);
 
@@ -283,6 +298,81 @@ function Consensus() {
   const consensusPercentage =
     totalVotes > 0 && winningOption ? Math.round((winningOption.votes / totalVotes) * 100) : 0;
 
+  // Resolve which confirmed travelers voted for a specific option
+  const getVotersForOption = (voterIds: string[] = []): DisplayMember[] => {
+    if (!voterIds || voterIds.length === 0) return [];
+    return voterIds.map((vid) => {
+      const isMe = Boolean(user?.uid && String(user.uid) === String(vid));
+      if (isMe) {
+        return {
+          key: String(vid),
+          name: "You",
+          email: user?.email || undefined,
+          role: activeTrip?.createdBy === user?.uid ? "Organizer" : "Member",
+          initials: getInitials(user?.displayName || user?.email || "You"),
+          color: AVATAR_COLORS[0],
+          isOrganizer: Boolean(activeTrip?.createdBy && activeTrip.createdBy === user?.uid),
+          isMe: true,
+        };
+      }
+      const matched = displayConfirmedMembers.find(
+        (m) =>
+          String(m.key) === String(vid) ||
+          (m.email && String(m.email).toLowerCase() === String(vid).toLowerCase())
+      );
+      if (matched) return matched;
+
+      if (activeTrip && String(activeTrip.createdBy) === String(vid)) {
+        return {
+          key: String(vid),
+          name: "Trip Organizer",
+          role: "Organizer",
+          initials: "OR",
+          color: AVATAR_COLORS[0],
+          isOrganizer: true,
+          isMe: false,
+        };
+      }
+
+      const tripMember = activeTrip?.members?.find(
+        (m) =>
+          (m.userId && String(m.userId) === String(vid)) ||
+          String(m._id) === String(vid) ||
+          (m.email && String(m.email).toLowerCase() === String(vid).toLowerCase())
+      );
+      if (tripMember) {
+        return {
+          key: String(vid),
+          name: tripMember.name || tripMember.email || "Traveler",
+          email: tripMember.email,
+          role: tripMember.role || "Member",
+          initials: tripMember.initials || getInitials(tripMember.name || tripMember.email || "TR"),
+          color: tripMember.color || AVATAR_COLORS[1],
+          isOrganizer: false,
+          isMe: false,
+        };
+      }
+
+      return {
+        key: String(vid),
+        name: "Traveler",
+        initials: "TR",
+        role: "Member",
+        color: AVATAR_COLORS[2],
+        isOrganizer: false,
+        isMe: false,
+      };
+    });
+  };
+
+  const formatVotersText = (voterList: DisplayMember[]) => {
+    if (voterList.length === 0) return "No votes yet";
+    const names = voterList.map((v) => v.name);
+    if (names.length === 1) return `Voted by ${names[0]}`;
+    if (names.length === 2) return `Voted by ${names[0]} & ${names[1]}`;
+    return `Voted by ${names.slice(0, 2).join(", ")} +${names.length - 2} more`;
+  };
+
   // Handle voting
   const handleCastVote = async (optionName: string) => {
     if (!activeTripId) return;
@@ -375,7 +465,10 @@ function Consensus() {
     try {
       const updatedTrip = await apiFetch(`/api/trips/${activeTripId}/options`, {
         method: "POST",
-        body: JSON.stringify({ name: newOptionName.trim() }),
+        body: JSON.stringify({
+          name: newOptionName.trim(),
+          description: newOptionDescription.trim() || undefined,
+        }),
       });
 
       queryClient.setQueryData(queryKeys.trips(), (old: Trip[] = []) =>
@@ -383,12 +476,33 @@ function Consensus() {
       );
       queryClient.setQueryData(queryKeys.tripDetails(activeTripId), updatedTrip);
       setNewOptionName("");
+      setNewOptionDescription("");
       setShowAddOption(false);
     } catch (err: any) {
       console.error("Adding option failed:", err);
       setError(err.message || "Failed to add new choice. Please try again.");
     } finally {
       setAddingOption(false);
+    }
+  };
+
+  // Handle deleting a custom option/proposal
+  const handleDeleteOption = async (optionName: string) => {
+    if (!activeTripId) return;
+    if (!window.confirm(`Remove the option "${optionName}"?`)) return;
+    try {
+      const updatedTrip = await apiFetch(
+        `/api/trips/${activeTripId}/options/${encodeURIComponent(optionName)}`,
+        { method: "DELETE" }
+      );
+
+      queryClient.setQueryData(queryKeys.trips(), (old: Trip[] = []) =>
+        old.map((t) => (t._id === updatedTrip._id ? updatedTrip : t)),
+      );
+      queryClient.setQueryData(queryKeys.tripDetails(activeTripId), updatedTrip);
+    } catch (err: any) {
+      console.error("Deleting option failed:", err);
+      setError(err.message || "Failed to delete option. Please try again.");
     }
   };
 
@@ -554,7 +668,7 @@ function Consensus() {
                       Trip Decisions & Voting
                     </h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Cast or update your vote. The consensus engine recalibrates live overlap.
+                      Propose choices and vote collaboratively. The consensus engine recalibrates live overlap.
                     </p>
                   </div>
                   <div className="flex items-center gap-2 self-start sm:self-center">
@@ -566,64 +680,39 @@ function Consensus() {
                     )}
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={() => setShowAddOption(!showAddOption)}
-                      className="rounded-xl text-xs h-8"
+                      onClick={() => {
+                        setError(null);
+                        setShowAddOption(true);
+                      }}
+                      className="rounded-xl text-xs h-8 gap-1.5 font-semibold"
                     >
-                      <Plus className="mr-1 h-3.5 w-3.5" />
-                      {showAddOption ? "Cancel" : "Add Option"}
+                      <Plus className="h-3.5 w-3.5" />
+                      Add Option
                     </Button>
                   </div>
                 </div>
 
-                {/* Optional Proposal/Option Creation Form */}
-                <AnimatePresence>
-                  {showAddOption && (
-                    <motion.form
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      onSubmit={handleAddOption}
-                      className="mb-6 overflow-hidden rounded-2xl border border-primary/30 bg-primary/5 p-4"
-                    >
-                      <h4 className="text-sm font-semibold mb-2">Propose New Choice for the Group</h4>
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <Input
-                          placeholder="e.g. Mountain Trekking & Campfire Night"
-                          className="h-10 rounded-xl flex-1 bg-background/80"
-                          value={newOptionName}
-                          onChange={(e) => setNewOptionName(e.target.value)}
-                          disabled={addingOption}
-                          autoFocus
-                        />
-                        <Button
-                          type="submit"
-                          disabled={addingOption || !newOptionName.trim()}
-                          className="h-10 rounded-xl px-5 text-xs font-semibold"
-                        >
-                          {addingOption ? (
-                            <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                          ) : (
-                            <Plus className="h-4 w-4 mr-1.5" />
-                          )}
-                          Propose Choice
-                        </Button>
-                      </div>
-                    </motion.form>
-                  )}
-                </AnimatePresence>
-
                 {/* Vote Options List */}
                 {voteOptions.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground text-sm">
-                    <p>No decision choices available for this trip yet.</p>
+                  <div className="rounded-2xl border border-dashed border-border/80 bg-muted/15 p-10 text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-3">
+                      <Vote className="h-6 w-6" />
+                    </div>
+                    <h4 className="font-semibold text-foreground text-sm">
+                      No options added yet. Create your first option for the group!
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-1.5 max-w-sm mx-auto leading-relaxed">
+                      Propose places, activities, or ideas for travellers in this group to vote on.
+                    </p>
                     <Button
-                      variant="outline"
                       size="sm"
-                      onClick={() => setShowAddOption(true)}
-                      className="mt-3 rounded-xl text-xs"
+                      onClick={() => {
+                        setError(null);
+                        setShowAddOption(true);
+                      }}
+                      className="mt-4 rounded-xl text-xs font-semibold gap-1.5 h-9 px-4"
                     >
-                      <Plus className="mr-1 h-3.5 w-3.5" /> Add First Choice
+                      <Plus className="h-4 w-4" /> Add Option
                     </Button>
                   </div>
                 ) : (
@@ -632,6 +721,8 @@ function Consensus() {
                       const isMyVote = myVote === o.name;
                       const isWinner = winningOption && winningOption.name === o.name && o.votes > 0;
                       const pct = totalVotes > 0 ? Math.round((o.votes / totalVotes) * 100) : 0;
+                      const voterList = getVotersForOption(o.voters);
+                      const canDelete = isOrganizer || (o.createdBy && o.createdBy === user?.uid);
 
                       return (
                         <motion.div
@@ -646,14 +737,34 @@ function Consensus() {
                         >
                           <div>
                             <div className="flex items-start justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-sm leading-snug">{o.name}</p>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-sm leading-snug text-foreground break-words">{o.name}</p>
+                                {o.description ? (
+                                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed break-words line-clamp-3">
+                                    {o.description}
+                                  </p>
+                                ) : null}
                               </div>
-                              {isWinner && (
-                                <span className="flex items-center gap-1 text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 shrink-0">
-                                  <Sparkles className="h-3 w-3" /> Leading
-                                </span>
-                              )}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isWinner && (
+                                  <span className="flex items-center gap-1 text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                    <Sparkles className="h-3 w-3" /> Leading
+                                  </span>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteOption(o.name);
+                                    }}
+                                    title="Delete this option"
+                                    className="text-muted-foreground/50 hover:text-destructive p-1 rounded-lg transition"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             </div>
 
                             {/* Percentage progress bar */}
@@ -678,12 +789,42 @@ function Consensus() {
                                 />
                               </div>
                             </div>
+
+                            {/* Voters identity breakdown */}
+                            <div className="mt-3.5 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {voterList.length > 0 && (
+                                  <div className="flex items-center -space-x-1.5 shrink-0">
+                                    {voterList.slice(0, 4).map((v) => (
+                                      <div
+                                        key={v.key}
+                                        title={v.name}
+                                        className={cn(
+                                          "flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold ring-1.5 ring-background shadow-xs",
+                                          v.color
+                                        )}
+                                      >
+                                        {v.initials}
+                                      </div>
+                                    ))}
+                                    {voterList.length > 4 && (
+                                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[8px] font-bold text-muted-foreground ring-1.5 ring-background">
+                                        +{voterList.length - 4}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                <span className="text-[11px] text-muted-foreground truncate">
+                                  {formatVotersText(voterList)}
+                                </span>
+                              </div>
+                            </div>
                           </div>
 
-                          {/* Footer Action & Voters Count */}
-                          <div className="mt-5 flex items-center justify-between pt-3 border-t border-border/50">
+                          {/* Footer Action */}
+                          <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/50">
                             <span className="text-[11px] text-muted-foreground">
-                              {o.voters?.length || 0} traveler{(o.voters?.length || 0) !== 1 ? "s" : ""} voted
+                              {isMyVote ? "Your vote is recorded" : "Click to select or change vote"}
                             </span>
                             <Button
                               size="sm"
@@ -691,8 +832,8 @@ function Consensus() {
                               disabled={voting}
                               onClick={() => handleCastVote(o.name)}
                               className={cn(
-                                "h-8 px-3.5 rounded-xl text-xs font-semibold",
-                                isMyVote && "bg-primary text-primary-foreground hover:bg-primary/90",
+                                "h-8 px-3.5 rounded-xl text-xs font-semibold transition-all active:scale-95",
+                                isMyVote && "bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs",
                               )}
                             >
                               {voting ? (
@@ -982,6 +1123,89 @@ function Consensus() {
           </div>
         </div>
       )}
+
+      {/* Add Option Dialog Modal */}
+      <Dialog open={showAddOption} onOpenChange={setShowAddOption}>
+        <DialogContent className="sm:max-w-md rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Vote className="h-5 w-5 text-primary" />
+              Add Option for the Group
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Propose a choice, activity, or place for travellers in this group to vote on.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddOption} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="option-title" className="text-xs font-semibold">
+                Option Title <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="option-title"
+                placeholder="e.g. Visit Goa Beaches, Local Food Tour, Water Sports"
+                className="rounded-xl h-10 text-sm"
+                value={newOptionName}
+                onChange={(e) => setNewOptionName(e.target.value)}
+                disabled={addingOption}
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="option-desc" className="text-xs font-semibold text-muted-foreground">
+                Description (Optional)
+              </Label>
+              <Textarea
+                id="option-desc"
+                placeholder="Add details, suggested timing, or why the group should pick this..."
+                className="rounded-xl text-sm min-h-20"
+                value={newOptionDescription}
+                onChange={(e) => setNewOptionDescription(e.target.value)}
+                disabled={addingOption}
+              />
+            </div>
+
+            {error && (
+              <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-2.5 text-xs text-destructive">
+                {error}
+              </div>
+            )}
+
+            <DialogFooter className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowAddOption(false);
+                  setNewOptionName("");
+                  setNewOptionDescription("");
+                  setError(null);
+                }}
+                disabled={addingOption}
+                className="rounded-xl text-xs h-9"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={addingOption || !newOptionName.trim()}
+                className="rounded-xl text-xs font-semibold h-9 px-4 gap-1.5"
+              >
+                {addingOption ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                Add Option
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

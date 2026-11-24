@@ -52,12 +52,17 @@ export class OpenAIProvider extends BaseAIProvider {
         return { completion, provider: this.name, model };
       } catch (err) {
         lastError = err;
+        const status = err.status || err.statusCode;
         logger.warn(`[OpenAI] Model ${model} failed: ${err.message}`, {
           model,
-          status: err.status || err.statusCode,
+          status,
         });
 
         if (signal?.aborted) throw err;
+
+        if (status === 401 || status === 402 || status === 429) {
+          throw err;
+        }
       }
     }
 

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,26 @@ import {
   Bed,
   Wallet,
   Building2,
-  Home
+  Home,
+  UtensilsCrossed,
+  Mountain,
+  Landmark,
+  Camera,
+  Waves,
+  ShoppingBag,
+  PartyPopper,
+  Coffee,
+  Palette,
+  Trees,
+  Store,
+  Ticket,
+  Users,
+  Moon,
+  Utensils,
+  Zap,
+  Scale,
+  SunMedium,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -72,6 +91,99 @@ const MODES = [
   { id: "Bus", icon: Bus, label: "Bus" },
   { id: "Car", icon: Car, label: "Car / Drive" },
   { id: "Ferry", icon: Ship, label: "Ferry" },
+];
+
+interface TravelPaceOption {
+  id: "Relaxed" | "Balanced" | "Packed";
+  label: string;
+  tagline: string;
+  desc: string;
+  density: string;
+  icon: any;
+}
+
+const TRAVEL_PACES: TravelPaceOption[] = [
+  {
+    id: "Relaxed",
+    label: "Relaxed",
+    tagline: "Unhurried & immersive",
+    desc: "Fewer attractions per day. More free time and longer breaks. Focus on experiences rather than quantity.",
+    density: "2–3 stops / day",
+    icon: SunMedium,
+  },
+  {
+    id: "Balanced",
+    label: "Balanced",
+    tagline: "Sightseeing & leisure in harmony",
+    desc: "Mix of sightseeing, activities and relaxation. A reasonable number of attractions each day.",
+    density: "3–4 stops / day",
+    icon: Scale,
+  },
+  {
+    id: "Packed",
+    label: "Packed",
+    tagline: "High coverage & maximum discovery",
+    desc: "Explore more attractions. Efficient geographic grouping. Minimize unnecessary idle time without creating unrealistic schedules.",
+    density: "4–6 stops / day",
+    icon: Zap,
+  },
+];
+
+const TRAVEL_INTERESTS = [
+  { id: "Food & Local Cuisine", icon: UtensilsCrossed },
+  { id: "Nature & Mountains", icon: Mountain },
+  { id: "History & Heritage", icon: Landmark },
+  { id: "Photography", icon: Camera },
+  { id: "Beaches & Water Activities", icon: Waves },
+  { id: "Adventure & Hiking", icon: Compass },
+  { id: "Architecture", icon: Building2 },
+  { id: "Shopping", icon: ShoppingBag },
+  { id: "Nightlife & Entertainment", icon: PartyPopper },
+  { id: "Cafes & Relaxation", icon: Coffee },
+  { id: "Art & Culture", icon: Palette },
+  { id: "Wellness & Spirituality", icon: Sparkles },
+  { id: "Wildlife & Eco Tourism", icon: Trees },
+  { id: "Local Markets & Street Experiences", icon: Store },
+  { id: "Festivals & Events", icon: Ticket },
+];
+
+const EXPERIENCE_PREFERENCES = [
+  {
+    id: "Hidden Gems",
+    label: "Hidden Gems",
+    desc: "Off-the-beaten-path secrets, quiet spots & authentic local treasures.",
+    icon: Gem,
+  },
+  {
+    id: "Popular Must-Visit Attractions",
+    label: "Popular Must-Visit Attractions",
+    desc: "Iconic landmarks, world-famous sights & top-rated must-sees.",
+    icon: Star,
+  },
+  {
+    id: "Local Experiences",
+    label: "Local Experiences",
+    desc: "Everyday culture, neighbourhood walks & indigenous community encounters.",
+    icon: Users,
+  },
+  {
+    id: "Night Experiences",
+    label: "Night Experiences",
+    desc: "Illuminated monuments, night markets & vibrant evening strolls.",
+    icon: Moon,
+  },
+  {
+    id: "Photography Spots",
+    label: "Photography Spots",
+    desc: "Golden-hour viewpoints, architectural vistas & picture-perfect panoramas.",
+    icon: Camera,
+  },
+  {
+    id: "Food Experiences",
+    label: "Food Experiences",
+    desc: "Heritage eateries, authentic street food & regional culinary tastings.",
+    icon: Utensils,
+  },
 ];
 
 const LOADING_MESSAGES = [
@@ -307,31 +419,39 @@ function NewTrip() {
   const [returnTransportType, setReturnTransportType] = useState("");
   const [returnTicketRef, setReturnTicketRef] = useState("");
 
-  // Sync default departure & return dates when trip start/end dates change
+  // ── Sync Travel Schedule Dates with Trip Dates (Single Source of Truth) ─────
+  const prevStartDateRef = useRef<string>(startDate);
+  const prevEndDateRef = useRef<string>(endDate);
+
   useEffect(() => {
     if (startDate) {
-      if (!outboundDepartureDate) {
-        setOutboundDepartureDate(startDate);
-      }
-      if (!outboundArrivalDate) {
+      const prevStart = prevStartDateRef.current;
+      setOutboundDepartureDate(startDate);
+      // Sync outbound arrival date if it was matching previous start date, empty, or earlier than new start date
+      if (!outboundArrivalDate || outboundArrivalDate === prevStart || outboundArrivalDate < startDate) {
         setOutboundArrivalDate(startDate);
       }
+      prevStartDateRef.current = startDate;
       if (!departureTime) {
         setDepartureTime(travelMode === "Flight" ? "08:00" : "06:30");
       }
     }
+  }, [startDate]);
+
+  useEffect(() => {
     if (endDate) {
-      if (!returnDate) {
-        setReturnDate(endDate);
-      }
-      if (!returnArrivalDate) {
+      const prevEnd = prevEndDateRef.current;
+      setReturnDate(endDate);
+      // Sync return arrival date if it was matching previous end date, empty, or earlier than new end date
+      if (!returnArrivalDate || returnArrivalDate === prevEnd || returnArrivalDate < endDate) {
         setReturnArrivalDate(endDate);
       }
+      prevEndDateRef.current = endDate;
       if (!returnTime) {
         setReturnTime("16:30");
       }
     }
-  }, [startDate, endDate]);
+  }, [endDate]);
 
   // Keep legacy multi-select for local transport
   const [transport, setTransport] = useState<string[]>([]);
@@ -344,8 +464,10 @@ function NewTrip() {
   const [checkOutTime, setCheckOutTime] = useState("");
 
   // ── Step 5: Preferences ────────────────────────────────────────────────────
+  const [travelPace, setTravelPace] = useState<"Relaxed" | "Balanced" | "Packed">("Balanced");
   const [style, setStyle] = useState("Balanced");
   const [interests, setInterests] = useState<string[]>([]);
+  const [experiencePreferences, setExperiencePreferences] = useState<string[]>([]);
   const [special, setSpecial] = useState("");
   const [generationStatus, setGenerationStatus] = useState<"loading" | "success" | "error">("loading");
   const [generationProgress, setGenerationProgress] = useState<number | undefined>(undefined);
@@ -738,8 +860,10 @@ function NewTrip() {
           checkInTime: normalizeTimeTo24h(checkInTime) || undefined,
           checkOutTime: normalizeTimeTo24h(checkOutTime) || undefined,
           // Preferences
-          style: style || "Balanced",
+          style: travelPace || style || "Balanced",
+          travelPace: travelPace || "Balanced",
           interests,
+          experiencePreferences,
           special: special.trim() || undefined,
           createdBy: user?.uid || "guest",
         }),
@@ -1714,11 +1838,11 @@ function NewTrip() {
                       <div className="flex items-center justify-between">
                         <div>
                           <Label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                            <ActiveModeIcon className="h-4 w-4 text-primary" /> 2. Analyze Prices of Leaving & Preferred Mode
+                            <ActiveModeIcon className="h-4 w-4 text-primary" /> 2. Preferred Travel Mode & Journey Schedule
                           </Label>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             Route: <strong>{originCity || "Origin"}</strong> → <strong>{destination}</strong> (~{transportResearchData?.distanceKm || 280} km)
-                            <span className="hidden sm:inline opacity-75"> · Indicative fares & real-world durations</span>
+                            <span className="hidden sm:inline opacity-75"> · Select your preferred mode of transport</span>
                           </p>
                         </div>
                         <Button
@@ -1730,7 +1854,7 @@ function NewTrip() {
                           className="h-7 text-xs text-primary"
                         >
                           <RotateCcw className={cn("h-3 w-3 mr-1", isFetchingTransport && "animate-spin")} />
-                          {isFetchingTransport ? "Analyzing..." : "Re-analyze Fares"}
+                          {isFetchingTransport ? "Refreshing..." : "Refresh Durations"}
                         </Button>
                       </div>
 
@@ -1743,15 +1867,6 @@ function NewTrip() {
                       >
                         {displayedModes.map(({ id, icon: Icon, label, modeData }) => {
                           const isSelected = travelMode === id;
-                          const estFare = modeData?.estimatedFareINR
-                            ? `₹${modeData.estimatedFareINR.toLocaleString("en-IN")}`
-                            : id === "Flight"
-                            ? "≈ ₹2,800"
-                            : id === "Train"
-                            ? "≈ ₹650"
-                            : id === "Bus"
-                            ? "≈ ₹550"
-                            : "≈ ₹2,600 total";
                           const estDur = modeData?.estimatedDurationHours
                             ? `${modeData.estimatedDurationHours}h`
                             : id === "Flight"
@@ -1768,31 +1883,31 @@ function NewTrip() {
                               type="button"
                               onClick={() => handleSelectMode(id)}
                               className={cn(
-                                "rounded-xl border p-3.5 text-left transition-all flex flex-col justify-between cursor-pointer",
+                                "rounded-xl border p-4 text-left transition-all flex flex-col gap-3 cursor-pointer",
                                 isSelected
                                   ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
                                   : "border-border bg-background/80 hover:border-primary/40"
                               )}
                             >
-                              <div>
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-1.5">
-                                    <Icon className="h-4 w-4 text-primary" />
-                                    <span className="font-semibold text-xs text-foreground">{label}</span>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className={cn(
+                                    "rounded-lg p-1.5",
+                                    isSelected ? "bg-primary/15" : "bg-muted/60"
+                                  )}>
+                                    <Icon className={cn("h-4 w-4", isSelected ? "text-primary" : "text-muted-foreground")} />
                                   </div>
-                                  <Badge variant="outline" className="text-[10px] h-4 py-0">
-                                    {estDur}
-                                  </Badge>
+                                  <span className="font-semibold text-sm text-foreground">{label}</span>
                                 </div>
-                                <p className="mt-2 text-sm font-bold text-foreground">
-                                  {estFare}{" "}
-                                  <span className="text-[10px] font-normal text-muted-foreground">
-                                    {id === "Car" ? "fuel & toll" : "/ person"}
-                                  </span>
-                                </p>
+                                {isSelected && (
+                                  <div className="h-2 w-2 rounded-full bg-primary" />
+                                )}
                               </div>
-                              <Badge variant="outline" className="mt-2 text-[9px] w-fit font-normal border-border/60 text-muted-foreground/80 py-0 h-4">
-                                {modeData?.priceClassification || "modelled estimate"}
+                              <Badge variant="outline" className={cn(
+                                "text-[11px] h-5 py-0 w-fit font-medium",
+                                isSelected ? "border-primary/40 text-primary bg-primary/5" : "border-border/60 text-muted-foreground"
+                              )}>
+                                {estDur} journey
                               </Badge>
                             </button>
                           );
@@ -1819,7 +1934,10 @@ function NewTrip() {
                               <div className="mt-1">
                                 <DatePicker
                                   value={outboundDepartureDate || startDate}
-                                  onChange={(d) => setOutboundDepartureDate(d)}
+                                  onChange={(d) => {
+                                    setOutboundDepartureDate(d);
+                                    if (d) setStartDate(d);
+                                  }}
                                   placeholder="Departure Date"
                                 />
                               </div>
@@ -1963,7 +2081,10 @@ function NewTrip() {
                               <div className="mt-1">
                                 <DatePicker
                                   value={returnDate || endDate}
-                                  onChange={(d) => setReturnDate(d)}
+                                  onChange={(d) => {
+                                    setReturnDate(d);
+                                    if (d) setEndDate(d);
+                                  }}
                                   placeholder="Return Date"
                                 />
                               </div>
@@ -2257,70 +2378,191 @@ function NewTrip() {
 
             {/* ── Step 5: Interests & Pace ── */}
             {step === 5 && (
-              <div className="space-y-6">
+              <div className="space-y-8">
+                {/* ── Section 1: Travel Pace ── */}
                 <div>
-                  <Label className="text-xs font-medium">Trip pace / style</Label>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    {[
-                      { id: "Slow", desc: "1–2 anchor spots a day, lots of wandering & rest." },
-                      { id: "Balanced", desc: "2–3 activities, buffer time to explore & dine." },
-                      { id: "Packed", desc: "Every hour planned, maximum coverage." },
-                    ].map(({ id, desc }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setStyle(id)}
-                        className={cn(
-                          "rounded-xl border p-4 text-left transition-all cursor-pointer",
-                          style === id
-                            ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
-                            : "border-border bg-background/80 hover:border-primary/40",
-                        )}
-                      >
-                        <p className="font-semibold text-sm">{id}</p>
-                        <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{desc}</p>
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-2 mb-1">
+                    <SlidersHorizontal className="h-4 w-4 text-primary" />
+                    <Label className="text-sm font-semibold text-foreground">Travel Pace</Label>
                   </div>
-                </div>
-
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5 text-primary" />
-                      Locality & Experiential Interests
-                    </Label>
-                    <span className="text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20 self-start sm:self-auto">
-                      Curated for {destination || "Destination"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                    Select authentic local experiences, street food specialties, and cultural highlights you would like prioritized in your itinerary:
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {localityInterestsList.map((c) => {
-                      const on = interests.includes(c);
+                  <p className="text-xs text-muted-foreground mb-4">How do you want to experience your trip?</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {TRAVEL_PACES.map(({ id, label, tagline, desc, density, icon: PaceIcon }) => {
+                      const isSelected = travelPace === id;
                       return (
                         <button
-                          key={c}
+                          key={id}
                           type="button"
-                          onClick={() => toggle(c, interests, setInterests)}
+                          onClick={() => { setTravelPace(id); setStyle(id); }}
                           className={cn(
-                            "rounded-full border px-3.5 py-1.5 text-xs sm:text-sm transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95",
-                            on
-                              ? "border-primary bg-primary text-primary-foreground font-semibold ring-2 ring-primary/30"
-                              : "border-border/80 bg-background/80 hover:border-primary/50 hover:bg-muted/40 text-foreground",
+                            "rounded-2xl border p-4 text-left transition-all cursor-pointer space-y-2",
+                            isSelected
+                              ? "border-primary bg-primary/10 shadow-md ring-1 ring-primary/40"
+                              : "border-border/70 bg-background/80 hover:border-primary/40 hover:bg-muted/30",
                           )}
                         >
-                          {c}
+                          <div className="flex items-center justify-between">
+                            <div className={cn(
+                              "flex h-8 w-8 items-center justify-center rounded-xl",
+                              isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                            )}>
+                              <PaceIcon className="h-4 w-4" />
+                            </div>
+                            {isSelected && <Check className="h-4 w-4 text-primary" />}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-sm text-foreground">{label}</p>
+                            <p className="text-[11px] font-medium text-primary/80 mt-0.5">{tagline}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                          <span className="inline-block text-[10px] font-semibold bg-muted/60 text-muted-foreground px-2 py-0.5 rounded-full border border-border/60">
+                            {density}
+                          </span>
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
+                {/* ── Section 2: Travel Interests ── */}
                 <div>
-                  <Label className="text-xs font-medium">Anything special or specific notes?</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      <Label className="text-sm font-semibold text-foreground">Travel Interests</Label>
+                    </div>
+                    {interests.length > 0 && (
+                      <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20 self-start sm:self-auto">
+                        {interests.length} selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                    Select what you enjoy — the AI will personalize your entire itinerary around these. Pick as many as you like.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                    {TRAVEL_INTERESTS.map(({ id: interestId, icon: Icon }) => {
+                      const isOn = interests.includes(interestId);
+                      return (
+                        <button
+                          key={interestId}
+                          type="button"
+                          onClick={() => toggle(interestId, interests, setInterests)}
+                          className={cn(
+                            "relative rounded-xl border p-3 text-center transition-all cursor-pointer flex flex-col items-center gap-2 active:scale-95",
+                            isOn
+                              ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/30"
+                              : "border-border/70 bg-background/80 hover:border-primary/40 hover:bg-muted/30",
+                          )}
+                        >
+                          {isOn && (
+                            <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                              <Check className="h-2.5 w-2.5" />
+                            </span>
+                          )}
+                          <div className={cn(
+                            "flex h-8 w-8 items-center justify-center rounded-lg",
+                            isOn ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                          )}>
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <p className={cn(
+                            "text-[11px] font-medium leading-tight text-center",
+                            isOn ? "text-foreground" : "text-muted-foreground"
+                          )}>
+                            {interestId}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Section 3: Experience Preferences ── */}
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Gem className="h-4 w-4 text-primary" />
+                    <Label className="text-sm font-semibold text-foreground">Experience Preferences</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                    What kind of experiences do you want the AI to prioritize? All optional.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {EXPERIENCE_PREFERENCES.map(({ id: prefId, label, desc, icon: Icon }) => {
+                      const isOn = experiencePreferences.includes(prefId);
+                      return (
+                        <button
+                          key={prefId}
+                          type="button"
+                          onClick={() => toggle(prefId, experiencePreferences, setExperiencePreferences)}
+                          className={cn(
+                            "rounded-xl border p-3.5 text-left transition-all cursor-pointer flex items-start gap-3 active:scale-[0.98]",
+                            isOn
+                              ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/30"
+                              : "border-border/70 bg-background/80 hover:border-primary/40 hover:bg-muted/20",
+                          )}
+                        >
+                          <div className={cn(
+                            "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+                            isOn ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                          )}>
+                            <Icon className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className={cn("text-xs font-semibold", isOn ? "text-foreground" : "text-foreground/80")}>{label}</p>
+                              {isOn && <Check className="h-3 w-3 text-primary shrink-0" />}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">{desc}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Section 4: Locality & Experiential Highlights ── */}
+                {localityInterestsList.length > 0 && (
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-primary" />
+                        <Label className="text-sm font-semibold text-foreground">Local Highlights for {destination || "Destination"}</Label>
+                      </div>
+                      <span className="text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20 self-start sm:self-auto">
+                        Destination-curated
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                      Specific local experiences, street food, and cultural highlights curated for your destination:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {localityInterestsList.map((c) => {
+                        const on = interests.includes(c);
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => toggle(c, interests, setInterests)}
+                            className={cn(
+                              "rounded-full border px-3.5 py-1.5 text-xs sm:text-sm transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95",
+                              on
+                                ? "border-primary bg-primary text-primary-foreground font-semibold ring-2 ring-primary/30"
+                                : "border-border/80 bg-background/80 hover:border-primary/50 hover:bg-muted/40 text-foreground",
+                            )}
+                          >
+                            {on && <Check className="h-3 w-3" />}
+                            {c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Section 5: Special Notes ── */}
+                <div>
+                  <Label className="text-xs font-medium text-foreground">Anything special or specific notes?</Label>
                   <Textarea
                     value={special}
                     onChange={(e) => setSpecial(e.target.value)}
@@ -2362,7 +2604,10 @@ function NewTrip() {
 
                   <div className="rounded-xl glass-tile p-4">
                     <p className="text-xs text-muted-foreground">Pace & Style</p>
-                    <p className="mt-1 text-sm font-semibold">{style || "Balanced"} Pace</p>
+                    <p className="mt-1 text-sm font-semibold">{travelPace || style || "Balanced"} Pace</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {travelPace === "Relaxed" ? "2–3 stops / day" : travelPace === "Packed" ? "4–6 stops / day" : "3–4 stops / day"}
+                    </p>
                   </div>
 
                   {/* Accommodation Summary */}
@@ -2467,11 +2712,50 @@ function NewTrip() {
 
                   {interests.length > 0 && (
                     <div className="rounded-xl glass-tile p-4 sm:col-span-2">
-                      <p className="text-xs text-muted-foreground">Selected Interests</p>
-                      <div className="mt-1.5 flex flex-wrap gap-1">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Interests & Preferences</p>
+                        <button
+                          type="button"
+                          onClick={() => setStep(5)}
+                          className="text-[11px] text-primary font-medium hover:underline"
+                        >
+                          Edit Preferences
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mb-2">
                         {interests.map((i) => (
                           <Badge key={i} variant="secondary" className="text-[11px]">
                             {i}
+                          </Badge>
+                        ))}
+                      </div>
+                      {experiencePreferences.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-2 border-t border-border/40">
+                          {experiencePreferences.map((p) => (
+                            <Badge key={p} variant="outline" className="text-[11px] border-primary/30 text-primary bg-primary/5">
+                              {p}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {interests.length === 0 && experiencePreferences.length > 0 && (
+                    <div className="rounded-xl glass-tile p-4 sm:col-span-2">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Experience Preferences</p>
+                        <button
+                          type="button"
+                          onClick={() => setStep(5)}
+                          className="text-[11px] text-primary font-medium hover:underline"
+                        >
+                          Edit Preferences
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {experiencePreferences.map((p) => (
+                          <Badge key={p} variant="outline" className="text-[11px] border-primary/30 text-primary bg-primary/5">
+                            {p}
                           </Badge>
                         ))}
                       </div>

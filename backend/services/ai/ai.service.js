@@ -199,7 +199,9 @@ export class AIService {
       durationMode = "RECOMMENDED",
       budget,
       style,
+      travelPace: rawTravelPace,
       interests,
+      experiencePreferences: rawExpPreferences,
       accommodation,
       hotelLocation,
       transport,
@@ -219,6 +221,11 @@ export class AIService {
 
     const expectedDates = generateTripDates(startDate, endDate);
     const numDays = expectedDates.length;
+
+    const travelPace = rawTravelPace || style || "Balanced";
+    const experiencePreferences = Array.isArray(rawExpPreferences)
+      ? rawExpPreferences
+      : rawExpPreferences ? [String(rawExpPreferences)] : [];
 
     const budgetNum = Number(budget) || 0;
     const perDayBudget = budgetNum > 0 ? Math.round(budgetNum / numDays) : null;
@@ -424,8 +431,10 @@ export class AIService {
       budgetNum,
       perDayBudget,
       perPersonBudget,
-      style: style || "Balanced",
+      style: travelPace || style || "Balanced",
+      travelPace,
       interests: interests || [],
+      experiencePreferences,
       accommodationLine,
       journeyLine,
       transportList,
@@ -456,7 +465,7 @@ export class AIService {
       {
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        maxTokens: 4096,
+        maxTokens: 6000,
       },
       { maxAttempts: 2 }
     );
@@ -470,8 +479,10 @@ export class AIService {
       departureTime,
       arrivalTime,
       tripTiming: computedJourneys.tripTiming,
-      style: style || "Balanced",
+      style: travelPace || style || "Balanced",
+      travelPace,
       interests: interests || [],
+      experiencePreferences,
       verifiedPlaces,
     });
 
@@ -511,7 +522,9 @@ export class AIService {
       accommodation: accommodation || "",
       hotelLocation: hotelLocation || "",
       travelers: travelersNum,
-      style: style || "Balanced",
+      style: travelPace || style || "Balanced",
+      travelPace,
+      experiencePreferences,
       railwayValidation,
       agentAudit: researchDossier?.audit || null,
       providerEvaluation: researchDossier?.providerEvaluation || null,
@@ -552,7 +565,13 @@ export class AIService {
     const startDate = body.startDate || trip.startDate;
     const endDate = body.endDate || trip.endDate;
     const budgetNum = body.budget !== undefined ? Number(body.budget) : trip.budgetTotal || 0;
-    const style = body.style || trip.style || "Balanced";
+    const travelPace = body.travelPace || body.style || trip.travelPace || trip.style || "Balanced";
+    const style = travelPace;
+    const experiencePreferences = Array.isArray(body.experiencePreferences)
+      ? body.experiencePreferences
+      : Array.isArray(trip.experiencePreferences)
+        ? trip.experiencePreferences
+        : body.experiencePreferences ? [String(body.experiencePreferences)] : [];
     const interests = body.interests || trip.interests || [];
     const travelersNum = body.travelers ? Number(body.travelers) : trip.travelers || 1;
     const travelMode = body.travelMode || trip.travelMode || "";
@@ -571,6 +590,7 @@ export class AIService {
 
     const expectedDates = generateTripDates(startDate, endDate);
     const numDays = expectedDates.length;
+
     const perDayBudget = budgetNum > 0 ? Math.round(budgetNum / numDays) : null;
     const perPersonBudget = budgetNum > 0 ? Math.round(budgetNum / travelersNum) : null;
 
@@ -705,8 +725,10 @@ export class AIService {
       budgetNum,
       perDayBudget,
       perPersonBudget,
-      style,
+      style: travelPace,
+      travelPace,
       interests,
+      experiencePreferences,
       accommodationLine,
       journeyLine,
       transportList: trip.transport?.length ? trip.transport.join(", ") : travelMode || "any available",
@@ -737,7 +759,7 @@ export class AIService {
       {
         messages: [{ role: "user", content: prompt }],
         temperature: 0.8,
-        maxTokens: 4096,
+        maxTokens: 6000,
       },
       { maxAttempts: 2 }
     );
@@ -751,8 +773,10 @@ export class AIService {
       departureTime,
       arrivalTime,
       tripTiming: regenJourneys.tripTiming,
-      style,
+      style: travelPace,
+      travelPace,
       interests,
+      experiencePreferences,
       verifiedPlaces,
     });
 
@@ -778,8 +802,10 @@ export class AIService {
     trip.duration = body.duration ? Number(body.duration) : numDays;
     trip.durationMode = body.durationMode || trip.durationMode || "RECOMMENDED";
     trip.budgetTotal = budgetNum;
-    trip.style = style;
+    trip.style = travelPace;
+    trip.travelPace = travelPace;
     trip.interests = interests;
+    trip.experiencePreferences = experiencePreferences;
     trip.travelers = travelersNum;
     trip.travelMode = travelMode;
     trip.departureHub = departureHub || trip.departureHub || "";
