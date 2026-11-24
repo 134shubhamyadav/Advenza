@@ -3,7 +3,6 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import admin from "firebase-admin";
-import Collage from "../models/Collage.js";
 import Expense from "../models/Expense.js";
 import Trip from "../models/Trip.js";
 import { logger } from "../utils/logger.js";
@@ -11,7 +10,7 @@ import { env } from "../config/env.js";
 
 const router = express.Router();
 
-const ALLOWED_TYPES = new Set(["collages", "receipts"]);
+const ALLOWED_TYPES = new Set(["receipts"]);
 const MIME_TYPES = {
   ".webp": "image/webp",
   ".jpg": "image/jpeg",
@@ -111,20 +110,7 @@ router.get("/:type/:filename", async (req, res) => {
 
   const relativePath = `${safeType}/${safeFilename}`;
 
-  // 2. Check public share token first (Collages)
-  if (shareToken) {
-    if (safeType === "collages") {
-      const collage = await Collage.findOne({
-        shareToken,
-        shareAccess: { $in: ["public", "unlisted", "link"] },
-      }).lean();
-      if (collage) {
-        return streamFile(fullPath, res);
-      }
-    }
-  }
-
-  // 3. Authenticate User
+  // 2. Authenticate User
   const auth = await authenticateMediaRequest(req, relativePath);
   if (!auth || !auth.uid) {
     return res.status(401).json({
@@ -136,27 +122,7 @@ router.get("/:type/:filename", async (req, res) => {
 
   // 3. Verify Ownership & Authorization for receipts
   try {
-    if (safeType === "collages") {
-      const idOrPart = safeFilename.split(".")[0];
-      const collage = await Collage.findOne({
-        $or: [
-          { _id: idOrPart.length === 24 ? idOrPart : null },
-          { localFileName: safeFilename },
-          { imageUrl: new RegExp(safeFilename) },
-        ],
-      }).lean();
-
-      if (collage) {
-        if (collage.userId !== uid) {
-          // Check if user is collaborator on the trip
-          const trip = await Trip.findById(collage.tripId).lean();
-          const isMember = trip?.members?.some((m) => m.userId === uid || m.email === uid);
-          if (!isMember) {
-            return res.status(403).json({ error: "Access denied to private collage" });
-          }
-        }
-      }
-    } else if (safeType === "receipts") {
+    if (safeType === "receipts") {
       const expense = await Expense.findOne({
         $or: [
           { receiptUrl: new RegExp(safeFilename) },

@@ -18,8 +18,6 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import healthRoutes from "./routes/health.js";
 import tripRoutes from "./routes/trips.js";
 import aiRoutes from "./routes/ai.js";
-import memoriesRoutes from "./routes/memories.js";
-import collageRoutes from "./routes/collages.js";
 import travelRoutes from "./routes/travel.js";
 import budgetRoutes from "./routes/budget.js";
 import userRoutes from "./routes/user.js";
@@ -27,7 +25,6 @@ import mediaRoutes from "./routes/media.js";
 import mediaUploadsRouter from "./routes/media-uploads.js";
 import mailRoutes from "./routes/mail.js";
 import invitationRoutes from "./routes/invitations.js";
-import { collageWorker } from "./services/collage/collage-worker.js";
 import { startPriceWatchScheduler, stopPriceWatchScheduler } from "./services/price-watch/price-watch.worker.js";
 import { runStartupMigrations } from "./services/database/migration.service.js";
 
@@ -111,8 +108,6 @@ app.get("/", (req, res) =>
 app.use("/api/trips", budgetRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/ai", aiRoutes);
-app.use("/api/memories", memoriesRoutes);
-app.use("/api/collages", collageRoutes);
 app.use("/api/travel", travelRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/media", mediaRoutes);
@@ -129,7 +124,6 @@ mongoose
     logger.info("✅ Connected to MongoDB Atlas");
     try {
       await runStartupMigrations();
-      await collageWorker.recoverStuckJobs();
       startPriceWatchScheduler();
     } catch (migErr) {
       logger.error(`Startup initialization warning: ${migErr.message}`);

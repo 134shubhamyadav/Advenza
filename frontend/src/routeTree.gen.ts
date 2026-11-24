@@ -17,7 +17,6 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as GroupRouteImport } from './routes/group'
 import { Route as ItineraryRouteImport } from './routes/itinerary'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as PackingRouteImport } from './routes/packing'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ProfileRouteImport } from './routes/profile'
@@ -66,11 +65,6 @@ const ItineraryRoute = ItineraryRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MemoryRoute = MemoryRouteImport.update({
-  id: '/memory',
-  path: '/memory',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PackingRoute = PackingRouteImport.update({
@@ -128,7 +122,6 @@ export interface FileRoutesByFullPath {
   '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
-  '/memory': typeof MemoryRoute
   '/packing': typeof PackingRoute
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
@@ -148,7 +141,6 @@ export interface FileRoutesByTo {
   '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
-  '/memory': typeof MemoryRoute
   '/packing': typeof PackingRoute
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
@@ -169,7 +161,6 @@ export interface FileRoutesById {
   '/group': typeof GroupRoute
   '/itinerary': typeof ItineraryRoute
   '/login': typeof LoginRoute
-  '/memory': typeof MemoryRoute
   '/packing': typeof PackingRoute
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
@@ -191,7 +182,6 @@ export interface FileRouteTypes {
     | '/group'
     | '/itinerary'
     | '/login'
-    | '/memory'
     | '/packing'
     | '/pricing'
     | '/profile'
@@ -211,7 +201,6 @@ export interface FileRouteTypes {
     | '/group'
     | '/itinerary'
     | '/login'
-    | '/memory'
     | '/packing'
     | '/pricing'
     | '/profile'
@@ -231,7 +220,6 @@ export interface FileRouteTypes {
     | '/group'
     | '/itinerary'
     | '/login'
-    | '/memory'
     | '/packing'
     | '/pricing'
     | '/profile'
@@ -252,7 +240,6 @@ export interface RootRouteChildren {
   GroupRoute: typeof GroupRoute
   ItineraryRoute: typeof ItineraryRoute
   LoginRoute: typeof LoginRoute
-  MemoryRoute: typeof MemoryRoute
   PackingRoute: typeof PackingRoute
   PricingRoute: typeof PricingRoute
   ProfileRoute: typeof ProfileRoute
@@ -320,13 +307,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/memory': {
-      id: '/memory'
-      path: '/memory'
-      fullPath: '/memory'
-      preLoaderRoute: typeof MemoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/packing': {
@@ -404,7 +384,6 @@ const rootRouteChildren: RootRouteChildren = {
   GroupRoute: GroupRoute,
   ItineraryRoute: ItineraryRoute,
   LoginRoute: LoginRoute,
-  MemoryRoute: MemoryRoute,
   PackingRoute: PackingRoute,
   PricingRoute: PricingRoute,
   ProfileRoute: ProfileRoute,

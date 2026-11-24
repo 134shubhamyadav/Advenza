@@ -17,7 +17,6 @@ import {
   ShieldAlert,
   Backpack,
   Users2,
-  Camera,
   Menu,
   X,
 } from "lucide-react";
@@ -48,7 +47,6 @@ const navSections: NavSection[] = [
       { to: "/budget", label: "Budget", icon: Wallet },
       { to: "/packing", label: "Packing", icon: Backpack },
       { to: "/consensus", label: "Consensus", icon: Users2 },
-      { to: "/memory", label: "Scrapbook", icon: Camera },
     ],
   },
   {
@@ -299,7 +297,7 @@ export function AppShell({
           { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
           { to: "/itinerary", label: "Itinerary", icon: CalendarDays },
           { to: "/trips/new", label: "New Trip", icon: Plus, isPrimary: true },
-          { to: "/memory", label: "Scrapbook", icon: Camera },
+          { to: "/budget", label: "Budget", icon: Wallet },
           { to: "#menu", label: "More", icon: Menu, isAction: true },
         ].map((tab) => {
           if (tab.isAction) {
