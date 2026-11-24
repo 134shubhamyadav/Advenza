@@ -64,11 +64,14 @@ const MemberSchema = new mongoose.Schema({
   userId: String,
 });
 
-// Embedded Vote schema (strictly bounded 4-10 options)
+// Embedded Vote schema
 const VoteOptionSchema = new mongoose.Schema({
-  name: String,
+  name: { type: String, required: true },
+  description: { type: String, default: "" },
   votes: { type: Number, default: 0 },
   voters: [String], // array of UIDs
+  createdBy: { type: String, default: "" },
+  createdAt: { type: Date, default: Date.now },
 });
 
 // Structured Journey schema for multi-day, overnight, and same-day travel
@@ -186,7 +189,9 @@ const TripSchema = new mongoose.Schema({
   duration: { type: Number },
   durationMode: { type: String, enum: ["RECOMMENDED", "CUSTOM"], default: "RECOMMENDED" },
   style: String,
+  travelPace: { type: String, enum: ["Relaxed", "Balanced", "Packed"], default: "Balanced" },
   interests: [String],
+  experiencePreferences: [String],
   transport: [String],          // user-selected transport modes
   accommodation: String,        // user-selected accommodation type
   hotelLocation: String,        // user's hotel location or area

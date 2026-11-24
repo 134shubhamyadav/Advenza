@@ -56,6 +56,9 @@ router.post("/:id/vote", validate({ body: voteSchema }), tripController.castVote
 // POST /api/trips/:id/options — add a custom vote option / proposal
 router.post("/:id/options", validate({ body: addOptionSchema }), tripController.addVoteOption);
 
+// DELETE /api/trips/:id/options/:optionName — delete a vote option
+router.delete("/:id/options/:optionName", tripController.deleteVoteOption);
+
 // PUT /api/trips/:id/itinerary — smart-patch: replace only the supplied days, preserve the rest
 router.put("/:id/itinerary", validate({ body: updateItinerarySchema }), tripController.patchItinerary);
 

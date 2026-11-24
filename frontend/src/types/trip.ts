@@ -150,9 +150,13 @@ export interface TripMember {
 }
 
 export interface TripVoteOption {
+  _id?: string;
   name: string;
+  description?: string;
   votes: number;
   voters: string[];
+  createdBy?: string;
+  createdAt?: string;
 }
 
 export interface BudgetCategoryItem {
@@ -281,6 +285,8 @@ export interface TripSummary {
   duration?: number;
   durationMode?: "RECOMMENDED" | "CUSTOM";
   style?: string;
+  travelPace?: "Relaxed" | "Balanced" | "Packed" | string;
+  experiencePreferences?: string[];
   interests?: string[];
   travelMode?: string;
   departureHub?: string;

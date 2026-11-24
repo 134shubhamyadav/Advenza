@@ -276,6 +276,11 @@ function TripDetails() {
                     {trip.durationMode === "CUSTOM" ? "Custom Duration" : "Recommended Pacing"}
                   </Badge>
                 ) : null}
+                {(trip.travelPace || trip.style) ? (
+                  <Badge variant="outline" className="text-[11px] bg-white/10 text-white/90 border-white/20">
+                    {trip.travelPace || trip.style} Pace
+                  </Badge>
+                ) : null}
               </div>
             </div>
             <div className="flex gap-2 items-center flex-wrap">
@@ -556,6 +561,19 @@ function TripDetails() {
                       {trip.interests.map((i) => (
                         <Badge key={i} variant="outline" className="text-xs bg-muted/30">
                           {i}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {trip.experiencePreferences && trip.experiencePreferences.length > 0 && (
+                  <div className="border-t border-border/50 pt-3">
+                    <p className="text-xs text-muted-foreground mb-2">Experience Preferences</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {trip.experiencePreferences.map((p) => (
+                        <Badge key={p} variant="outline" className="text-xs bg-primary/5 border-primary/20 text-primary">
+                          {p}
                         </Badge>
                       ))}
                     </div>
