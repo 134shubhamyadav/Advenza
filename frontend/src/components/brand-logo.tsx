@@ -9,23 +9,19 @@ export function BrandLogo({
   showWord?: boolean;
 }) {
   return (
-    <Link to="/" className={cn("group inline-flex items-center gap-2", className)}>
-      <span className="relative grid h-8 w-8 place-items-center rounded-xl bg-primary text-primary-foreground shadow-soft">
+    <Link to="/" className={cn("group inline-flex items-center gap-2.5", className)}>
+      <span className="relative grid h-8 w-8 place-items-center rounded-full bg-[#004678] text-white shadow-sm ring-1 ring-[#004678]/20 shrink-0">
         <svg
-          viewBox="0 0 24 24"
-          className="h-4 w-4"
+          viewBox="0 0 64 64"
+          className="h-5 w-5"
           fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
         >
-          <path d="M3 18c3-2 6-2 9 0s6 2 9 0" />
-          <path d="M12 3l3 6-3 3-3-3 3-6z" />
+          <path d="M32 15 L40 25.5 L32 33 L24 25.5 Z M32 21 L35.5 25.5 L32 29 L28.5 25.5 Z" fill="#FFFFFF" fillRule="evenodd" />
+          <path d="M21 41.5 C24.5 38.5 28 38.5 32 41.5 C36 44.5 39.5 44.5 43 41.5" stroke="#FFFFFF" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </svg>
       </span>
       {showWord && (
-        <span className="font-display text-2xl leading-none tracking-tight">Advenza</span>
+        <span className="font-display text-2xl leading-none tracking-tight text-foreground">Advenza</span>
       )}
     </Link>
   );

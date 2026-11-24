@@ -23,102 +23,104 @@ export const Route = createFileRoute("/pricing")({
 
 function PricingPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-primary/20">
+    <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-primary/20 overflow-x-clip">
       {/* Top Navigation */}
       <header className="border-b border-border/40 backdrop-blur-xl bg-background/80 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
           <BrandLogo />
-          <div className="flex items-center gap-3">
-            <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-xs sm:text-sm px-2.5 sm:px-3">
               <Link to="/login">Sign in</Link>
             </Button>
-            <Button asChild size="sm" className="rounded-full shadow-sm">
+            <Button asChild size="sm" className="rounded-full shadow-sm text-xs sm:text-sm px-3 sm:px-4">
               <Link to="/trips/new">
                 Plan a Trip
-                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                <ArrowRight className="ml-1 h-3.5 w-3.5 hidden sm:inline" />
               </Link>
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Hero / Big Funny Announcement */}
-      <main className="flex-1 max-w-5xl mx-auto px-6 py-16 md:py-24 text-center">
-        {/* Animated Badge */}
+      {/* Hero / Big Announcement */}
+      <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 py-12 md:py-20 text-center w-full">
+        {/* Sleek Preview Badge */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4 }}
-          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-6 shadow-sm"
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-primary/20 bg-primary/10 text-primary text-xs font-semibold tracking-wide mb-6 shadow-sm"
         >
-          <Gift className="h-4 w-4 animate-bounce" />
-          <span>Surprise! It&apos;s 100% Free Right Now</span>
+          <Compass className="h-3.5 w-3.5" />
+          <span>Public Preview — All Features Unlocked</span>
         </motion.div>
 
-        {/* Humorous Title */}
+        {/* Humorous Title - perfectly sized with no text clipping */}
         <motion.h1
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="font-display text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-foreground"
+          className="font-display text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight text-foreground leading-[1.15] sm:leading-tight max-w-3xl mx-auto px-2"
         >
-          Wait... you actually wanted to{" "}
-          <span className="italic bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            pay us?
+          <span className="block">Wait... you actually</span>
+          <span className="block mt-1 sm:mt-2">
+            wanted to{" "}
+            <span className="italic inline-block px-1.5 pb-1 bg-gradient-to-r from-primary via-emerald-500 to-accent bg-clip-text text-transparent">
+              pay us?
+            </span>
           </span>
         </motion.h1>
 
-        {/* Witty Subtitle */}
+        {/* Subtitle with proper mobile spacing */}
         <motion.p
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed"
+          className="mt-5 sm:mt-6 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed px-2"
         >
           Our investors told us to build paywalls and monetize. Our engineering team said{" "}
-          <strong className="text-foreground font-semibold">&ldquo;Let people travel first!&rdquo;</strong>
-          <br className="hidden sm:inline" />
-          So while we work on our subscription system,{" "}
+          <strong className="text-foreground font-semibold">&ldquo;Let people travel first!&rdquo;</strong>{" "}
+          So while we build out our future tiers,{" "}
           <span className="text-emerald-600 dark:text-emerald-400 font-semibold underline decoration-emerald-500/40 underline-offset-4">
-            everything is completely free
+            every single feature is completely free
           </span>
-          . Enjoy it to the fullest till then!
+          . Enjoy exploring to the fullest!
         </motion.p>
 
-        {/* The "Deal of the Century" Card */}
+        {/* The Card */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
-          className="mt-12 relative rounded-3xl border-2 border-primary/30 bg-gradient-to-b from-card/90 to-card/40 backdrop-blur-2xl p-8 sm:p-12 shadow-2xl overflow-hidden text-left"
+          className="mt-10 sm:mt-12 relative rounded-3xl border border-primary/25 bg-gradient-to-b from-card/95 to-card/50 backdrop-blur-2xl p-5 sm:p-10 shadow-2xl overflow-hidden text-left"
         >
-          {/* Decorative glowing gradient circle */}
-          <div className="absolute -top-32 -right-32 w-72 h-72 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-32 -left-32 w-72 h-72 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+          {/* Subtle glowing gradient backdrop */}
+          <div className="absolute -top-32 -right-32 w-64 h-64 bg-primary/15 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
 
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-border/40">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 sm:pb-8 border-b border-border/40">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20">
-                  Early Access Explorer Pass
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-3 py-0.5 rounded-full text-xs font-semibold tracking-wider bg-primary/10 text-primary border border-primary/20">
+                  Preview Explorer Pass
                 </span>
                 <span className="text-xs text-muted-foreground font-medium">· No Credit Card Required</span>
               </div>
-              <h2 className="mt-3 text-2xl sm:text-3xl font-bold text-foreground">
+              <h2 className="mt-3 text-xl sm:text-3xl font-bold text-foreground">
                 The &ldquo;Enjoy It While It&apos;s Free&rdquo; Plan
               </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
                 Full unlimited access to every AI agent, transit simulation, and itinerary feature.
               </p>
             </div>
 
-            <div className="flex flex-col items-start md:items-end shrink-0">
+            <div className="flex flex-row md:flex-col items-baseline md:items-end justify-between md:justify-start shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-border/30">
               <div className="flex items-baseline gap-2">
-                <span className="text-4xl sm:text-5xl font-extrabold text-foreground font-display">₹0</span>
-                <span className="text-muted-foreground text-sm line-through">₹499/mo</span>
+                <span className="text-3xl sm:text-5xl font-extrabold text-foreground font-display">₹0</span>
+                <span className="text-muted-foreground text-xs sm:text-sm line-through">₹499/mo</span>
               </div>
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-1">
-                100% Free during Early Beta
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                100% Free during Public Preview
               </span>
             </div>
           </div>

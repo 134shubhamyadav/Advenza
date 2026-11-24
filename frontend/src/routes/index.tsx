@@ -296,7 +296,7 @@ function Landing() {
 
           {/* Bottom stats */}
           <div
-            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pb-2 text-center text-xs text-white/70 sm:text-sm"
+            className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pb-6 text-center text-xs text-white/70 sm:text-sm relative z-20"
             style={{ fontFamily: "system-ui, sans-serif" }}
           >
             {["120+ Destinations", "12,400+ Travelers", "4.9 Rating", "Human‑crafted AI"].map(
@@ -310,58 +310,101 @@ function Landing() {
           </div>
         </div>
 
+        {/* Seamless bottom transition fade from dark hero photo to light/dark page body */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background via-background/70 to-transparent z-10" />
+
         {/* Mobile menu overlay */}
         <AnimatePresence>
           {menuOpen && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-8 bg-black/70 backdrop-blur-xl md:hidden"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="fixed inset-0 z-50 flex flex-col bg-[#07131e]/98 backdrop-blur-3xl md:hidden overflow-y-auto px-6 py-6"
             >
-              {["How It Works", "Features", "Destinations", "Pricing"].map((l, i) =>
-                l === "Pricing" ? (
-                  <motion.div
-                    key={l}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 + i * 0.05, duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-                  >
-                    <Link
-                      to="/pricing"
-                      onClick={() => setMenuOpen(false)}
-                      className="text-3xl text-white"
-                    >
-                      {l}
-                    </Link>
-                  </motion.div>
-                ) : (
-                  <motion.a
-                    key={l}
-                    href={`#${l.toLowerCase().replace(/\s/g, "-")}`}
-                    onClick={() => setMenuOpen(false)}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 + i * 0.05, duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-                    className="text-3xl text-white"
-                  >
-                    {l}
-                  </motion.a>
-                )
-              )}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.3, duration: 0.5 }}
-              >
-                <Link
-                  to="/signup"
+              {/* Top Header inside overlay */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-5">
+                <BrandLogo className="text-white [&_span]:text-white" />
+                <button
                   onClick={() => setMenuOpen(false)}
-                  className="rounded-full bg-white px-6 py-3 text-sm font-medium text-black"
+                  className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+                  aria-label="Close menu"
                 >
-                  Get Started
-                </Link>
-              </motion.div>
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Navigation items - cleanly aligned near top */}
+              <div className="flex flex-col gap-2.5 pt-6">
+                {[
+                  { label: "How It Works", href: "#how-it-works", desc: "3 simple steps from spark to boarding pass" },
+                  { label: "Features", href: "#features", desc: "Autonomous AI travel agents & risk radar" },
+                  { label: "Destinations", href: "#destinations", desc: "Curated places & local hidden gems" },
+                  { label: "Pricing", href: "/pricing", isRoute: true, desc: "100% Free Public Preview", badge: "Free" },
+                ].map((item, idx) => (
+                  <motion.div
+                    key={item.label}
+                    initial={{ opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.04 + idx * 0.03, duration: 0.25 }}
+                  >
+                    {item.isRoute ? (
+                      <Link
+                        to="/pricing"
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center justify-between p-4 rounded-2xl bg-white/5 hover:bg-white/10 text-white transition-colors border border-white/5"
+                      >
+                        <div>
+                          <span className="text-lg font-medium">{item.label}</span>
+                          <p className="text-xs text-white/60 mt-0.5">{item.desc}</p>
+                        </div>
+                        {item.badge && (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            {item.badge}
+                          </span>
+                        )}
+                      </Link>
+                    ) : (
+                      <a
+                        href={item.href}
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center justify-between p-4 rounded-2xl bg-white/5 hover:bg-white/10 text-white transition-colors border border-white/5"
+                      >
+                        <div>
+                          <span className="text-lg font-medium">{item.label}</span>
+                          <p className="text-xs text-white/60 mt-0.5">{item.desc}</p>
+                        </div>
+                      </a>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Action buttons at bottom of menu */}
+              <div className="mt-8 pt-6 border-t border-white/10 flex flex-col gap-3 pb-8">
+                {user ? (
+                  <Button asChild size="lg" className="w-full rounded-2xl bg-white text-black hover:bg-white/90">
+                    <Link to="/dashboard" onClick={() => setMenuOpen(false)}>
+                      Go to Dashboard
+                    </Link>
+                  </Button>
+                ) : (
+                  <>
+                    <Button asChild size="lg" className="w-full rounded-2xl bg-white text-black hover:bg-white/90 shadow-lg">
+                      <Link to="/trips/new" onClick={() => setMenuOpen(false)}>
+                        Plan a Trip Now
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline" size="lg" className="w-full rounded-2xl border-white/20 text-white hover:bg-white/10">
+                      <Link to="/login" onClick={() => setMenuOpen(false)}>
+                        Sign In
+                      </Link>
+                    </Button>
+                  </>
+                )}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -473,7 +516,10 @@ function Landing() {
         {/* How it works */}
         <section id="how-it-works" className="relative overflow-hidden">
           <div className="gradient-aurora absolute inset-0 opacity-70" />
-          <div className="relative mx-auto max-w-7xl px-6 py-28">
+          {/* Seamless soft top & bottom transitions */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-background to-transparent z-10" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent z-10" />
+          <div className="relative mx-auto max-w-7xl px-6 py-28 z-20">
             <div className="grid gap-16 md:grid-cols-[1fr_1.4fr]">
               <div>
                 <p className="text-sm font-medium text-accent">How it works</p>
@@ -655,8 +701,8 @@ function Landing() {
         {/* Pricing */}
         <section id="pricing" className="mx-auto max-w-7xl px-6 py-28">
           <div className="text-center">
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-semibold mb-3 border border-emerald-500/20 shadow-sm">
-              <Sparkles className="h-3.5 w-3.5" /> Early Beta: 100% Free While We Scale!
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-3 border border-primary/20 shadow-sm">
+              <Compass className="h-3.5 w-3.5" /> Public Preview — All Features Unlocked
             </div>
             <p className="text-sm font-medium text-accent">Transparent Pricing</p>
             <h2 className="mt-2 font-display text-5xl md:text-6xl">
