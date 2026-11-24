@@ -200,7 +200,7 @@ cp backend/.env.example backend/.env
 
 ### 3. Launch Development Environment
 ```bash
-# Starts both frontend (http://localhost:3000) and backend (http://localhost:5000)
+# Starts both frontend (http://localhost:3001) and backend (http://localhost:5000)
 npm run dev
 ```
 
